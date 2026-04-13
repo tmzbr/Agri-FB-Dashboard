@@ -337,7 +337,9 @@ async function loadDB() {
   try {
     const SQL  = await initSqlJs({ locateFile: f =>
       `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
-    const resp = await fetch('beef_bz.db');
+    // Cache-bust daily so GitHub Pages CDN always serves the latest DB
+    const _cbv = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const resp = await fetch(`beef_bz.db?v=${_cbv}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: beef_bz.db not found`);
     const buf  = await resp.arrayBuffer();
     const db   = new SQL.Database(new Uint8Array(buf));
@@ -970,18 +972,27 @@ function renderVolumeChart() {
       scales: {
         yVol: {
           type: 'linear', position: 'left',
-          display: hasVol,   // hide axis entirely when weekly
+          display: hasVol,
           title: { display: hasVol, text: "'000 t", color: '#888', font: { size: 9 } },
-          ticks: { color: '#888', font: { size: 9 }, callback: v => v.toFixed(0) },
+          ticks: {
+            color: '#888', font: { size: 9 },
+            callback: v => v.toFixed(0),
+            maxTicksLimit: 5,
+          },
+          grace: '5%',
           grid: { color: 'rgba(0,0,0,0.05)' },
         },
         yUsd: {
-          type: 'linear', position: hasVol ? 'right' : 'left',
+          type: 'linear', position: 'right',
           min: usdMin, max: usdMax,
           title: { display: true, text: 'USD/kg',
             color: '#1A1A1A', font: { size: 9, weight: '600' } },
-          ticks: { color: '#1A1A1A', font: { size: 9 }, callback: v => v.toFixed(2) },
-          grid: hasVol ? { drawOnChartArea: false } : { color: 'rgba(0,0,0,0.05)' },
+          ticks: {
+            color: '#1A1A1A', font: { size: 9 },
+            callback: v => v.toFixed(2),
+            maxTicksLimit: 5,
+          },
+          grid: { drawOnChartArea: false },
         },
         x: {
           ticks: { color: '#999', font: { size: 9 }, maxRotation: 0 },
@@ -1004,7 +1015,9 @@ function renderPriceRefChart() {
   const usdVals = REF.usd.filter(v => v != null);
   const brlVals = REF.brl.filter(v => v != null);
   const usdMin  = usdVals.length ? Math.floor((Math.min(...usdVals) - 0.5)  * 4) / 4 : undefined;
+  const usdMax  = usdVals.length ? Math.ceil ((Math.max(...usdVals) + 0.5)  * 4) / 4 : undefined;
   const brlMin  = brlVals.length ? Math.floor((Math.min(...brlVals) - 2)    * 2) / 2 : undefined;
+  const brlMax  = brlVals.length ? Math.ceil ((Math.max(...brlVals) + 2)    * 2) / 2 : undefined;
 
   charts.priceRef = new Chart(document.getElementById('priceRefChart').getContext('2d'), {
     type: 'bar',
@@ -1065,20 +1078,20 @@ function renderPriceRefChart() {
       scales: {
         yUsd: {
           type: 'linear', position: 'left',
-          min: usdMin,
-          // Axis color matches USD series (dark/black)
+          min: usdMin, max: usdMax,
           title: { display: true, text: 'USD/kg',
             color: '#1A1A1A', font: { size: 9, weight: '600' } },
-          ticks: { color: '#1A1A1A', font: { size: 9 }, callback: v => v.toFixed(2) },
+          ticks: { color: '#1A1A1A', font: { size: 9 }, maxTicksLimit: 5,
+            callback: v => v.toFixed(2) },
           grid: { color: 'rgba(0,0,0,0.05)' },
         },
         yBrl: {
           type: 'linear', position: 'right',
-          min: brlMin,
-          // Axis color matches BRL series (orange)
+          min: brlMin, max: brlMax,
           title: { display: true, text: 'BRL/kg',
             color: '#FF5500', font: { size: 9, weight: '600' } },
-          ticks: { color: '#FF5500', font: { size: 9 }, callback: v => v.toFixed(1) },
+          ticks: { color: '#FF5500', font: { size: 9 }, maxTicksLimit: 5,
+            callback: v => v.toFixed(1) },
           grid: { drawOnChartArea: false },
         },
         x: {
