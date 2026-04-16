@@ -90,13 +90,20 @@ def upsert(conn, df):
     df["id_levantamento"] = df["id_levantamento"].astype(int)
     if df.empty:
         return
-    df.to_sql("safra", conn, if_exists="append", index=False, method="multi")
-    conn.execute("""
-        DELETE FROM safra WHERE rowid NOT IN (
-            SELECT MAX(rowid) FROM safra
-            GROUP BY ano_agricola, safra, uf, produto, id_levantamento
-        )
-    """)
+    # INSERT OR REPLACE respeita a PRIMARY KEY sem violar UNIQUE constraint
+    for _, row in df.iterrows():
+        conn.execute("""
+            INSERT OR REPLACE INTO safra
+            (ano_agricola, safra, uf, produto, id_produto, id_levantamento,
+             dsc_levantamento, area_plantada_mil_ha, producao_mil_t, produtividade_t_ha, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            row["ano_agricola"], row["safra"], row["uf"], row["produto"],
+            row.get("id_produto",""), row["id_levantamento"],
+            row.get("dsc_levantamento",""),
+            row["area_plantada_mil_ha"], row["producao_mil_t"],
+            row["produtividade_t_ha"], row["updated_at"]
+        ))
     conn.commit()
 
 # ── Grãos (Soja, Milho, Algodão) ──────────────────────────────────────────────
