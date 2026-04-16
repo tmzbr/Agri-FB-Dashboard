@@ -655,6 +655,7 @@ function setTab(t) {
   currentTab = t;
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === t));
+  renderCharts();
   renderTable();
   renderComparisonCharts();
 }
