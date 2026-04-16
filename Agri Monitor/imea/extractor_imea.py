@@ -413,25 +413,62 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
         log.warning(f"  [{cultura}] Nenhuma coluna de mês encontrada")
         return 0
 
-    # ── 6. Parsear linhas de custo e inserir ──────────────────────────────────
-    # Linhas de dados começam após mes_row
-    # Ignorar linhas de cabeçalho de seção (ex: "A. CUSTEIO", "COE (A + B...)")
+
+    # ── 6. Parsear e inserir — lê tudo da planilha, sem inventar nada ───────
+    # A planilha já tem todos os agregados (A. CUSTEIO, COE, COT, CT, etc.)
+    # Lemos cada linha e mapeamos o nome para o equivalente da API histórica.
+    # Zero premissas inventadas — tudo vem da IMEA.
+
+    # Linhas de metadados que não são custos
+    SKIP_EXACT = {
+        "Unidade: R$/ha.", "Fonte: Imea.", "Unidade: R$/ha",
+    }
     SKIP_PREFIXES = (
-        "a.", "b.", "c.", "d.", "e.", "f.", "g.", "h.", "i.", "j.",
-        "coe", "cot", "ct ", "ct(", "produtividade", "dólar", "dollar",
-        "unidade", "fonte", "nota", "setembro", "**",
+        "produtividade", "dólar", "dollar", "nota:", "setembro", "**",
+        "*estimativa", "*a produtividade",
     )
 
+    # Mapeamento nome planilha → nome banco (compatível com API histórica)
+    NOME_MAP = {
+        # Seções com letra → nome limpo
+        "A. CUSTEIO (1+2...+6)":                              "Custeio",
+        "B. MANUTENÇÃO":                                       "Manutenção",
+        "C. IMPOSTOS E TAXAS":                                 "Impostos e Taxas",
+        "D. FINANCEIRAS":                                      "Financeiras",
+        "E. PÓS-PRODUÇÃO":                                    "Pós-Produção",
+        "F. OUTROS CUSTOS":                                    "Outros Custos",
+        "G. ARRENDAMENTO":                                     "Arrendamento",
+        "H. DEPRECIAÇÕES":                                    "Depreciações",
+        "I. MÃO-DE-OBRA FAMILIAR":                            "Mão-de-obra Familiar",
+        "J. CUSTO DE OPORTUNIDADE":                           "Custo de Oportunidade",
+        "6. MÃO DE OBRA":                                      "Mão de Obra",
+        "1. SEMENTES":                                         "Sementes",
+        "2. FERTILIZANTES E CORRETIVOS":                       "Fertilizantes e Corretivos",
+        "3. DEFENSIVOS":                                       "Defensivos",
+        "4. OPERAÇÕES MECANIZADAS (óleo diesel e lubrificantes)": "OPERAÇÕES MECANIZADAS",
+        "4. OPERAÇÕES MECANIZADAS":                            "OPERAÇÕES MECANIZADAS",
+        "5. SERVIÇOS TERCEIRIZADOS":                           "Serviços Terceirizados",
+        # Totais — nomes exatos que o dashboard busca
+        "COE (A + B + ... + F + G)":                          "Custo Operacional Efetivo",
+        "COT (COE + H + I)":                                  "Custo Operacional Total",
+        "CT (COT + J)":                                       "Custo Total",
+    }
+
     inserted = 0
+
     for i, row in df.iterrows():
         if i <= mes_row:
             continue
 
-        ind_nome = str(row.iloc[0]).strip()
-        if not ind_nome or ind_nome.lower() == "nan":
+        ind_nome_raw = str(row.iloc[0]).strip()
+        if not ind_nome_raw or ind_nome_raw.lower() == "nan":
             continue
-        if any(ind_nome.lower().startswith(p) for p in SKIP_PREFIXES):
+        if ind_nome_raw in SKIP_EXACT:
             continue
+        if any(ind_nome_raw.lower().startswith(p) for p in SKIP_PREFIXES):
+            continue
+
+        ind_nome = NOME_MAP.get(ind_nome_raw, ind_nome_raw)
 
         for col, meta in cols_meta.items():
             try:
@@ -440,8 +477,6 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
                 continue
 
             data_ref = meta["data_ref"]
-
-            # Verificar se já existe (evita duplicatas)
             exists = conn.execute(
                 """SELECT 1 FROM historico
                    WHERE cultura=? AND indicador_nome=?
@@ -461,10 +496,10 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
                    VALUES (?,?,?,?,?,NULL,'mensal',?,?,?,?,
                            'R$/ha','MT','CUSTO',?)""",
                 (cultura, cadeia_id,
-                 f"xlsx_{cultura.lower()}_{ind_nome[:20]}",  # id sintético
+                 f"xlsx_{cultura.lower()}_{ind_nome[:20]}",
                  ind_nome,
                  meta["safra"], data_ref,
-                 meta["ano"], meta["mes"], val,
+                 meta["ano"], meta["mes"], round(val, 4),
                  now_str),
             )
             inserted += 1
