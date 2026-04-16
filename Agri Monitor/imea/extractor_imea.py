@@ -312,11 +312,19 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
         return 0
 
     # ── 2. Selecionar arquivo "Mensal Transgênica/GMO" ────────────────────────
-    # Preferência: Mensal GMO/Transgênica (mais completo, tem aba MT)
-    # Fallback: qualquer Mensal
+    # Preferência por cultura:
+    #   Soja/Milho: "Mensal Transgênica/GMO" > qualquer "Mensal"
+    #   Algodão:    "Mensal (R$/ha)" >> rejeita "¢/lb" (unidade errada)
     def score(a):
         n = a.get("Nome", "").lower()
+        # Rejeitar qualquer arquivo em ¢/lb (unidade errada para nosso banco)
+        if "¢/lb" in n or ("¢" in n and "lb" in n):
+            return 99
+        # Soja/Milho: priorizar GMO/Transgênica
         if "mensal" in n and ("gmo" in n or "transgên" in n or "transgen" in n):
+            return 0
+        # Algodão R$/ha ou qualquer outro Mensal
+        if "mensal" in n and "r$/ha" in n:
             return 0
         if "mensal" in n:
             return 1
@@ -324,6 +332,9 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
 
     arquivos_sorted = sorted(arquivos, key=score)
     arquivo = arquivos_sorted[0]
+    if score(arquivo) == 99:
+        log.warning(f"  [{cultura}] Nenhum arquivo adequado encontrado (todos em ¢/lb?)")
+        return 0
     log.info(f"  [{cultura}] Usando: {arquivo['Nome']}")
 
     # ── 3. Download do Excel ──────────────────────────────────────────────────
@@ -379,14 +390,18 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
         return 0
 
     # Mapear coluna → (ano, mes, safra, data_ref)
+    # Limita a 500 colunas para evitar processar os 16384 do Excel de algodão
     cols_meta = {}
-    for col in range(1, len(df.columns)):
+    max_col = min(len(df.columns), 500)
+    for col in range(1, max_col):
         try:
             mes_str = str(df.iloc[mes_row, col]).strip().lower().replace("*","").replace(" ","")
             mes_num = MESES_PT.get(mes_str)
             if not mes_num:
                 continue
             ano = int(float(str(df.iloc[ano_row, col]).strip()))
+            if ano < 2000 or ano > 2050:  # sanity check
+                continue
             safra = str(df.iloc[safra_row, col]).strip() if safra_row is not None else ""
             data_ref = f"{ano:04d}-{mes_num:02d}-15"
             cols_meta[col] = {"ano": ano, "mes": mes_num,
