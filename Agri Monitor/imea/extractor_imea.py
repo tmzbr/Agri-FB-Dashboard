@@ -269,42 +269,193 @@ def imea_get(token, path, **params):
 
 
 def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
-    """Extrai custos mensais do portal IMEA. Insere apenas registros novos."""
-    log.info(f"  [{cultura}] Buscando CUSTO no portal IMEA")
+    """
+    Extrai custos mensais do IMEA via Excel S3.
+
+    Novo fluxo (API /grupo/.../indicadores foi descontinuada):
+      1. GET api1.imea.com.br/api/arquivo?cadeia=X&tipo=... → lista Excel disponíveis
+      2. Seleciona o arquivo "Mensal Transgênica/GMO" (mais completo)
+         Fallback: qualquer arquivo "Mensal"
+      3. Download do Excel do S3 (URL pré-assinada, sem auth adicional)
+      4. Lê aba MT (ex: Soja_GMO_MT, Milho_GMO_MT, Algodao_GMO_MT)
+      5. Parseia linhas de custo → insere em historico
+
+    Estrutura do Excel (aba *_MT):
+      L6:  Safra   | 2026/27 | 2026/27 | ...
+      L7:  Ano     | 2026    | 2026    | ...
+      L8:  Mês     | Janeiro | Fevereiro | Março* | ...
+      L9+: indicador_nome | val_jan | val_fev | ...
+    """
+    import io as _io
+
+    TIPO_ID = "696277432068079616"  # Custo de Produção
+
+    log.info(f"  [{cultura}] Buscando CUSTO via Excel IMEA")
+
+    # ── 1. Listar arquivos disponíveis ────────────────────────────────────────
     try:
-        data = imea_get(token, f"/grupo/{GRUPO_CUSTO}/cadeia/{cadeia_id}/indicadores")
+        r = requests.get(
+            f"{IMEA_API}/api/arquivo",
+            params={"cadeia": cadeia_id, "tipo": TIPO_ID,
+                    "page": 1, "pageSize": 50, "nome": "", "sort": 1},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        arquivos = r.json().get("Result", [])
     except Exception as e:
-        log.warning(f"  [{cultura}] CUSTO falhou: {e}")
+        log.warning(f"  [{cultura}] Listagem de arquivos falhou: {e}")
         return 0
 
+    if not arquivos:
+        log.warning(f"  [{cultura}] Nenhum arquivo encontrado")
+        return 0
+
+    # ── 2. Selecionar arquivo "Mensal Transgênica/GMO" ────────────────────────
+    # Preferência: Mensal GMO/Transgênica (mais completo, tem aba MT)
+    # Fallback: qualquer Mensal
+    def score(a):
+        n = a.get("Nome", "").lower()
+        if "mensal" in n and ("gmo" in n or "transgên" in n or "transgen" in n):
+            return 0
+        if "mensal" in n:
+            return 1
+        return 2
+
+    arquivos_sorted = sorted(arquivos, key=score)
+    arquivo = arquivos_sorted[0]
+    log.info(f"  [{cultura}] Usando: {arquivo['Nome']}")
+
+    # ── 3. Download do Excel ──────────────────────────────────────────────────
+    try:
+        r = requests.get(arquivo["Path"], timeout=60)
+        r.raise_for_status()
+        xls_bytes = r.content
+    except Exception as e:
+        log.warning(f"  [{cultura}] Download falhou: {e}")
+        return 0
+
+    # ── 4. Identificar aba MT ─────────────────────────────────────────────────
+    try:
+        xls = pd.ExcelFile(_io.BytesIO(xls_bytes))
+    except Exception as e:
+        log.warning(f"  [{cultura}] Erro ao abrir Excel: {e}")
+        return 0
+
+    # Aba MT: ex "Soja_GMO_MT", "Milho_GMO_MT", "Algodao_GMO_MT"
+    aba_mt = next(
+        (s for s in xls.sheet_names
+         if s.endswith("_MT") and "mensal" not in s.lower()),
+        None
+    )
+    if not aba_mt:
+        # Fallback: primeira aba que contenha "MT"
+        aba_mt = next((s for s in xls.sheet_names if "MT" in s.upper()), None)
+    if not aba_mt:
+        log.warning(f"  [{cultura}] Aba MT não encontrada. Abas: {xls.sheet_names}")
+        return 0
+
+    log.info(f"  [{cultura}] Aba: {aba_mt}")
+    df = pd.read_excel(_io.BytesIO(xls_bytes), sheet_name=aba_mt, header=None)
+
+    # ── 5. Parsear cabeçalho (safra, ano, mês) ────────────────────────────────
+    MESES_PT = {
+        "janeiro":1,"fevereiro":2,"março":3,"abril":4,"maio":5,"junho":6,
+        "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12,
+    }
+
+    # Encontrar linhas de header (Safra, Ano, Mês)
+    safra_row = ano_row = mes_row = None
+    for i, row in df.iterrows():
+        first = str(row.iloc[0]).strip().lower()
+        if first == "safra":   safra_row = i
+        elif first == "ano":   ano_row   = i
+        elif first == "mês" or first == "mes": mes_row = i
+        if safra_row and ano_row and mes_row:
+            break
+
+    if mes_row is None:
+        log.warning(f"  [{cultura}] Linha de mês não encontrada")
+        return 0
+
+    # Mapear coluna → (ano, mes, safra, data_ref)
+    cols_meta = {}
+    for col in range(1, len(df.columns)):
+        try:
+            mes_str = str(df.iloc[mes_row, col]).strip().lower().replace("*","").replace(" ","")
+            mes_num = MESES_PT.get(mes_str)
+            if not mes_num:
+                continue
+            ano = int(float(str(df.iloc[ano_row, col]).strip()))
+            safra = str(df.iloc[safra_row, col]).strip() if safra_row is not None else ""
+            data_ref = f"{ano:04d}-{mes_num:02d}-15"
+            cols_meta[col] = {"ano": ano, "mes": mes_num,
+                              "safra": safra, "data_ref": data_ref}
+        except Exception:
+            continue
+
+    if not cols_meta:
+        log.warning(f"  [{cultura}] Nenhuma coluna de mês encontrada")
+        return 0
+
+    # ── 6. Parsear linhas de custo e inserir ──────────────────────────────────
+    # Linhas de dados começam após mes_row
+    # Ignorar linhas de cabeçalho de seção (ex: "A. CUSTEIO", "COE (A + B...)")
+    SKIP_PREFIXES = (
+        "a.", "b.", "c.", "d.", "e.", "f.", "g.", "h.", "i.", "j.",
+        "coe", "cot", "ct ", "ct(", "produtividade", "dólar", "dollar",
+        "unidade", "fonte", "nota", "setembro", "**",
+    )
+
     inserted = 0
-    for ind in data:
-        ind_id   = str(ind.get("id", ""))
-        ind_nome = ind.get("nome", "")
-        for pt in (ind.get("series") or []):
-            safra      = pt.get("safra")
-            safra_id   = str(pt.get("safraId", ""))
-            safra_tipo = pt.get("safraTipo")
-            data_ref   = (pt.get("dataReferencia") or "")[:10]
-            valor      = pt.get("valor")
-            if valor is None or not data_ref:
+    for i, row in df.iterrows():
+        if i <= mes_row:
+            continue
+
+        ind_nome = str(row.iloc[0]).strip()
+        if not ind_nome or ind_nome.lower() == "nan":
+            continue
+        if any(ind_nome.lower().startswith(p) for p in SKIP_PREFIXES):
+            continue
+
+        for col, meta in cols_meta.items():
+            try:
+                val = float(str(row.iloc[col]).strip().replace(",", "."))
+            except (ValueError, IndexError):
                 continue
-            if conn.execute(
-                "SELECT 1 FROM historico WHERE cultura=? AND indicador_id=? AND data_referencia=?",
-                (cultura, ind_id, data_ref)
-            ).fetchone():
+
+            data_ref = meta["data_ref"]
+
+            # Verificar se já existe (evita duplicatas)
+            exists = conn.execute(
+                """SELECT 1 FROM historico
+                   WHERE cultura=? AND indicador_nome=?
+                   AND data_referencia=? AND grupo='CUSTO'
+                   AND indicador_id IS NOT NULL""",
+                (cultura, ind_nome, data_ref)
+            ).fetchone()
+            if exists:
                 continue
+
             conn.execute(
                 """INSERT INTO historico
-                   (cultura,cadeia_id,indicador_id,indicador_nome,safra,safra_id,safra_tipo,
-                    data_referencia,ano,mes,valor,unidade,estado,grupo,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,'R$/ha','MT','CUSTO',?)""",
-                (cultura, cadeia_id, ind_id, ind_nome, safra, safra_id, safra_tipo,
-                 data_ref, int(data_ref[:4]), int(data_ref[5:7]), valor, now_str),
+                   (cultura, cadeia_id, indicador_id, indicador_nome,
+                    safra, safra_id, safra_tipo,
+                    data_referencia, ano, mes, valor,
+                    unidade, estado, grupo, updated_at)
+                   VALUES (?,?,?,?,?,NULL,'mensal',?,?,?,?,
+                           'R$/ha','MT','CUSTO',?)""",
+                (cultura, cadeia_id,
+                 f"xlsx_{cultura.lower()}_{ind_nome[:20]}",  # id sintético
+                 ind_nome,
+                 meta["safra"], data_ref,
+                 meta["ano"], meta["mes"], val,
+                 now_str),
             )
             inserted += 1
+
     conn.commit()
-    log.info(f"  [{cultura}] CUSTO: {inserted} novas linhas")
+    log.info(f"  [{cultura}] CUSTO: {inserted} novas linhas inseridas")
     return inserted
 
 
