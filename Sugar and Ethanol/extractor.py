@@ -736,12 +736,21 @@ def generate_dashboard(conn: sqlite3.Connection) -> None:
     # ── Extract all data ──────────────────────────────────────────────────────
     ATR_VHP=1.05; ATR_HYD=1.68; FRETE=85.0; ELEVACAO=10.5; CONV_L_TON=1.04; CONV_TON_LB=22.0
 
+    # Use sugar_ny11 as the spine (most complete), join ethanol/FX with tolerance
+    # For missing ethanol: use last available price on or before that date
+    # For missing FX: use last available rate on or before that date
     se_rows = conn.execute("""
-        SELECT e.data_referencia, s.preco_usdclb, e.preco_brl_m3, f.ptax_venda
-        FROM etanol_cepea e
-        JOIN sugar_ny11  s ON s.data_referencia = e.data_referencia
-        JOIN fx_usdbrl   f ON f.data_referencia = e.data_referencia
-        ORDER BY e.data_referencia
+        SELECT
+            s.data_referencia,
+            s.preco_usdclb,
+            (SELECT e.preco_brl_m3 FROM etanol_cepea e
+             WHERE e.data_referencia <= s.data_referencia
+             ORDER BY e.data_referencia DESC LIMIT 1) AS preco_brl_m3,
+            (SELECT f.ptax_venda FROM fx_usdbrl f
+             WHERE f.data_referencia <= s.data_referencia
+             ORDER BY f.data_referencia DESC LIMIT 1) AS ptax_venda
+        FROM sugar_ny11 s
+        ORDER BY s.data_referencia
     """).fetchall()
     se_data = []
     for dr, sugar, eth_m3, fx in se_rows:
