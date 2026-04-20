@@ -788,6 +788,29 @@ def fetch_cepea_web(conn):
             print(f"  [CEPEA-WEB] XLS parse error: {exc}")
         return rows
 
+    # ── Step 0: NoticiasAgricolas — mirrors CEPEA/ESALQ, non-CEPEA IP ────────
+    # This site republishes the official CEPEA/ESALQ boi gordo indicator and
+    # is not hosted on CEPEA infrastructure, so Azure IP blocks don't apply.
+    # The cotacoes page returns a table with recent daily prices.
+    NA_URLS = [
+        "https://www.noticiasagricolas.com.br/cotacoes/boi-gordo/boi-gordo-indicador-esalq-bmf",
+        "https://www.noticiasagricolas.com.br/widgets/cotacoes?id=12",
+    ]
+    for na_url in NA_URLS:
+        try:
+            r0 = _req.get(na_url, headers=HDRS, timeout=15, verify=False)
+            if r0.status_code == 200:
+                rows = _rows_from_html(r0.text)
+                if rows:
+                    parsed_rows = rows
+                    print(f"  [CEPEA-WEB] NoticiasAgricolas ({na_url.split('/')[-1][:30]}): {len(rows)} rows")
+                    break
+                print(f"  [CEPEA-WEB] NoticiasAgricolas: HTTP 200 but no rows parsed")
+            else:
+                print(f"  [CEPEA-WEB] NoticiasAgricolas: HTTP {r0.status_code}")
+        except Exception as exc:
+            print(f"  [CEPEA-WEB] NoticiasAgricolas: {exc}")
+
     # ── Step 1: CEPEA widget endpoint (static HTML, not React) ───────────────
     # The widget page serves a simple HTML table without JavaScript rendering.
     # Boi gordo carcaça = indicador 2 (try multiple IDs for robustness).
