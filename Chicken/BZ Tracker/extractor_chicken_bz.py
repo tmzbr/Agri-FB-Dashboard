@@ -62,6 +62,54 @@ except ImportError:
 
 _NO_VERIFY_HOSTS = ("balanca.economia.gov.br", "olinda.bcb.gov.br", "api.bcb.gov.br")
 
+# ── Brazil business-day helpers ───────────────────────────────────────────────
+def _easter(year):
+    a = year % 19; b = year // 100; c = year % 100
+    d = b // 4;    e = b % 4;       f = (b + 8) // 25
+    g = (b - f + 1) // 3;  h = (19*a + b - d - g + 15) % 30
+    i = c // 4;    k = c % 4;       l = (32 + 2*e + 2*i - h - k) % 7
+    m = (a + 11*h + 22*l) // 451
+    mo  = (h + l - 7*m + 114) // 31
+    day = ((h + l - 7*m + 114) % 31) + 1
+    return date(year, mo, day)
+
+
+def _br_holidays(year):
+    from datetime import timedelta
+    e = _easter(year)
+    h = {
+        str(date(year, 1,  1)),
+        str(e - timedelta(days=48)),
+        str(e - timedelta(days=47)),
+        str(e - timedelta(days=2)),
+        str(date(year, 4,  21)),
+        str(date(year, 5,  1)),
+        str(date(year, 9,  7)),
+        str(date(year, 10, 12)),
+        str(date(year, 11, 2)),
+        str(date(year, 11, 15)),
+        str(date(year, 12, 25)),
+    }
+    if year >= 2024:
+        h.add(str(date(year, 11, 20)))
+    return h
+
+
+def _biz_days_between(start_dt, end_dt):
+    """Count Mon–Fri days (excl. BR national holidays) between dates, inclusive."""
+    from datetime import timedelta
+    hols = _br_holidays(start_dt.year)
+    if end_dt.year != start_dt.year:
+        hols |= _br_holidays(end_dt.year)
+    count = 0
+    d = start_dt
+    while d <= end_dt:
+        if d.weekday() < 5 and str(d) not in hols:
+            count += 1
+        d += timedelta(days=1)
+    return count
+
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 DB_PATH   = Path(__file__).parent / "chicken_bz.db"
 TIMEOUT   = 30
@@ -259,7 +307,7 @@ WEEKLY_SEED = [
     ('2026-03-09', '2026-03-15', 1.8723, 226759.6),
     ('2026-03-16', '2026-03-22', 1.8362, 329818.3),
     ('2026-03-23', '2026-03-31', 1.8246, 468706.4),
-    ('2026-04-01', '2026-04-07', 1.8543, 183691.4),
+    ('2026-04-01', '2026-04-10', 1.8543, 183691.4),
 ]
 
 # ── CEPEA grain monthly averages (corn Paranaguá + soy PNA, BRL/sc60kg) ───────
@@ -381,7 +429,8 @@ def init_db(conn):
         start_date   TEXT PRIMARY KEY,
         end_date     TEXT,
         price_usd_kg REAL,
-        vol_tons     REAL    -- MTD cumulative tons from SECEX weekly bulletin
+        vol_tons     REAL,   -- MTD cumulative tons from SECEX weekly bulletin
+        biz_days     INTEGER -- business days (Mon-Fri excl. BR holidays) in the period
     );
     CREATE TABLE IF NOT EXISTS monthly (
         period       TEXT PRIMARY KEY,
@@ -395,22 +444,31 @@ def init_db(conn):
         updated_at   TEXT
     );
     CREATE TABLE IF NOT EXISTS weekly (
-        start_date   TEXT PRIMARY KEY,
-        end_date     TEXT,
-        secex_usd_kg REAL,
-        fx           REAL,
-        secex_brl_kg REAL,
-        cepea_r_kg   REAL,   -- grain basket BRL/kg (2-mo lag)
-        spread       REAL,   -- (secex_brl_kg - grain_brl_kg) / secex_brl_kg
-        vol_tons     REAL,   -- incremental weekly tons (de-accumulated from MTD)
-        updated_at   TEXT
+        start_date     TEXT PRIMARY KEY,
+        end_date       TEXT,
+        secex_usd_kg   REAL,
+        fx             REAL,
+        secex_brl_kg   REAL,
+        cepea_r_kg     REAL,    -- grain basket BRL/kg (2-mo lag)
+        spread         REAL,    -- (secex_brl_kg - grain_brl_kg) / secex_brl_kg
+        vol_tons       REAL,    -- incremental weekly tons (de-accumulated from MTD)
+        biz_days       INTEGER, -- business days (Mon-Fri excl. BR holidays) in the period
+        vol_tons_daily REAL,    -- daily average = vol_tons / biz_days
+        updated_at     TEXT
     );
     """)
     conn.commit()
     # ── Migrate existing DBs ───────────────────────────────────────────────────
-    for tbl, col in [("_weekly_raw", "vol_tons"), ("weekly", "vol_tons")]:
+    migrations = [
+        ("_weekly_raw", "vol_tons",     "REAL"),
+        ("_weekly_raw", "biz_days",     "INTEGER"),
+        ("weekly",      "vol_tons",     "REAL"),
+        ("weekly",      "biz_days",     "INTEGER"),
+        ("weekly",      "vol_tons_daily", "REAL"),
+    ]
+    for tbl, col, typ in migrations:
         try:
-            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} REAL")
+            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
             conn.commit()
             print(f"  [DB] Migrated: added {tbl}.{col}")
         except Exception:
@@ -672,12 +730,18 @@ def load_cepea_grain(conn, path):
 # WEEKLY RAW SEED
 # ══════════════════════════════════════════════════════════════════════════════
 def seed_weekly_raw(conn):
-    """Seed _weekly_raw from WEEKLY_SEED with smart conflict resolution."""
+    """Seed _weekly_raw from WEEKLY_SEED with biz_days and smart conflict resolution."""
+    enriched = []
+    for s, e, price, vol_mtd in WEEKLY_SEED:
+        bd = _biz_days_between(date.fromisoformat(s), date.fromisoformat(e))
+        enriched.append((s, e, price, vol_mtd, bd))
+
     conn.executemany(
         """
-        INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(start_date) DO UPDATE SET
+            end_date = excluded.end_date,
             price_usd_kg = CASE
                 WHEN _weekly_raw.price_usd_kg IS NULL THEN excluded.price_usd_kg
                 WHEN _weekly_raw.price_usd_kg < 0.5   THEN excluded.price_usd_kg
@@ -690,9 +754,14 @@ def seed_weekly_raw(conn):
                     _weekly_raw.vol_tons < 100.0
                 ) THEN excluded.vol_tons
                 ELSE _weekly_raw.vol_tons
+            END,
+            biz_days = CASE
+                WHEN excluded.biz_days IS NOT NULL AND _weekly_raw.biz_days IS NULL
+                    THEN excluded.biz_days
+                ELSE _weekly_raw.biz_days
             END
         """,
-        WEEKLY_SEED
+        enriched
     )
     conn.commit()
     print(f"  [WEEKLY] {len(WEEKLY_SEED)} rows seeded/validated in _weekly_raw.")
@@ -1033,26 +1102,52 @@ def fetch_weekly_bulletin(conn):
         print("  [BULLETIN] Could not parse any sheet for poultry data.")
         return 0
 
-    # Determine the week start/end dates based on the bulletin's period
-    from datetime import date as _date, timedelta as _td
-    bull_date = _date(bull_year, bull_month, today.day)
-    dow = bull_date.weekday()
-    week_start = (bull_date - _td(days=dow)).isoformat()
-    week_end   = (bull_date + _td(days=6 - dow)).isoformat()
+    # ── Guard: skip if bulletin vol_tons is not genuinely new ────────────────
+    # SECEX bulletin is always cumulative MTD from the 1st of the month.
+    # If the latest known row for this month already has vol_tons >= bulletin,
+    # it means we seeded more recent data — nothing to insert.
+    existing = conn.execute(
+        """
+        SELECT start_date, end_date, vol_tons FROM _weekly_raw
+        WHERE  strftime('%Y-%m', start_date) = ?
+        ORDER  BY start_date DESC LIMIT 1
+        """,
+        (f"{bull_year}-{bull_month:02d}",)
+    ).fetchone()
+
+    if existing:
+        exist_start, exist_end, exist_vol = existing
+        if vol_tons is not None and exist_vol is not None and vol_tons <= exist_vol + 1.0:
+            print(f"  [BULLETIN] No new data for {bull_year}-{bull_month:02d} "
+                  f"(bulletin vol={vol_tons:.0f} <= known={exist_vol:.0f}) — skipping.")
+            return 0
+        # Genuine update: extend the existing row's end_date and vol
+        week_start = exist_start
+        week_end   = str(today)
+    else:
+        # First reading for this month — starts on the 1st
+        week_start = f"{bull_year}-{bull_month:02d}-01"
+        week_end   = str(today)
+
+    biz_days = _biz_days_between(
+        date.fromisoformat(week_start), date.fromisoformat(week_end)
+    )
 
     conn.execute(
         """
-        INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(start_date) DO UPDATE SET
+            end_date     = excluded.end_date,
             price_usd_kg = COALESCE(excluded.price_usd_kg, _weekly_raw.price_usd_kg),
-            vol_tons     = COALESCE(excluded.vol_tons,     _weekly_raw.vol_tons)
+            vol_tons     = COALESCE(excluded.vol_tons,     _weekly_raw.vol_tons),
+            biz_days     = excluded.biz_days
         """,
-        (week_start, week_end, price_usd_kg, vol_tons),
+        (week_start, week_end, price_usd_kg, vol_tons, biz_days),
     )
     conn.commit()
-    print(f"  [BULLETIN] Upserted week {week_start}: "
-          f"price={price_usd_kg}, vol_tons={vol_tons}")
+    print(f"  [BULLETIN] Upserted week {week_start}→{week_end}: "
+          f"price={price_usd_kg}, vol_tons={vol_tons}, biz_days={biz_days}")
     return 1
 
 
@@ -1193,14 +1288,15 @@ def materialise(conn):
 
     # ── WEEKLY ───────────────────────────────────────────────────────────────
     weekly_rows = conn.execute(
-        "SELECT start_date, end_date, price_usd_kg, vol_tons FROM _weekly_raw ORDER BY start_date"
+        "SELECT start_date, end_date, price_usd_kg, vol_tons, biz_days"
+        " FROM _weekly_raw ORDER BY start_date"
     ).fetchall()
 
     # De-accumulate MTD volumes within each calendar month
     prev_month = None
     prev_vol   = 0.0
     deacc = []
-    for start_date, end_date, price_usd_kg, vol_mtd in weekly_rows:
+    for start_date, end_date, price_usd_kg, vol_mtd, biz_d in weekly_rows:
         yr_mo = start_date[:7]
         if yr_mo != prev_month:
             prev_month = yr_mo
@@ -1209,10 +1305,16 @@ def materialise(conn):
         if vol_mtd is not None:
             inc_vol  = max(0.0, vol_mtd - prev_vol)
             prev_vol = vol_mtd
-        deacc.append((start_date, end_date, price_usd_kg, inc_vol))
+        # Compute biz_days from dates if not stored
+        if biz_d is None:
+            biz_d = _biz_days_between(
+                date.fromisoformat(start_date),
+                date.fromisoformat(end_date or start_date)
+            )
+        deacc.append((start_date, end_date, price_usd_kg, inc_vol, biz_d))
 
     weekly_out = []
-    for start_date, end_date, price_usd_kg, inc_vol in deacc:
+    for start_date, end_date, price_usd_kg, inc_vol, biz_d in deacc:
         if price_usd_kg is None:
             continue
         yr = int(start_date[:4])
@@ -1239,15 +1341,19 @@ def materialise(conn):
         if cepea_r_kg is not None and secex_brl_kg:
             spread = (secex_brl_kg - cepea_r_kg) / secex_brl_kg
 
+        vol_daily = (round(inc_vol / biz_d, 3)
+                     if inc_vol is not None and biz_d and biz_d > 0
+                     else None)
+
         weekly_out.append((start_date, end_date, price_usd_kg, fx, secex_brl_kg,
-                           cepea_r_kg, spread, inc_vol, now))
+                           cepea_r_kg, spread, inc_vol, biz_d, vol_daily, now))
 
     conn.executemany(
         """
         INSERT OR REPLACE INTO weekly
           (start_date, end_date, secex_usd_kg, fx, secex_brl_kg,
-           cepea_r_kg, spread, vol_tons, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?)
+           cepea_r_kg, spread, vol_tons, biz_days, vol_tons_daily, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """,
         weekly_out,
     )

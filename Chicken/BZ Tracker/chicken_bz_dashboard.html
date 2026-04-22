@@ -591,7 +591,7 @@ async function loadDB() {
 
     // weekly
     const wStmt = db.exec(`
-      SELECT start_date, end_date, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread, vol_tons
+      SELECT start_date, end_date, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread, vol_tons, biz_days, vol_tons_daily
       FROM weekly ORDER BY start_date ASC
     `);
     if (wStmt.length) {
@@ -1044,14 +1044,15 @@ function renderTable() {
   } else {
     // Weekly
     head.innerHTML = `<tr>
-      <th style="text-align:left;width:11%;">Start</th>
-      <th style="width:11%;">End</th>
-      <th style="width:12%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD/kg</span></th>
-      <th style="width:10%;">FX<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/USD</span></th>
-      <th style="width:14%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
-      <th style="width:14%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
-      <th style="width:12%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
-      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / grain (×)</span></th>
+      <th style="text-align:left;width:10%;">Start</th>
+      <th style="width:10%;">End</th>
+      <th style="width:10%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD/kg</span></th>
+      <th style="width:8%;">FX<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/USD</span></th>
+      <th style="width:12%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
+      <th style="width:12%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
+      <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/dia útil</span></th>
+      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / grain (×)</span></th>
     </tr>`;
     body.innerHTML = WEEKLY.slice().reverse().map(r => `<tr>
       <td>${r.start_date ?? '—'}</td>
@@ -1061,6 +1062,7 @@ function renderTable() {
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${r.cepea_r_kg != null ? (r.cepea_r_kg * 60).toFixed(2) : '<span class="td-na">—</span>'}</td>
       <td>${r.vol_tons != null ? (r.vol_tons / 1000).toFixed(1) : '<span class="td-na">—</span>'}</td>
+      <td>${r.vol_tons_daily != null ? r.vol_tons_daily.toFixed(0) + (r.biz_days != null ? `<span style="font-size:9px;color:#888;"> (${r.biz_days}d)</span>` : '') : '<span class="td-na">—</span>'}</td>
       <td>${fmtSpread(r)}</td>
     </tr>`).join('');
   }
@@ -1120,23 +1122,26 @@ function buildReferenceData() {
         if (diff < minDiff && w.start_date !== curr.start_date) { minDiff = diff; samely = w; }
       });
     }
-    const hasWVol = !!(curr?.vol_tons != null || prev?.vol_tons != null || samely?.vol_tons != null);
+    const hasWVol = !!(curr?.vol_tons_daily != null || prev?.vol_tons_daily != null || samely?.vol_tons_daily != null);
     const periods = [
       { label: samely ? ['LY Wk',  shortDate(samely.start_date)] : ['LY Wk',  '—'], d: samely, hasVol: hasWVol },
       { label: prev   ? ['Last Wk', shortDate(prev.start_date)]  : ['Last Wk','—'], d: prev,   hasVol: hasWVol },
       { label: curr   ? ['This Wk', shortDate(curr.start_date)]  : ['This Wk','—'], d: curr,   hasVol: hasWVol },
     ];
     const tag = curr ? `${shortDate(curr.start_date)}: this / last / same LY` : 'Weekly';
-    _setREF(periods, tag, hasWVol);
+    _setREF(periods, tag, hasWVol, "t/dia útil",
+      p => p.hasVol ? (p.d?.vol_tons_daily ?? null) : null);
   }
 }
 
-function _setREF(periods, tag, hasVolume) {
+function _setREF(periods, tag, hasVolume, volUnit = "'000 t", volFn = null) {
+  const defaultFn = p => p.hasVol ? (p.d?.vol_tons != null ? p.d.vol_tons / 1000 : null) : null;
   REF = {
     labels:    periods.map(p => p.label),
-    usd:       periods.map(p => p.d?.secex_usd_kg  ?? null),
-    brl:       periods.map(p => p.d?.secex_brl_kg  ?? null),
-    vol:       periods.map(p => p.hasVol ? (p.d?.vol_tons != null ? p.d.vol_tons / 1000 : null) : null),
+    usd:       periods.map(p => p.d?.secex_usd_kg ?? null),
+    brl:       periods.map(p => p.d?.secex_brl_kg ?? null),
+    vol:       periods.map(volFn || defaultFn),
+    volUnit:   volUnit,
     hasVolume: hasVolume,
     tag:       tag,
   };
@@ -1160,7 +1165,7 @@ function renderVolumeChart() {
       labels: REF.labels,
       datasets: [
         {
-          type: 'bar', label: "Volume ('000 t)",
+          type: 'bar', label: `Volume (${REF.volUnit})`,
           data: hasVol ? REF.vol : [null, null, null],
           backgroundColor: barBg, borderColor: barBdr, borderWidth: 1,
           yAxisID: 'yVol', order: 2,
@@ -1199,7 +1204,7 @@ function renderVolumeChart() {
           callbacks: {
             label: ctx => {
               if (ctx.dataset.label?.includes('Volume'))
-                return hasVol ? `Volume: ${ctx.parsed.y?.toFixed(0) ?? '—'} '000 t` : null;
+                return hasVol ? `Volume: ${ctx.parsed.y?.toFixed(0) ?? '—'} ${REF.volUnit}` : null;
               return `Price: ${ctx.parsed.y?.toFixed(2) ?? '—'} USD/kg`;
             },
           },
@@ -1209,7 +1214,7 @@ function renderVolumeChart() {
         yVol: {
           type: 'linear', position: 'left', display: hasVol,
           min: volScale.min, max: volScale.max,
-          title: { display: hasVol, text: "'000 t", color: '#888', font: { size: 9 } },
+          title: { display: hasVol, text: REF.volUnit, color: '#888', font: { size: 9 } },
           ticks: { color: '#888', font: { size: 9 }, stepSize: volScale.stepSize,
             callback: v => v.toFixed(0) },
           grid: { color: 'rgba(0,0,0,0.05)' },
