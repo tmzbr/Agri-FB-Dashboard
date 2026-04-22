@@ -61,6 +61,8 @@ jobs:
             echo "No changes to chicken_bz.db — nothing to commit."
           else
             git commit -m "auto: refresh chicken_bz.db + CEPEA daily — $(date -u +'%Y-%m-%d %H:%M') UTC"
-            git pull --rebase origin main
+            # Merge any remote commits that arrived since checkout.
+            # -X ours: in a binary-file conflict the freshly generated DB wins.
+            git pull origin main --no-rebase -X ours
             git push
           fi
