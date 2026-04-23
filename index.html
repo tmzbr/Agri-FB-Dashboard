@@ -598,7 +598,68 @@ const DASH_MODULES = {
 function renderContent(){
   const area=document.getElementById('content-area');
   if(STATE.activeSector==='market-watch'){
-    area.innerHTML='<iframe src="Market Watch/hub.html" style="width:100%;height:calc(100vh - 130px);border:none;display:block;" allowfullscreen></iframe>';
+    area.innerHTML=`<div style="padding:32px 28px;max-width:720px;">
+      <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:4px;">Market Watch</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:24px;">Ferramentas de monitoramento para Agribusiness e Food &amp; Beverage</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px 22px;display:flex;align-items:flex-start;gap:18px;">
+          <div style="width:44px;height:44px;border-radius:10px;background:#FFF0E8;border:1px solid #FFD8BF;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📰</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:5px;">
+              <div style="font-size:14px;font-weight:700;color:#111827;">Sector News</div>
+              <div style="font-size:11.5px;color:#aaa;font-weight:600;white-space:nowrap;">Google News · Valor · Globo Rural</div>
+            </div>
+            <div style="font-size:12.5px;color:#6B7280;line-height:1.55;">Feed de notícias em tempo real para empresas e setores de Agronegócio e Alimentos &amp; Bebidas. Scoring de relevância, filtros de data e exportação por email.</div>
+            <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">Agribusiness</span>
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">F&amp;B</span>
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">News</span>
+              </div>
+              <a href="Market Watch/Sector News/sector_news.html" target="_blank" style="padding:7px 16px;background:transparent;border:1.5px solid #FF5500;border-radius:5px;font-size:12px;color:#FF5500;font-weight:600;text-decoration:none;">Open &#8594;</a>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px 22px;display:flex;align-items:flex-start;gap:18px;opacity:.72;">
+          <div style="width:44px;height:44px;border-radius:10px;background:#F4F4F4;border:1px solid #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🔄</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:5px;">
+              <div style="font-size:14px;font-weight:700;color:#111827;">Buybacks Monitor</div>
+              <div style="font-size:11.5px;color:#aaa;font-weight:600;white-space:nowrap;">CVM · B3</div>
+            </div>
+            <div style="font-size:12.5px;color:#6B7280;line-height:1.55;">Acompanhe programas de recompra de ações e ações em tesouraria no universo de cobertura de Agronegócio e Alimentos &amp; Bebidas.</div>
+            <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">Buybacks</span>
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">Corporate Actions</span>
+              </div>
+              <span style="font-size:10.5px;background:#F4F4F4;color:#aaa;border:1px solid #E5E7EB;border-radius:3px;padding:3px 8px;font-weight:700;">Coming Soon</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px 22px;display:flex;align-items:flex-start;gap:18px;opacity:.72;">
+          <div style="width:44px;height:44px;border-radius:10px;background:#F4F4F4;border:1px solid #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">👥</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:5px;">
+              <div style="font-size:14px;font-weight:700;color:#111827;">Insider Trading Tracker</div>
+              <div style="font-size:11.5px;color:#aaa;font-weight:600;white-space:nowrap;">CVM · B3</div>
+            </div>
+            <div style="font-size:12.5px;color:#6B7280;line-height:1.55;">Monitore transações de diretores, conselheiros e acionistas relevantes nas empresas cobertas. Formulário CVM 358.</div>
+            <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">Insider Trading</span>
+                <span style="font-size:10.5px;color:#999;font-weight:600;text-transform:uppercase;background:#F4F4F4;border-radius:3px;padding:2px 7px;">CVM 358</span>
+              </div>
+              <span style="font-size:10.5px;background:#F4F4F4;color:#aaa;border:1px solid #E5E7EB;border-radius:3px;padding:3px 8px;font-weight:700;">Coming Soon</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>`;
     return;
   }
   if(STATE.activeDash){
