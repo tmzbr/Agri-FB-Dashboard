@@ -530,17 +530,6 @@ function openDashView(id){
   renderContent();
 }
 function closeDashView(){ STATE.activeDash=null; renderContent(); }
-function openMarketWatchTool(src,title){
-  const area=document.getElementById('content-area');
-  area.innerHTML=`
-    <div class="dash-view-header">
-      <button class="btn-back" onclick="navigateSector('market-watch')">&#8592; Back</button>
-      <div class="dash-view-title">${esc(title)}</div>
-    </div>
-    <div class="dash-view-body">
-      <iframe src="${src}?v=${Date.now()}" style="width:100%;height:calc(100vh - 200px);border:none;display:block;" allowfullscreen title="${esc(title)}"></iframe>
-    </div>`;
-}
 function handleSearch(q){ STATE.searchQuery=q; renderContent(); }
 
 /* ══ RENDER ══ */
@@ -581,7 +570,7 @@ function getDashes(sector, subsector){
   const isAdmin=STATE.currentUser?.is_admin;
   // Normalize legacy sector/subsector IDs from Supabase
   let list = STATE.dashboards
-    .filter(d=>normalizeSector(d.sector)===sector && normalizeSubsector(d.subsector)===subsector && (isAdmin||d.visible_to_all))
+    .filter(d=>normalizeSector(d.sector)===sector && (normalizeSubsector(d.subsector)||null)===(subsector||null) && (isAdmin||d.visible_to_all))
     .sort((a,b)=>(a.display_order||0)-(b.display_order||0));
   if(STATE.searchQuery){
     const q=STATE.searchQuery.toLowerCase();
@@ -604,81 +593,11 @@ const DASH_MODULES = {
   8: 'Supermarket%20Prices/supermarket_prices.html',
   9: 'Agri Monitor/crushing_spread/crushing_spread.html',
   10: 'Chicken/BZ Tracker/chicken_bz_dashboard.html',
+  23: 'Market Watch/Sector News/sector_news.html',
 };
 
 function renderContent(){
   const area=document.getElementById('content-area');
-  if(STATE.activeSector==='market-watch'){
-    area.innerHTML=`
-      <div class="greeting">
-        <h1>${greetWord()}, <strong>${esc(STATE.currentUser?.display_name)}</strong></h1>
-        <p>${todayStr()}</p>
-      </div>
-      <div class="section-header">
-        <div>
-          <div class="section-title">Market Watch</div>
-          <div class="section-sub">3 tools available</div>
-        </div>
-      </div>
-      <div class="dash-grid">
-        <div class="dash-card">
-          <div class="dash-card-icon">&#128240;</div>
-          <div class="dash-card-body">
-            <div class="dash-card-top">
-              <div class="dash-card-title">Sector News</div>
-              <div class="dash-card-source">Google News · Valor · Globo Rural</div>
-            </div>
-            <div class="dash-card-desc">Real-time news feed for Agribusiness and Food &amp; Beverage companies. Relevance scoring, date filters and email export.</div>
-            <div class="dash-card-meta">
-              <div class="dash-tags">
-                <span class="dash-tag">Agribusiness</span>
-                <span class="dash-tag">F&amp;B</span>
-                <span class="dash-tag">News</span>
-              </div>
-              <button class="btn-open-dash" onclick="openMarketWatchTool('Market Watch/Sector News/sector_news.html','Sector News')">Open &#8594;</button>
-            </div>
-          </div>
-          <div class="dash-card-arrow">&#8250;</div>
-        </div>
-        <div class="dash-card" style="opacity:.65;pointer-events:none;">
-          <div class="dash-card-icon">&#128260;</div>
-          <div class="dash-card-body">
-            <div class="dash-card-top">
-              <div class="dash-card-title">Buybacks Monitor</div>
-              <div class="dash-card-source">CVM · B3</div>
-            </div>
-            <div class="dash-card-desc">Track share buyback programs and treasury stock across Agribusiness and Food &amp; Beverage coverage universe.</div>
-            <div class="dash-card-meta">
-              <div class="dash-tags">
-                <span class="dash-tag">Buybacks</span>
-                <span class="dash-tag">Corporate Actions</span>
-              </div>
-              <span class="badge-soon">Coming Soon</span>
-            </div>
-          </div>
-          <div class="dash-card-arrow">&#8250;</div>
-        </div>
-        <div class="dash-card" style="opacity:.65;pointer-events:none;">
-          <div class="dash-card-icon">&#128101;</div>
-          <div class="dash-card-body">
-            <div class="dash-card-top">
-              <div class="dash-card-title">Insider Trading Tracker</div>
-              <div class="dash-card-source">CVM · B3</div>
-            </div>
-            <div class="dash-card-desc">Monitor directors, officers and major shareholders transactions on covered companies. CVM Form 358 filings.</div>
-            <div class="dash-card-meta">
-              <div class="dash-tags">
-                <span class="dash-tag">Insider Trading</span>
-                <span class="dash-tag">CVM 358</span>
-              </div>
-              <span class="badge-soon">Coming Soon</span>
-            </div>
-          </div>
-          <div class="dash-card-arrow">&#8250;</div>
-        </div>
-      </div>`;
-    return;
-  }
   if(STATE.activeDash){
     const d=STATE.activeDash;
     const moduleSrc=DASH_MODULES[d.id]||DASH_MODULES[String(d.id)]||DASH_MODULES[Number(d.id)]; console.log("dash id:", d.id, typeof d.id, "src:", moduleSrc);
@@ -738,7 +657,7 @@ function renderContent(){
     </div>
     <div class="section-header">
       <div>
-        <div class="section-title">${esc(secLabel)} &mdash; ${esc(subLabel)}</div>
+        <div class="section-title">${subLabel ? esc(secLabel)+' &mdash; '+esc(subLabel) : esc(secLabel)}</div>
         <div class="section-sub">${dashes.length} dashboard${dashes.length!==1?'s':''} available</div>
       </div>
     </div>
