@@ -353,8 +353,9 @@ const STATE = {
 };
 
 const SECTORS = [
-  { id:'agri', label:'Agribusiness'    },
-  { id:'fnb',  label:'Food & Beverage' },
+  { id:'agri',         label:'Agribusiness'                  },
+  { id:'fnb',          label:'Food & Beverage'               },
+  { id:'market-watch', label:'Market Watch', always_visible:true },
 ];
 const SUBSECTORS = {
   agri: [{ id:'grains', label:'Grains' }, { id:'sugar', label:'Sugar & Ethanol' }],
@@ -538,7 +539,8 @@ function renderTopNav(){
   const isAdmin=STATE.currentUser?.is_admin;
   let html='';
   SECTORS.forEach(s=>{
-    if(!isAdmin && !STATE.dashboards.some(d=>normalizeSector(d.sector)===s.id&&d.visible_to_all)) return;
+    const alwaysVisible = s.always_visible;
+    if(!isAdmin && !alwaysVisible && !STATE.dashboards.some(d=>normalizeSector(d.sector)===s.id&&d.visible_to_all)) return;
     const a=STATE.activeSector===s.id?'active':'';
     html+=`<div class="top-nav-tab ${a}" onclick="navigateSector('${s.id}')">${esc(s.label)}</div>`;
   });
@@ -595,6 +597,10 @@ const DASH_MODULES = {
 
 function renderContent(){
   const area=document.getElementById('content-area');
+  if(STATE.activeSector==='market-watch'){
+    area.innerHTML='<iframe src="Market Watch/hub.html" style="width:100%;height:calc(100vh - 130px);border:none;display:block;" allowfullscreen></iframe>';
+    return;
+  }
   if(STATE.activeDash){
     const d=STATE.activeDash;
     const moduleSrc=DASH_MODULES[d.id]||DASH_MODULES[String(d.id)]||DASH_MODULES[Number(d.id)]; console.log("dash id:", d.id, typeof d.id, "src:", moduleSrc);
