@@ -479,27 +479,60 @@ def parse_ipe_pdf(pdf_bytes: bytes, cnpj_digits: str, data_ref: str, versao: int
         "Grupamento", "Desdobramento/bonificação",
         "Devolução de empréstimo (locador)", "Contratação de empréstimo (locador)",
         "Devolução de empréstimo", "Contratação de empréstimo",
+        "Exercício de opção de compra", "Exercício de opção",
+        "Baixa para plano de remuneração", "Baixa para beneficiários",
+        "Lançamento de ações",
     ]
 
     def clean_op_final(raw: str) -> str:
         """Tenta identificar a operação canônica no texto acumulado."""
         raw_norm = re.sub(r"\s+", " ", raw).strip()
-        # Remover números soltos (dias que ficaram na string)
+        # Remover números soltos no início (dias que ficaram na string)
         raw_norm = re.sub(r"^\d{1,2}\s+", "", raw_norm).strip()
+
         # Normalizar fragmentos de operação quebrada
+        # Entrega de ações restritas (ordem normal e invertida)
+        raw_norm = re.sub(r"AÇÕES\s+RESTRITAS\s+ENTREGA",  "Entrega de ações restritas", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"ENTREGA\s+DE\s+AÇÕES\s+RESTRITAS", "Entrega de ações restritas", raw_norm, flags=re.I)
         raw_norm = re.sub(r"DE\s+AÇÕES\s+RESTRITAS.*", "Entrega de ações restritas", raw_norm, flags=re.I)
-        raw_norm = re.sub(r"DE\s+AÇÕES\s+B[ÔO]NUS.*",  "Entrega de ações bônus",     raw_norm, flags=re.I)
-        raw_norm = re.sub(r"DE\s+AÇÕES\s+BONUS.*",      "Entrega de ações bônus",     raw_norm, flags=re.I)
-        raw_norm = re.sub(r"\bENTREGA\s+DE\s+AÇÕES\s+RESTRITAS", "Entrega de ações restritas", raw_norm, flags=re.I)
-        raw_norm = re.sub(r"\bENTREGA\s+DE\s+AÇÕES\s+B[ÔO]NUS",  "Entrega de ações bônus",     raw_norm, flags=re.I)
-        # Expandir fragmentos comuns
+        raw_norm = re.sub(r"AÇÕES\s+RESTRITAS\b", "Entrega de ações restritas", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"ENTREGA\s+DE\s+AÇÕES\s+B[ÔO]NUS", "Entrega de ações bônus", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"DE\s+AÇÕES\s+B[ÔO]NUS.*", "Entrega de ações bônus", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"DE\s+AÇÕES\s+BONUS.*",     "Entrega de ações bônus", raw_norm, flags=re.I)
+
+        # Options / stock options → "Exercício de opção de compra"
+        raw_norm = re.sub(r"\bOPTIONS\s+STOCK\b", "Exercício de opção de compra", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"\bSTOCK\s+OPTIONS?\b", "Exercício de opção de compra", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"\bOPTIONS?\b",         "Exercício de opção de compra", raw_norm, flags=re.I)
+
+        # Baixa para beneficiários / plano de remuneração
+        raw_norm = re.sub(r"DESTINADA\s+AOS?\s+BENEFICI[AÁ]RIOS.*", "Baixa para beneficiários", raw_norm, flags=re.I)
+
+        # Derivativo com liquidação financeira (fragmentos)
+        raw_norm = re.sub(r"O\s+FINANCEIR\s*A\b", "Derivativo com liquidação financeira", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"LIQUIDAÇÃ\s*O\s+FINANCEIR\s*A", "Derivativo com liquidação financeira", raw_norm, flags=re.I)
+        raw_norm = re.sub(r"DERIVATIVO\s+COM\s+LIQUIDAÇÃ[O]\s+FINANCEIR[A]",
+                          "Derivativo com liquidação financeira", raw_norm, flags=re.I)
+
+        # Lançamento de ações (MBRF3 derivativos)
+        raw_norm = re.sub(r"(LANÇAMENTO|ENTO)\s+DE\s+\d*\s*AÇÕES", "Lançamento de ações", raw_norm, flags=re.I)
+
+        # Expandir fragmentos comuns de operação quebrada em 2 linhas
         raw_norm = re.sub(r"\bCompra\s+à\b(?!\s+vista|\s+termo)", "Compra à vista", raw_norm)
         raw_norm = re.sub(r"\bVenda\s+à\b(?!\s+vista|\s+termo)",  "Venda à vista",  raw_norm)
-        raw_norm = re.sub(r"^\s*vista\b", "Compra à vista", raw_norm)  # "vista" sozinho
-        # Procurar match case-insensitive
+        raw_norm = re.sub(r"^\s*vista\b", "Compra à vista", raw_norm)
+
+        # Desdobramento com typo
+        raw_norm = re.sub(r"BONFICAÇÃ\s*O\b", "Desdobramento/bonificação", raw_norm, flags=re.I)
+
+        # Ações ref a ILP → plano de remuneração
+        raw_norm = re.sub(r"AÇÕES\s+REF\s+A\s+ILP", "Ações de plano de remuneração", raw_norm, flags=re.I)
+
+        # Procurar match canônico (case-insensitive)
         for op in sorted(CANONICAL_OPS, key=len, reverse=True):
             if op.lower() in raw_norm.lower():
                 return op
+
         return raw_norm
 
     def flush_op_buffer():
