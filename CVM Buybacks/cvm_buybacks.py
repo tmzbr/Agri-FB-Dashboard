@@ -94,7 +94,7 @@ HTTP_HEADERS = {"User-Agent": "cvm-buybacks-monitor/2.0"}
 # SCHEMA DO BANCO
 # ============================================================================
 
-SCHEMA = """
+SCHEMA_TABLES = """
 -- Cadastro dos tickers monitorados (populado a partir do dict TICKERS)
 CREATE TABLE IF NOT EXISTS companies (
     cnpj_digits  TEXT PRIMARY KEY,
@@ -269,7 +269,9 @@ CREATE TABLE IF NOT EXISTS ingestion_log (
 );
 
 
--- ---------------------------------------------------------------------------
+"""
+
+SCHEMA_VIEWS = """-- ---------------------------------------------------------------------------
 -- VIEWS: consultas prontas
 -- ---------------------------------------------------------------------------
 
@@ -405,6 +407,9 @@ JOIN companies c ON c.cnpj_digits = p.cnpj_digits
 LEFT JOIN buyback_quantities q ON q.id_programa = p.id_programa;
 """
 
+# kept for reference
+SCHEMA = SCHEMA_TABLES + SCHEMA_VIEWS
+
 
 # ============================================================================
 # UTILIDADES
@@ -430,9 +435,10 @@ def db_conn() -> Iterator[sqlite3.Connection]:
 
 def init_db() -> None:
     with db_conn() as conn:
-        conn.executescript(SCHEMA)
-        # Migration: adiciona coluna qualificacao se ainda não existir
-        # (bancos criados antes desta versão não têm a coluna)
+        # 1) Tabelas e índices — sem views, que dependem da coluna qualificacao
+        conn.executescript(SCHEMA_TABLES)
+
+        # 2) Migration: adiciona qualificacao ANTES de criar as views
         cols = {r[1] for r in conn.execute("PRAGMA table_info(vlmo_entries)").fetchall()}
         if "qualificacao" not in cols:
             log.info("Migration: adicionando coluna qualificacao a vlmo_entries")
@@ -448,6 +454,9 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_vlmo_qualif ON vlmo_entries(qualificacao)"
             )
             log.info("Migration qualificacao: concluida")
+
+        # 3) Views — agora qualificacao existe com certeza
+        conn.executescript(SCHEMA_VIEWS)
 
 
 def sync_companies() -> None:
