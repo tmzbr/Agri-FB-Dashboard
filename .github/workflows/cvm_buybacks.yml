@@ -1,17 +1,16 @@
-
-name: Update CVM Buybacks DB
+name: Update CVM Buybacks DB (v2 — IPE Individual)
 
 on:
-  # Toda segunda-feira às 10:00 UTC (07:00 BRT). A CVM atualiza o VLMO
-  # semanalmente e as recompras diariamente.
+  # Toda segunda e quinta-feira às 10:00 UTC (07:00 BRT).
+  # IPEs individuais são publicados mensalmente, mas verificamos
+  # frequentemente para capturar reapresentações.
   schedule:
-    - cron: "0 10 * * 1"
+    - cron: "0 10 * * 1,4"
 
-  # Permite disparo manual pela aba Actions do GitHub
   workflow_dispatch:
     inputs:
       bootstrap:
-        description: "Bootstrap (puxa 5 anos de histórico)"
+        description: "Bootstrap (puxa histórico completo desde 2022)"
         required: false
         default: "false"
         type: boolean
@@ -34,7 +33,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install pandas requests
+        run: pip install pandas requests pdfplumber
 
       - name: Run ingestion (incremental)
         if: ${{ github.event.inputs.bootstrap != 'true' }}
@@ -56,4 +55,3 @@ jobs:
             git commit -m "auto: refresh cvm_buybacks.db — $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           fi
-
