@@ -842,3 +842,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+FIM_DO_ARQUIVO 

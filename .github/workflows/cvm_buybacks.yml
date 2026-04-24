@@ -1,3 +1,4 @@
+
 name: Update CVM Buybacks DB
 
 on:
@@ -55,3 +56,4 @@ jobs:
             git commit -m "auto: refresh cvm_buybacks.db — $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           fi
+
