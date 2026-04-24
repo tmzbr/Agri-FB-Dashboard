@@ -396,17 +396,21 @@ body.subnav-visible #filter-bar { top: 96px; }
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-3">
-        <p class="small text-muted mb-3">
-          Use <strong>Copy</strong> to paste into your email client or <strong>Open Email</strong> to open directly.
+        <p class="small text-muted mb-2">
+          <strong>Copy Subject</strong> &rarr; paste into the email "Subject" field.
+          <strong>Copy (formatted)</strong> &rarr; paste into the email body to keep bold, colors and links.
         </p>
-        <div id="export-preview" class="export-preview"></div>
+        <div id="export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        <button class="btn btn-outline-secondary" onclick="copyExport()">
-          <i class="bi bi-clipboard me-1"></i>Copy text
+        <button class="btn btn-outline-secondary" onclick="copyExportSubject()">
+          <i class="bi bi-type me-1"></i>Copy Subject
         </button>
-        <a id="mailto-link" href="#" class="btn" style="background:var(--orange);color:white">
+        <button class="btn" onclick="copyExport()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-clipboard-check me-1"></i>Copy (formatted)
+        </button>
+        <a id="mailto-link" href="#" class="btn btn-outline-secondary">
           <i class="bi bi-envelope-open me-1"></i>Open Email
         </a>
       </div>
@@ -1046,38 +1050,124 @@ async function addNews() {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
+const EXPORT_ORANGE = "#EC7000";
+
+function exportSupergroup(item) {
+  const cid = item._category_id || categorizeNews(item);
+  if (cid === 1 || cid === 2) return "Agribusiness";
+  if (cid === 3 || cid === 4) return "Food & Beverage";
+  return "Other";
+}
+
+function sourceFromUrl(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); }
+  catch { return "Link"; }
+}
+
 function openExportModal() {
   if (selectedIds.size === 0) { showToast("Select at least one item", "warning"); return; }
+
   const selected = allNews.filter(n => selectedIds.has(n.id));
-  const byGroup = {};
-  selected.forEach(item => {
-    if (!byGroup[item.group_id]) byGroup[item.group_id] = { name: getGroupName(item.group_id), items: [] };
-    byGroup[item.group_id].items.push(item);
+  const buckets = { "Agribusiness": [], "Food & Beverage": [], "Other": [] };
+  selected.forEach(item => buckets[exportSupergroup(item)].push(item));
+  Object.values(buckets).forEach(arr =>
+    arr.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""))
+  );
+
+  const today = new Date();
+  const dateLong = today.toLocaleDateString("en-GB",
+    { day: "numeric", month: "long", year: "numeric" });
+  const subj = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+
+  const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
+
+  // ── HTML body (inline styles → Outlook-paste friendly)
+  let html = "";
+  html += `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">`;
+  html += `<div style="text-align:right;font-weight:bold;font-size:12pt;margin-bottom:18px;">`
+        + `*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</div>`;
+
+  sections.forEach(sec => {
+    html += `<div style="font-weight:bold;color:${EXPORT_ORANGE};font-size:12pt;margin-top:10px;">`
+          + `${escHtml(sec)}</div>`;
+    html += `<ul style="margin:4px 0 12px 0;padding-left:24px;">`;
+    buckets[sec].forEach(item => {
+      html += `<li style="margin-bottom:2px;">${escHtml(item.title)}</li>`;
+    });
+    html += `</ul>`;
   });
-  let html = "", plain = `News Feed — ${new Date().toLocaleDateString("en-US")}\n\n`;
-  Object.values(byGroup).forEach(g => {
-    html  += `<div class="export-group-title">${escHtml(g.name)}</div>`;
-    plain += `${g.name.toUpperCase()}\n${"─".repeat(50)}\n\n`;
-    g.items.forEach(item => {
+
+  const sep = `<div style="border-top:1px dashed #888;margin:18px 0;"></div>`;
+
+  sections.forEach(sec => {
+    html += sep;
+    html += `<div style="font-weight:bold;color:${EXPORT_ORANGE};font-size:12pt;margin-bottom:6px;">`
+          + `Main Headlines – ${escHtml(sec)}</div>`;
+    html += `<div style="border-top:1px dashed #888;margin:6px 0 14px 0;"></div>`;
+    buckets[sec].forEach(item => {
       const d = formatDate(item.published_at);
-      html  += `<div class="export-item"><div class="export-item-title">${escHtml(item.title)}</div>
-        <div class="export-item-link"><a href="${escHtml(item.url)}" target="_blank">link</a></div>
-        <div class="export-item-date">${d}</div></div>`;
-      plain += `${item.title}\n${item.url}\n${d}\n\n`;
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      html += `<div style="margin-bottom:14px;">`
+            +   `<div style="font-weight:bold;">${escHtml(item.title)}</div>`
+            +   `<div>${escHtml(d)}</div>`
+            +   `<div>Source: <a href="${escHtml(item.url)}" target="_blank">${escHtml(srcName)}</a></div>`
+            + `</div>`;
     });
   });
+
+  html += `</div>`;
+
+  // ── Plain-text fallback
+  let plain = `*** Itaú BBA | Agribusiness, Food & Beverage - Daily News ***\n\n`;
+  sections.forEach(sec => {
+    plain += `${sec}\n`;
+    buckets[sec].forEach(item => { plain += `  - ${item.title}\n`; });
+    plain += `\n`;
+  });
+  plain += `${"-".repeat(70)}\n\n`;
+  sections.forEach(sec => {
+    plain += `Main Headlines - ${sec}\n${"-".repeat(70)}\n\n`;
+    buckets[sec].forEach(item => {
+      const d = formatDate(item.published_at);
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      plain += `${item.title}\n${d}\nSource: ${srcName} (${item.url})\n\n`;
+    });
+  });
+
   document.getElementById("export-preview").innerHTML = html;
-  const subj = `Feed ER – ${new Date().toLocaleDateString("pt-BR")}`;
   document.getElementById("mailto-link").href =
     `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(plain)}`;
+  window._exportHtml = html;
   window._exportPlainText = plain;
+  window._exportSubject = subj;
   new bootstrap.Modal(document.getElementById("exportModal")).show();
 }
 
-function copyExport() {
-  if (!window._exportPlainText) return;
-  navigator.clipboard.writeText(window._exportPlainText)
-    .then(() => showToast("Copied to clipboard", "success"))
+async function copyExport() {
+  if (!window._exportHtml) return;
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      const item = new ClipboardItem({
+        "text/html":  new Blob([window._exportHtml],       { type: "text/html"  }),
+        "text/plain": new Blob([window._exportPlainText], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+    } else {
+      await navigator.clipboard.writeText(window._exportPlainText);
+    }
+    showToast("Copied (formatted) — paste into the email body", "success");
+  } catch (e) {
+    try {
+      await navigator.clipboard.writeText(window._exportPlainText);
+      showToast("Copied as plain text", "success");
+    } catch { showToast("Copy error", "danger"); }
+  }
+}
+
+function copyExportSubject() {
+  if (!window._exportSubject) return;
+  navigator.clipboard.writeText(window._exportSubject)
+    .then(() => showToast("Subject copied", "success"))
     .catch(() => showToast("Copy error", "danger"));
 }
 
