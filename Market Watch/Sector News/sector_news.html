@@ -339,34 +339,34 @@ body.subnav-visible #filter-bar { top: 96px; }
     <button class="btn btn-sm filter-btn" onclick="applyFilters()">
       <i class="bi bi-funnel-fill me-1"></i>Filter
     </button>
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <div class="form-check mb-0" data-admin-only>
-        <input class="form-check-input" type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)">
-        <label class="form-check-label filter-label" for="select-all-cb">Select all (view)</label>
-      </div>
-      <span id="selected-count" data-admin-only style="color:var(--text-muted);font-size:12px">None</span>
-      <button class="btn btn-sm btn-outline-secondary" data-admin-only style="font-size:12px" onclick="clearSelection()" title="Deselect all — including items from other tabs">
-        <i class="bi bi-x-square me-1"></i>Deselect all
-      </button>
-      <button class="btn btn-sm" id="btn-export" data-admin-only onclick="openExportModal()" disabled
-              style="background:var(--orange);color:white;font-size:12px;border:none">
-        <i class="bi bi-envelope me-1"></i>Export
-      </button>
-      <button class="btn btn-sm btn-add-news" data-admin-only data-bs-toggle="modal" data-bs-target="#addNewsModal">
-        <i class="bi bi-plus me-1"></i>Add
-      </button>
-    </div>
   </div>
 </div>
 
-<!-- ── Category Tabs ── -->
+<!-- ── Category Tabs + Selection Actions (single row) ── -->
 <div id="category-tabs-bar">
   <div class="container-fluid px-4 d-flex align-items-center gap-2 flex-wrap">
     <button class="cat-tab active" data-gid="" onclick="selectGroupTab(null)">All</button>
-    <button class="cat-tab" data-gid="2" onclick="selectGroupTab(2)">Agribusiness Sector</button>
-    <button class="cat-tab" data-gid="1" onclick="selectGroupTab(1)">Agribusiness Companies</button>
-    <button class="cat-tab" data-gid="4" onclick="selectGroupTab(4)">Food &amp; Beverage Sector</button>
-    <button class="cat-tab" data-gid="3" onclick="selectGroupTab(3)">Food &amp; Beverage Companies</button>
+    <button class="cat-tab" data-gid="2" onclick="selectGroupTab(2)">Agri Sector</button>
+    <button class="cat-tab" data-gid="1" onclick="selectGroupTab(1)">Agri Cos</button>
+    <button class="cat-tab" data-gid="4" onclick="selectGroupTab(4)">F&amp;B Sector</button>
+    <button class="cat-tab" data-gid="3" onclick="selectGroupTab(3)">F&amp;B Cos</button>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <div class="form-check mb-0" data-admin-only title="Select all items currently visible">
+        <input class="form-check-input" type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)">
+        <label class="form-check-label filter-label" for="select-all-cb">All view</label>
+      </div>
+      <span id="selected-count" data-admin-only style="color:var(--text-muted);font-size:12px">0</span>
+      <button class="btn btn-sm btn-outline-secondary" data-admin-only style="font-size:12px" onclick="clearSelection()" title="Deselect all — including items from other tabs">
+        <i class="bi bi-x-square"></i>
+      </button>
+      <button class="btn btn-sm" id="btn-export" data-admin-only onclick="openExportModal()" disabled
+              style="background:var(--orange);color:white;font-size:12px;border:none" title="Export selected to email">
+        <i class="bi bi-envelope me-1"></i>Export
+      </button>
+      <button class="btn btn-sm btn-add-news" data-admin-only data-bs-toggle="modal" data-bs-target="#addNewsModal" title="Add news manually">
+        <i class="bi bi-plus"></i>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -987,8 +987,7 @@ function clearSelection() {
 
 function updateSelectedCount() {
   const n = selectedItems.size;
-  document.getElementById("selected-count").textContent =
-    n === 0 ? "None" : `${n} selected`;
+  document.getElementById("selected-count").textContent = String(n);
   document.getElementById("btn-export").disabled = n === 0;
 }
 
