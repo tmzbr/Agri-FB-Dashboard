@@ -879,27 +879,11 @@ function renderNews(items) {
     return;
   }
   empty.classList.add("d-none");
-  // Agrupa por categoria computada (não mais pelo group_id da origem)
-  const showHeaders = activeGroupId === null;
+  // Always flat: a single list sorted by sortMode globally. The card carries
+  // a category tag + color so the user still sees which bucket each item is
+  // in — but "All" view doesn't break the sort into category blocks anymore.
   let html = "";
-  if (showHeaders) {
-    const grouped = {};
-    items.forEach(item => {
-      const cid = item._category_id || item.group_id;
-      if (!grouped[cid]) grouped[cid] = [];
-      grouped[cid].push(item);
-    });
-    // Ordem de exibição: Agri Sector, Agri Cos, F&B Sector, F&B Cos
-    [2, 1, 4, 3].forEach(cid => {
-      if (!grouped[cid]) return;
-      const color = getGroupColor(cid);
-      const name = getGroupName(cid);
-      html += `<div class="news-group-header"><span class="group-dot" style="background:${color}"></span>${escHtml(name)}</div>`;
-      sortItems(grouped[cid]).forEach(item => { html += newsCardHtml(item); });
-    });
-  } else {
-    sortItems(items).forEach(item => { html += newsCardHtml(item); });
-  }
+  sortItems(items).forEach(item => { html += newsCardHtml(item); });
   container.innerHTML = html;
   selectedItems.forEach((item, id) => {
     const cb = document.getElementById(`cb-${id}`);
@@ -908,12 +892,23 @@ function renderNews(items) {
   updateSelectedCount();
 }
 
+function categoryShort(name) {
+  return (name || "")
+    .replace("Agribusiness", "Agri")
+    .replace("Food & Beverage", "F&B")
+    .replace(" - ", " ");
+}
+
 function newsCardHtml(item) {
   const admin = isAdminUser();
   const score = item.relevance_score || 0;
   const scoreClass = score >= 0.7 ? "score-high" : score >= 0.5 ? "score-mid" : "score-low";
   const scoreLabel = score >= 0.7 ? "High" : score >= 0.5 ? "Medium" : "Low";
-  const color = getGroupColor(item.group_id);
+  // Use content-based category (from categorizeNews) for color + tag so the
+  // visual signal matches what the item is ABOUT, not where it was fetched.
+  const categoryId = item._category_id || item.group_id;
+  const color = getGroupColor(categoryId);
+  const categoryName = categoryShort(getGroupName(categoryId));
   const iconBg = hexToRgba(color, 0.12);
   const dateLabel = formatDateUpper(item.published_at);
   const excludedClass = item.is_excluded ? "excluded-item" : "";
@@ -943,6 +938,7 @@ function newsCardHtml(item) {
         <div class="card-date">${dateLabel}</div>
         <div class="card-bottom-row">
           <div class="card-tags">
+            <span class="card-tag" style="border-color:${color};color:${color};background:${iconBg}">${escHtml(categoryName)}</span>
             <span class="card-tag ${scoreClass}">Score ${score.toFixed(2)} · ${scoreLabel}</span>
             ${item.is_manually_added ? '<span class="card-tag tag-manual">Manual</span>' : ""}
             ${item.is_excluded ? '<span class="card-tag tag-excluded">Excluded</span>' : ""}
