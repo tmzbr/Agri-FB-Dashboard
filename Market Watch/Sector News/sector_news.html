@@ -397,19 +397,19 @@ body.subnav-visible #filter-bar { top: 96px; }
       </div>
       <div class="modal-body p-3">
         <p class="small text-muted mb-2">
-          Workflow: <strong>1)</strong> click <strong>Copy (formatted)</strong> &nbsp;<strong>2)</strong> click <strong>Open Email</strong>
-          (subject already filled) &nbsp;<strong>3)</strong> in the body, press <strong>Ctrl+V</strong> to paste the formatted content.
+          Click <strong>Open in Outlook</strong> to download a ready-to-send draft (.eml file) — colors and layout preserved.
+          Or use <strong>Copy (formatted)</strong> to paste elsewhere.
         </p>
         <div id="export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        <button class="btn" onclick="copyExport()" style="background:var(--orange);color:white;border:none">
+        <button class="btn btn-outline-secondary" onclick="copyExport()">
           <i class="bi bi-clipboard-check me-1"></i>Copy (formatted)
         </button>
-        <a id="mailto-link" href="#" class="btn btn-outline-secondary">
-          <i class="bi bi-envelope-open me-1"></i>Open Email
-        </a>
+        <button class="btn" onclick="openInOutlook()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-envelope-open me-1"></i>Open in Outlook
+        </button>
       </div>
     </div>
   </div>
@@ -1134,17 +1134,41 @@ function openExportModal() {
     });
   });
 
-  // Wrap with full HTML structure — some Outlook versions discard fragments without <html>/<body>
+  // Wrap with full HTML structure — required for .eml MIME body and clipboard paste
   const fullHtml =
     `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
 
   document.getElementById("export-preview").innerHTML = html;
-  // mailto only carries plain text. Keep body short so user pastes formatted with Ctrl+V.
-  document.getElementById("mailto-link").href =
-    `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent("[Paste here with Ctrl+V]")}`;
-  window._exportHtml = fullHtml;
+  window._exportHtml     = fullHtml;
   window._exportPlainText = plain;
+  window._exportSubject   = subj;
   new bootstrap.Modal(document.getElementById("exportModal")).show();
+}
+
+function openInOutlook() {
+  if (!window._exportHtml) return;
+  const subject = window._exportSubject || "Daily News";
+  // Build minimal RFC822 message. X-Unsent:1 tells Outlook to open as a draft.
+  const eml = [
+    "MIME-Version: 1.0",
+    `Subject: ${subject}`,
+    "X-Unsent: 1",
+    'Content-Type: text/html; charset="utf-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    window._exportHtml,
+  ].join("\r\n");
+  const blob = new Blob([eml], { type: "message/rfc822" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  const safeName = subject.replace(/[^\w\d\- ]+/g, "").trim().slice(0, 80) || "daily-news";
+  a.href = url;
+  a.download = `${safeName}.eml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  showToast("Draft downloaded — open the .eml file to send", "success");
 }
 
 async function copyExport() {
