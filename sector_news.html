@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sector News Feed — Market Watch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+:root {
+  --orange: #E8450A;
+  --orange-light: #FEF0EB;
+  --nav-bg: #111827;
+  --body-bg: #F3F4F6;
+  --card-bg: #FFFFFF;
+  --border: #E5E7EB;
+  --text-primary: #111827;
+  --text-muted: #6B7280;
+  --text-light: #9CA3AF;
+  --green: #15803D;
+  --yellow: #B45309;
+  --red: #B91C1C;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--body-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  padding-top: 0;
+}
+
+#main-nav, #subnav, #page-header { display: none !important; }
+#filter-bar { top: 0 !important; }
+
+/* ── Navbar ── */
+#main-nav {
+  background: var(--nav-bg) !important;
+  height: 52px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  z-index: 1030;
+  padding: 0;
+}
+#main-nav .container-fluid { height: 52px; align-items: stretch !important; }
+
+.logo-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; background: var(--orange); color: #fff;
+  font-weight: 700; font-size: 12px; border-radius: 6px; letter-spacing: 0.5px; flex-shrink: 0;
+}
+.navbar-brand { display: flex; align-items: center; padding: 0; margin-right: 8px; }
+
+.navbar-back {
+  display: inline-flex; align-items: center; height: 52px; padding: 0 14px;
+  color: rgba(255,255,255,0.55); text-decoration: none; font-size: 13px; font-weight: 500;
+  border-bottom: 2px solid transparent; transition: color 0.15s;
+  white-space: nowrap;
+}
+.navbar-back:hover { color: rgba(255,255,255,0.85); }
+
+.nav-tab {
+  display: inline-flex; align-items: center; height: 52px; padding: 0 15px;
+  color: rgba(255,255,255,0.55); text-decoration: none; font-size: 13.5px; font-weight: 500;
+  border-bottom: 2px solid transparent; border-top: none; border-left: none; border-right: none;
+  background: none; transition: color 0.15s, border-color 0.15s; cursor: pointer; white-space: nowrap;
+}
+.nav-tab:hover { color: rgba(255,255,255,0.85); }
+.nav-tab.active { color: #FFFFFF; border-bottom-color: var(--orange); }
+
+.nav-badge {
+  font-size: 10px; background: var(--orange); color: white; padding: 1px 6px;
+  border-radius: 4px; margin-left: 6px; font-weight: 700; letter-spacing: 0.3px;
+}
+.nav-action-btn {
+  color: rgba(255,255,255,0.65) !important; border: 1px solid rgba(255,255,255,0.18) !important;
+  font-size: 12.5px; background: transparent !important;
+}
+.nav-action-btn:hover {
+  color: white !important; border-color: rgba(255,255,255,0.45) !important;
+  background: rgba(255,255,255,0.08) !important;
+}
+
+/* ── Subnav ── */
+#subnav {
+  position: sticky; top: 52px; z-index: 1020; background: #FFFFFF;
+  border-bottom: 1px solid var(--border); height: 44px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+#subnav-tabs { display: flex; align-items: stretch; height: 44px; }
+.subnav-tab {
+  display: inline-flex; align-items: center; height: 44px; padding: 0 16px;
+  color: var(--text-muted); font-size: 13.5px; font-weight: 500;
+  border-bottom: 2px solid transparent; border-top: none; border-left: none; border-right: none;
+  background: none; transition: color 0.15s, border-color 0.15s; cursor: pointer; white-space: nowrap; text-decoration: none;
+}
+.subnav-tab:hover { color: var(--text-primary); }
+.subnav-tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+
+/* ── Page header ── */
+#page-header { background: var(--body-bg); padding: 28px 0 20px; border-bottom: 1px solid var(--border); }
+.greeting { font-size: 21px; color: var(--text-primary); line-height: 1.3; }
+.greeting strong { font-weight: 700; }
+.greeting-date { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+.section-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 18px; }
+.section-count { font-size: 13px; color: var(--orange); margin-top: 3px; }
+
+/* ── Filter bar ── */
+#filter-bar {
+  background: #FFFFFF; border-bottom: 1px solid var(--border);
+  padding: 9px 0; position: sticky; top: 52px; z-index: 1010; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+body.subnav-visible #filter-bar { top: 96px; }
+
+.filter-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; margin: 0; }
+.filter-input {
+  font-size: 12px !important; border-color: var(--border) !important;
+  color: var(--text-primary) !important; padding: 4px 8px !important;
+  height: 30px !important; border-radius: 6px !important;
+}
+.filter-input:focus {
+  border-color: var(--orange) !important; box-shadow: 0 0 0 2px rgba(232,69,10,0.12) !important;
+}
+.filter-range { accent-color: var(--orange); width: 72px; }
+.filter-btn {
+  background: var(--body-bg) !important; border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important; font-size: 12px !important; border-radius: 6px !important;
+}
+.filter-btn:hover { border-color: var(--orange) !important; color: var(--orange) !important; }
+
+.quick-range-btn {
+  background: var(--body-bg) !important; border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important; font-size: 12px !important;
+  border-radius: 20px !important; padding: 3px 12px !important;
+  font-weight: 500; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.quick-range-btn:hover { border-color: var(--orange) !important; color: var(--orange) !important; }
+.quick-range-btn.active {
+  background: var(--orange) !important; border-color: var(--orange) !important; color: white !important;
+}
+
+.btn-add-news {
+  background: var(--orange-light) !important; color: var(--orange) !important;
+  border: 1px solid rgba(232,69,10,0.25) !important; font-size: 12px !important; border-radius: 6px !important;
+}
+.btn-add-news:hover { background: var(--orange) !important; color: white !important; }
+
+.btn-orange {
+  background: var(--orange); color: white; border: none; padding: 9px 22px;
+  border-radius: 7px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s;
+}
+.btn-orange:hover { background: #D13D08; color: white; }
+
+/* ── Category tabs (below filter) ── */
+#category-tabs-bar {
+  background: white; border-bottom: 1px solid var(--border); padding: 10px 0;
+}
+#category-tabs-bar .cat-tab {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  font-size: 12px; font-weight: 500; border-radius: 20px; padding: 5px 14px;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+#category-tabs-bar .cat-tab:hover { border-color: var(--orange); color: var(--orange); }
+#category-tabs-bar .cat-tab.active {
+  background: var(--orange); border-color: var(--orange); color: white;
+}
+
+/* ── News container ── */
+.news-container { padding-bottom: 56px; }
+.news-group-header {
+  display: flex; align-items: center; gap: 8px; margin: 22px 0 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
+}
+.news-group-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+/* ── News card ── */
+.news-card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; margin-bottom: 8px; display: flex; align-items: flex-start;
+  gap: 14px; transition: box-shadow 0.15s, border-color 0.15s;
+}
+.news-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.07); border-color: #D1D5DB; }
+.news-card.selected { border-color: var(--orange); background: #FFFAF8; }
+.news-card.excluded-item { opacity: 0.45; }
+.news-card.manually-added { border-left: 3px solid var(--green); }
+
+.card-checkbox { padding-top: 3px; flex-shrink: 0; }
+.form-check-input:checked { background-color: var(--orange); border-color: var(--orange); }
+.form-check-input:focus { box-shadow: 0 0 0 2px rgba(232,69,10,0.2); border-color: var(--orange); }
+
+.card-icon {
+  width: 38px; height: 38px; border-radius: 8px; display: flex;
+  align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; margin-top: 1px;
+}
+.card-main { flex: 1; min-width: 0; }
+.card-top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card-source { font-size: 12px; color: var(--text-light); font-weight: 500; white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
+.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.45; flex: 1; }
+.card-title a { color: inherit; text-decoration: none; }
+.card-title a:hover { color: var(--orange); }
+.card-summary {
+  font-size: 12.5px; color: var(--text-muted); margin-top: 5px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-date { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-light); margin-top: 9px; }
+.card-bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; gap: 8px; flex-wrap: wrap; }
+.card-tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.card-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-muted); background: var(--body-bg);
+}
+.card-tag.score-high { border-color: #BBF7D0; color: var(--green);  background: #F0FDF4; }
+.card-tag.score-mid  { border-color: #FDE68A; color: var(--yellow); background: #FFFBEB; }
+.card-tag.score-low  { border-color: #FECACA; color: var(--red);    background: #FEF2F2; }
+.card-tag.tag-manual   { border-color: #BBF7D0; color: var(--green); background: #F0FDF4; }
+.card-tag.tag-excluded { border-color: #FECACA; color: var(--red);   background: #FEF2F2; }
+.card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.btn-open {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  color: var(--orange); border: 1.5px solid var(--orange); border-radius: 6px; padding: 4px 12px;
+  text-decoration: none; transition: background 0.15s, color 0.15s; white-space: nowrap;
+}
+.btn-open:hover { background: var(--orange); color: white; }
+
+.btn-icon {
+  border: none; background: none; padding: 4px 7px; border-radius: 5px;
+  color: var(--text-light); cursor: pointer; font-size: 13px; line-height: 1; transition: background 0.15s, color 0.15s;
+}
+.btn-icon:hover { background: #F3F4F6; color: var(--text-muted); }
+.btn-icon.danger:hover  { background: #FEE2E2; color: var(--red); }
+.btn-icon.success:hover { background: #DCFCE7; color: var(--green); }
+
+/* ── Settings ── */
+.keyword-tag {
+  display: inline-flex; align-items: center; gap: 4px; background: var(--orange-light);
+  color: var(--orange); border: 1px solid rgba(232,69,10,0.2); border-radius: 4px;
+  padding: 2px 8px; font-size: 12px; margin: 2px;
+}
+.keyword-tag .remove { cursor: pointer; font-size: 14px; line-height: 1; }
+.keyword-tag .remove:hover { color: var(--red); }
+.exclusion-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: #fff; border: 1px solid var(--border);
+  border-radius: 6px; margin-bottom: 4px; font-size: 13px;
+}
+
+/* ── Misc ── */
+#empty-state i { color: #D1D5DB; }
+.export-preview {
+  background: #F9FAFB; border: 1px solid var(--border); border-radius: 6px;
+  padding: 20px; max-height: 500px; overflow-y: auto; font-size: 13px;
+}
+.export-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--orange); margin-top: 16px; margin-bottom: 4px;
+  padding-bottom: 4px; border-bottom: 1px solid #FCE7DE;
+}
+.export-item { margin-bottom: 14px; }
+.export-item-title { font-weight: 500; line-height: 1.4; }
+.export-item-link a { color: var(--orange); font-size: 12px; }
+.export-item-date { font-size: 11px; color: var(--text-muted); }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+.spinner-border { color: var(--orange) !important; width: 2rem; height: 2rem; }
+.toast { min-width: 260px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navbar ── -->
+<nav class="navbar fixed-top" id="main-nav">
+  <div class="container-fluid px-4 d-flex align-items-stretch">
+    <a class="navbar-brand me-3" href="#">
+      <span class="logo-badge">ER</span>
+    </a>
+    <a class="navbar-back" href="../hub.html">&#8592; Market Watch</a>
+    <div class="d-flex align-items-stretch" id="nav-tabs">
+      <!-- Populated by JS -->
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="last-refresh" class="d-none d-md-inline" style="color:rgba(255,255,255,0.38);font-size:11px"></span>
+      <button class="btn btn-sm nav-action-btn" id="btn-refresh" onclick="fetchNews()">
+        <i class="bi bi-arrow-clockwise"></i>
+        <span class="d-none d-md-inline ms-1">Refresh</span>
+      </button>
+      <button class="btn btn-sm nav-action-btn" data-bs-toggle="modal" data-bs-target="#settingsModal">
+        <i class="bi bi-gear"></i>
+        <span class="d-none d-md-inline ms-1">Settings</span>
+        <span class="nav-badge">ANALYST</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Subnav ── -->
+<div id="subnav" class="d-none">
+  <div id="subnav-tabs"><!-- Populated by JS --></div>
+</div>
+
+<!-- ── Page Header ── -->
+<div id="page-header">
+  <div class="container-fluid px-4">
+    <div class="greeting" id="greeting">Hello, <strong>Bruno Tomazetto</strong></div>
+    <div class="greeting-date" id="greeting-date"></div>
+    <div class="section-title" id="section-title">News Feed</div>
+    <div class="section-count" id="section-count"></div>
+  </div>
+</div>
+
+<!-- ── Filter Bar ── -->
+<div id="filter-bar">
+  <div class="container-fluid px-4 d-flex align-items-center gap-3 flex-wrap">
+    <div class="d-flex align-items-center gap-1" id="quick-range-btns">
+      <button class="btn btn-sm quick-range-btn" data-days="1" onclick="setQuickRange(1)">Today</button>
+      <button class="btn btn-sm quick-range-btn" data-days="3" onclick="setQuickRange(3)">3d</button>
+      <button class="btn btn-sm quick-range-btn" data-days="7" onclick="setQuickRange(7)">7d</button>
+      <button class="btn btn-sm quick-range-btn" data-days="30" onclick="setQuickRange(30)">30d</button>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <input type="date" class="form-control filter-input" id="date-from">
+      <span class="filter-label">→</span>
+      <input type="date" class="form-control filter-input" id="date-to">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <input type="range" class="filter-range" id="relevance-slider" min="0" max="1" step="0.1" value="0">
+      <span id="relevance-value" class="filter-label">All</span>
+    </div>
+    <div class="d-flex align-items-center gap-1">
+      <span class="filter-label">Sort by</span>
+      <select class="form-select form-select-sm filter-input" id="sort-mode" style="width:auto;padding-right:24px" onchange="applySortMode()">
+        <option value="date">Date</option>
+        <option value="score">Score</option>
+      </select>
+    </div>
+    <button class="btn btn-sm filter-btn" onclick="applyFilters()">
+      <i class="bi bi-funnel-fill me-1"></i>Filter
+    </button>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <div class="form-check mb-0" data-admin-only>
+        <input class="form-check-input" type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)">
+        <label class="form-check-label filter-label" for="select-all-cb">Select all (view)</label>
+      </div>
+      <span id="selected-count" data-admin-only style="color:var(--text-muted);font-size:12px">None</span>
+      <button class="btn btn-sm btn-outline-secondary" data-admin-only style="font-size:12px" onclick="clearSelection()" title="Deselect all — including items from other tabs">
+        <i class="bi bi-x-square me-1"></i>Deselect all
+      </button>
+      <button class="btn btn-sm" id="btn-export" data-admin-only onclick="openExportModal()" disabled
+              style="background:var(--orange);color:white;font-size:12px;border:none">
+        <i class="bi bi-envelope me-1"></i>Export
+      </button>
+      <button class="btn btn-sm btn-add-news" data-admin-only data-bs-toggle="modal" data-bs-target="#addNewsModal">
+        <i class="bi bi-plus me-1"></i>Add
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Tabs ── -->
+<div id="category-tabs-bar">
+  <div class="container-fluid px-4 d-flex align-items-center gap-2 flex-wrap">
+    <button class="cat-tab active" data-gid="" onclick="selectGroupTab(null)">All</button>
+    <button class="cat-tab" data-gid="2" onclick="selectGroupTab(2)">Agribusiness Sector</button>
+    <button class="cat-tab" data-gid="1" onclick="selectGroupTab(1)">Agribusiness Companies</button>
+    <button class="cat-tab" data-gid="4" onclick="selectGroupTab(4)">Food &amp; Beverage Sector</button>
+    <button class="cat-tab" data-gid="3" onclick="selectGroupTab(3)">Food &amp; Beverage Companies</button>
+  </div>
+</div>
+
+<!-- ── News Container ── -->
+<div class="news-container">
+  <div class="container-fluid px-4 pt-3">
+    <div id="loading" class="text-center py-5 d-none">
+      <div class="spinner-border" role="status"></div>
+      <p class="mt-3 small" style="color:var(--text-muted)">Loading news...</p>
+    </div>
+    <div id="empty-state" class="text-center py-5 d-none">
+      <i class="bi bi-inbox display-3"></i>
+      <p class="mt-3 text-muted">No news to display.</p>
+      <p class="text-muted small">Click <strong>Refresh</strong> to fetch today's news.</p>
+      <button class="btn btn-orange mt-2" onclick="fetchNews()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Fetch News Now
+      </button>
+    </div>
+    <div id="news-list"></div>
+  </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold"><i class="bi bi-envelope me-2"></i>Export to Email</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <p class="small text-muted mb-2">
+          Click <strong>Open in Outlook</strong> to download a ready-to-send draft (.eml file) — colors and layout preserved.
+          Or use <strong>Copy (formatted)</strong> to paste elsewhere.
+        </p>
+        <div id="export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-outline-secondary" onclick="copyExport()">
+          <i class="bi bi-clipboard-check me-1"></i>Copy (formatted)
+        </button>
+        <button class="btn" onclick="openInOutlook()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-envelope-open me-1"></i>Open in Outlook
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add News Modal -->
+<div class="modal fade" id="addNewsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2"></i>Add News</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-medium">Title <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="add-title" placeholder="News title">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-medium">URL <span class="text-danger">*</span></label>
+          <input type="url" class="form-control" id="add-url" placeholder="https://...">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-medium">Group <span class="text-danger">*</span></label>
+          <select class="form-select" id="add-group"></select>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label fw-medium">Date</label>
+            <input type="date" class="form-control" id="add-date">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-medium">Source</label>
+            <input type="text" class="form-control" id="add-source" placeholder="E.g., Reuters">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn" onclick="addNews()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-plus me-1"></i>Add
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold"><i class="bi bi-gear me-2"></i>Settings</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs mb-3" id="settings-tabs">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" onclick="showSettingsTab('groups'); return false;">
+              <i class="bi bi-collection me-1"></i>Groups &amp; Queries
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSettingsTab('exclusions'); return false;">
+              <i class="bi bi-funnel me-1"></i>Learned Filters
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSettingsTab('stats'); return false;">
+              <i class="bi bi-bar-chart me-1"></i>Statistics
+            </a>
+          </li>
+        </ul>
+
+        <!-- Groups tab -->
+        <div id="settings-groups">
+          <p class="text-muted small mb-3">Configure the queries sent to Google News for each group. Each line is a separate search.</p>
+          <div id="groups-config"></div>
+        </div>
+
+        <!-- Exclusions tab -->
+        <div id="settings-exclusions" class="d-none">
+          <p class="text-muted small mb-3">Patterns that automatically reduce the relevance score of future news items.</p>
+          <div class="mb-3 d-flex gap-2">
+            <input type="text" class="form-control" id="new-exclusion-pattern"
+                   placeholder="E.g., market quote, lecture, interview with..."
+                   onkeydown="if(event.key==='Enter') addExclusion()">
+            <button class="btn px-3" onclick="addExclusion()" style="background:var(--orange);color:white;border:none">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+          <div id="exclusions-list"></div>
+        </div>
+
+        <!-- Stats tab -->
+        <div id="settings-stats" class="d-none">
+          <div class="row g-3 mb-3">
+            <div class="col-4">
+              <div class="p-3 rounded text-center" style="background:#F9FAFB;border:1px solid var(--border)">
+                <div class="fw-bold mb-1" id="stat-total" style="font-size:28px;color:var(--orange)">–</div>
+                <div class="small text-muted">Total news</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 rounded text-center" style="background:#F9FAFB;border:1px solid var(--border)">
+                <div class="fw-bold mb-1 text-success" id="stat-today" style="font-size:28px">–</div>
+                <div class="small text-muted">Published today</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 rounded text-center" style="background:#F9FAFB;border:1px solid var(--border)">
+                <div class="fw-bold mb-1 text-danger" id="stat-excluded" style="font-size:28px">–</div>
+                <div class="small text-muted">Excluded</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn" onclick="saveSettings()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-check-lg me-1"></i>Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="main-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="toast-header">
+      <strong class="me-auto" id="toast-title">Info</strong>
+      <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+    </div>
+    <div class="toast-body" id="toast-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── API base — change this to your deployed backend URL when hosting remotely
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000'
+  : 'https://ibba-agri-fb-feed-news.onrender.com';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let allNews = [];
+// Map id -> item. Guarda o objeto inteiro para que a seleção sobreviva a
+// mudanças de tab (quando allNews é re-filtrado por categoria, não perdemos
+// os itens selecionados em outras tabs).
+let selectedItems = new Map();
+let groupsConfig = [];
+let categories = {};
+let activeCategory = null;
+let activeSubGroup = null;
+let activeGroupId = null;  // filtro da barra de tabs
+let sortMode = "date";    // "date" | "score"
+let exportState = null;   // { sections: [...], buckets: {sec: [items]}, subject, dateLong }
+
+// ── Admin visibility ──────────────────────────────────────────────────────────
+function isAdminUser() {
+  try {
+    const p = window.parent;
+    if (!p || p === window) return false;
+    return !!(p.STATE && p.STATE.currentUser && p.STATE.currentUser.is_admin);
+  } catch (e) { return false; }
+}
+
+function applyAdminVisibility() {
+  const admin = isAdminUser();
+  document.querySelectorAll('[data-admin-only]').forEach(el => {
+    el.style.display = admin ? '' : 'none';
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().split("T")[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  document.getElementById("add-date").value = today;
+  // Default range: D-1 → D0 (ontem até hoje)
+  document.getElementById("date-from").value = yesterday;
+  document.getElementById("date-to").value = today;
+
+  document.getElementById("relevance-slider").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    document.getElementById("relevance-value").textContent = v === 0 ? "All" : `≥ ${v.toFixed(1)}`;
+  });
+
+  applyAdminVisibility();
+  updateGreeting();
+  loadGroups().then(() => {
+    buildNav();
+    loadNews();
+    loadStats();
+  });
+});
+
+// ── Category tab filter ──────────────────────────────────────────────────────
+function selectGroupTab(gid) {
+  activeGroupId = gid;
+  document.querySelectorAll('#category-tabs-bar .cat-tab').forEach(btn => {
+    const btnGid = btn.dataset.gid === "" ? null : parseInt(btn.dataset.gid);
+    btn.classList.toggle('active', btnGid === gid);
+  });
+  loadNews();
+}
+
+// ── Content-based categorization (overrides fetch-source group_id) ───────────
+function normalizeText(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Princípio da categorização:
+//   AGRI_COS  : listadas de produção primária (grãos, cana, etanol, algodão)
+//   FNB_COS   : listadas de processamento / marcas / varejo alimentar
+//   AGRI_SECTOR: commodities/insumos/clima/regulação do lado da OFERTA primária
+//   FNB_SECTOR : commodities/insumos/regulação que afetam PROCESSADORAS listadas
+//                (proteína animal é input de JBS/Minerva/BRF; trigo/arroz são input
+//                 de M. Dias/Camil; cacau, leite, lúpulo, malte são inputs F&B)
+// Uma commodity muda de categoria conforme quem consome: trigo no Brasil é
+// majoritariamente importado e processado por Camil/M. Dias → F&B Sector.
+
+const AGRI_COS = [
+  // Grãos / produção agrícola listada
+  "slc agricola","slc agríc","slce3","brasilagro","agro3","3tentos","tten3",
+  "boa safra","soja3","vittia","vitt3","terra santa","tesa3",
+  "kepler weber","kepl3",
+  // Açúcar / etanol listado
+  "sao martinho","são martinho","smto3","adecoagro","agro.n",
+  "jalles machado","jalles","jall3","biosev"
+];
+const FNB_COS = [
+  // Proteína animal listada
+  "jbs","jbss3","marfrig","mrfg3","minerva foods","minerva","beef3",
+  "mbrf","brf","brfs3","seara",
+  "tyson","tsn","pilgrim's pride","pilgrim","ppc",
+  // Alimentos processados / bebidas listadas
+  "ambev","abev3","heineken",
+  "m. dias branco","m dias branco","mdia3",
+  "camil","caml3","oderich",
+  "jde peets","jde","jdep",
+  // F&B varejo adjacente
+  "carrefour","crfb3","assai","asai3","grupo mateus","grma3"
+];
+const AGRI_SECTOR = [
+  // Commodities de produção primária (drivers de Agri Cos)
+  "soja","farelo de soja","milho","algodao","algodão","cana","acucar","açúcar",
+  "etanol","café","cafe","laranja","suco de laranja",
+  // Insumos
+  "fertilizante","defensivo","agroquimico","agroquímico","sementes","semente",
+  "adubo","ureia","potássio","fosfato","glifosato","nitrogênio",
+  // Condições de safra / clima (atingem produção primária)
+  "safra","plantio","colheita","produtividade","lavoura","produtor rural",
+  "quebra de safra","safra recorde","usda","conab","wasde","embrapa",
+  "seca","estiagem","geada","el niño","la niña","el nino","la nina",
+  "excesso de chuvas","graos","grãos","oleaginosa",
+  // Regulação específica da produção primária
+  "plano safra","crédito rural","funrural",
+  "biodiesel","blend de biodiesel","mistura obrigatória","b15","b14","b13",
+  "barter","cpr","cédula produto rural","cnpe","anp",
+  // Máquinas e equipamentos agrícolas
+  "tratores","máquinas agrícolas","maquinas agricolas","colheitadeira",
+  "ferrugem asiática","ferrugem asiatica","mato grosso","soja-milho"
+];
+const FNB_SECTOR = [
+  // Proteína animal — input de JBS/Minerva/BRF/Marfrig/MBRF
+  "carne","frango","suino","suíno","pork","beef","bovino","arroba",
+  "pecuaria","pecuária","avicultura","frigorifico","frigorífico","abate",
+  "boi gordo","boi magro","gado","confinamento","miudos","miúdos",
+  "aves","protein animal","protein","poultry","carne bovina","carne suína",
+  "suinocultura","bovinocultura","ovos","ovo","leitão","leitao",
+  // Instituições setoriais F&B
+  "abpa","abrafrigo","abiec","abia","sindicarne","abiove","abras",
+  // Doenças animais (impacto direto em frigoríficos)
+  "gripe aviária","gripe aviaria","h5n1","influenza aviária",
+  "peste suína","peste suina","asf","febre aftosa","vaca louca","encefalopatia",
+  // Grãos/cereais que são input de M. Dias e Camil
+  "trigo","farinha de trigo","farinha","arroz","feijão","feijao",
+  // Inputs de processadoras e bebidas (laticínios, chocolate, cerveja)
+  "leite","laticínios","laticinios","queijo","iogurte",
+  "cacau","chocolate",
+  "lúpulo","lupulo","cevada","malte","refrigerante",
+  // Habilitação de planta / sanitário alimentar (direto em exportadoras de proteína)
+  "habilitação da planta","habilitação de planta","habilitacao de planta",
+  "descredenciamento","anvisa","mapa aprova","mapa aprovação",
+  // Varejo / consumo / inflação de alimentos (CPGs, cervejarias)
+  "varejo alimentar","supermercados","ipca alimentos","inflação de alimentos",
+  "cesta básica","cesta basica","consumidor","consumo de alimentos",
+  "food service","delivery alimentos"
+];
+
+function matchesAny(text, keywords) {
+  const t = normalizeText(text);
+  return keywords.some(k => t.includes(normalizeText(k)));
+}
+
+function categorizeNews(item) {
+  const text = (item.title || "") + " " + (item.summary || "");
+  // Order matters: most specific (companies) first
+  if (matchesAny(text, AGRI_COS))    return 1;
+  if (matchesAny(text, FNB_COS))     return 3;
+  if (matchesAny(text, FNB_SECTOR))  return 4;
+  if (matchesAny(text, AGRI_SECTOR)) return 2;
+  return item.group_id;
+}
+
+// ── Greeting ──────────────────────────────────────────────────────────────────
+function updateGreeting() {
+  const now = new Date();
+  const h = now.getHours();
+  const greet = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  document.getElementById("greeting").innerHTML = `${greet}, <strong>Bruno Tomazetto</strong>`;
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  document.getElementById("greeting-date").textContent =
+    `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+}
+
+// ── Groups & Nav ──────────────────────────────────────────────────────────────
+async function loadGroups() {
+  const res = await fetch(API_BASE + "/api/groups");
+  groupsConfig = await res.json();
+  buildCategories();
+  const sel = document.getElementById("add-group");
+  sel.innerHTML = groupsConfig.map(g => `<option value="${g.id}">${escHtml(g.name)}</option>`).join("");
+}
+
+function buildCategories() {
+  categories = {};
+  groupsConfig.forEach(g => {
+    const parts = g.name.split(" - ");
+    const cat = parts[0].trim();
+    const sub = parts.length > 1 ? parts[1].trim() : "Geral";
+    if (!categories[cat]) categories[cat] = [];
+    categories[cat].push({ id: g.id, sub, color: g.color });
+  });
+}
+
+function buildNav() {
+  const navEl = document.getElementById("nav-tabs");
+  let html = `<button class="nav-tab ${activeCategory === null ? "active" : ""}" onclick="selectCategory(null)">Todos</button>`;
+  Object.keys(categories).forEach(cat => {
+    html += `<button class="nav-tab ${activeCategory === cat ? "active" : ""}" onclick="selectCategory(${JSON.stringify(cat)})">${escHtml(cat)}</button>`;
+  });
+  navEl.innerHTML = html;
+  buildSubNav();
+}
+
+function buildSubNav() {
+  const subnav = document.getElementById("subnav");
+  const subnavTabs = document.getElementById("subnav-tabs");
+  if (!activeCategory || !categories[activeCategory]) {
+    subnav.classList.add("d-none");
+    document.body.classList.remove("subnav-visible");
+    return;
+  }
+  const subs = categories[activeCategory];
+  let html = `<button class="subnav-tab ${activeSubGroup === null ? "active" : ""}" onclick="selectSubGroup(null)">Todos</button>`;
+  subs.forEach(s => {
+    html += `<button class="subnav-tab ${activeSubGroup === s.sub ? "active" : ""}" onclick="selectSubGroup(${JSON.stringify(s.sub)})">${escHtml(s.sub)}</button>`;
+  });
+  subnavTabs.innerHTML = html;
+  subnav.classList.remove("d-none");
+  document.body.classList.add("subnav-visible");
+}
+
+function selectCategory(cat) {
+  activeCategory = cat;
+  activeSubGroup = null;
+  buildNav();
+  loadNews();
+}
+
+function selectSubGroup(sub) {
+  activeSubGroup = sub;
+  buildSubNav();
+  loadNews();
+}
+
+function getActiveGroupIds() {
+  if (!activeCategory) return null;
+  const subs = categories[activeCategory] || [];
+  if (!activeSubGroup) return subs.map(s => s.id);
+  const found = subs.find(s => s.sub === activeSubGroup);
+  return found ? [found.id] : [];
+}
+
+function getGroupName(gid) {
+  const g = groupsConfig.find(x => x.id === gid);
+  return g ? g.name : `Group ${gid}`;
+}
+
+function getGroupColor(gid) {
+  const g = groupsConfig.find(x => x.id === gid);
+  return g ? g.color : "#6B7280";
+}
+
+// ── Load & Render News ────────────────────────────────────────────────────────
+async function loadNews() {
+  showLoading(true);
+  const params = new URLSearchParams();
+  const df = document.getElementById("date-from").value;
+  const dt = document.getElementById("date-to").value;
+  if (df) params.set("date_from", df);
+  if (dt) params.set("date_to", dt);
+  const minScore = parseFloat(document.getElementById("relevance-slider").value);
+  if (minScore > 0) params.set("min_score", minScore);
+
+  try {
+    const res = await fetch(API_BASE + "/api/news?" + params.toString());
+    let news = await res.json();
+    // Recategoriza cada notícia com base no conteúdo (título + resumo)
+    news.forEach(n => n._category_id = categorizeNews(n));
+    if (activeGroupId !== null) news = news.filter(n => n._category_id === activeGroupId);
+    allNews = news;
+    renderNews(allNews);
+    updateSelectedCount();
+    updatePageHeader();
+    loadStats();
+  } catch (e) {
+    showToast("Error loading news", "danger");
+  } finally {
+    showLoading(false);
+  }
+}
+
+function updatePageHeader() {
+  let title = "All News";
+  if (activeCategory && activeSubGroup) title = `${activeCategory} — ${activeSubGroup}`;
+  else if (activeCategory) title = activeCategory;
+  document.getElementById("section-title").textContent = title;
+  const visible = allNews.filter(n => !n.is_excluded).length;
+  document.getElementById("section-count").textContent =
+    allNews.length > 0 ? `${visible} ${visible === 1 ? "item found" : "items found"}` : "";
+}
+
+function sortItems(arr) {
+  const copy = arr.slice();
+  if (sortMode === "score") {
+    copy.sort((a, b) => {
+      const sa = a.relevance_score || 0;
+      const sb = b.relevance_score || 0;
+      if (sb !== sa) return sb - sa;
+      return (b.published_at || "").localeCompare(a.published_at || "");
+    });
+  } else {
+    copy.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
+  }
+  return copy;
+}
+
+function renderNews(items) {
+  const container = document.getElementById("news-list");
+  const empty = document.getElementById("empty-state");
+  if (!items.length) {
+    container.innerHTML = "";
+    empty.classList.remove("d-none");
+    return;
+  }
+  empty.classList.add("d-none");
+  // Always flat: a single list sorted by sortMode globally. The card carries
+  // a category tag + color so the user still sees which bucket each item is
+  // in — but "All" view doesn't break the sort into category blocks anymore.
+  let html = "";
+  sortItems(items).forEach(item => { html += newsCardHtml(item); });
+  container.innerHTML = html;
+  selectedItems.forEach((item, id) => {
+    const cb = document.getElementById(`cb-${id}`);
+    if (cb) { cb.checked = true; cb.closest(".news-card").classList.add("selected"); }
+  });
+  updateSelectedCount();
+}
+
+function categoryShort(name) {
+  return (name || "")
+    .replace("Agribusiness", "Agri")
+    .replace("Food & Beverage", "F&B")
+    .replace(" - ", " ");
+}
+
+function newsCardHtml(item) {
+  const admin = isAdminUser();
+  const score = item.relevance_score || 0;
+  const scoreClass = score >= 0.7 ? "score-high" : score >= 0.5 ? "score-mid" : "score-low";
+  const scoreLabel = score >= 0.7 ? "High" : score >= 0.5 ? "Medium" : "Low";
+  // Use content-based category (from categorizeNews) for color + tag so the
+  // visual signal matches what the item is ABOUT, not where it was fetched.
+  const categoryId = item._category_id || item.group_id;
+  const color = getGroupColor(categoryId);
+  const categoryName = categoryShort(getGroupName(categoryId));
+  const iconBg = hexToRgba(color, 0.12);
+  const dateLabel = formatDateUpper(item.published_at);
+  const excludedClass = item.is_excluded ? "excluded-item" : "";
+  const manualClass = item.is_manually_added ? "manually-added" : "";
+  const excludeBtn = !admin ? "" : (item.is_excluded
+    ? `<button class="btn-icon success" title="Include again" onclick="includeNews(${item.id})"><i class="bi bi-eye"></i></button>`
+    : `<button class="btn-icon danger" title="Exclude" onclick="excludeNews(${item.id})"><i class="bi bi-x-lg"></i></button>`);
+  const deleteBtn = !admin ? "" : `<button class="btn-icon danger" title="Delete permanently" onclick="deleteNews(${item.id})"><i class="bi bi-trash"></i></button>`;
+  const checkboxCol = !admin ? "" : `<div class="card-checkbox">
+        <input class="form-check-input" type="checkbox" id="cb-${item.id}"
+               onchange="toggleItem(${item.id}, this.checked)" ${selectedItems.has(item.id) ? "checked" : ""}>
+      </div>`;
+  return `
+    <div class="news-card ${excludedClass} ${manualClass}" id="card-${item.id}">
+      ${checkboxCol}
+      <div class="card-icon" style="background:${iconBg};color:${color}">
+        <i class="bi bi-newspaper"></i>
+      </div>
+      <div class="card-main">
+        <div class="card-top-row">
+          <div class="card-title">
+            <a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(item.title)}</a>
+          </div>
+          ${item.source ? `<div class="card-source">${escHtml(item.source)}</div>` : ""}
+        </div>
+        ${item.summary ? `<div class="card-summary">${escHtml(item.summary)}</div>` : ""}
+        <div class="card-date">${dateLabel}</div>
+        <div class="card-bottom-row">
+          <div class="card-tags">
+            <span class="card-tag" style="border-color:${color};color:${color};background:${iconBg}">${escHtml(categoryName)}</span>
+            <span class="card-tag ${scoreClass}">Score ${score.toFixed(2)} · ${scoreLabel}</span>
+            ${item.is_manually_added ? '<span class="card-tag tag-manual">Manual</span>' : ""}
+            ${item.is_excluded ? '<span class="card-tag tag-excluded">Excluded</span>' : ""}
+          </div>
+          <div class="card-actions">
+            ${excludeBtn}
+            ${deleteBtn}
+            <a href="${escHtml(item.url)}" target="_blank" rel="noopener" class="btn-open">
+              Open <i class="bi bi-arrow-right"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+// selectedItems é um Map persistente: guarda o objeto completo para não perder
+// seleções ao trocar de tab (que re-filtra allNews para a categoria ativa).
+function toggleItem(id, checked) {
+  const card = document.getElementById(`card-${id}`);
+  if (checked) {
+    const item = allNews.find(n => n.id === id) || selectedItems.get(id);
+    if (item) selectedItems.set(id, item);
+    if (card) card.classList.add("selected");
+  } else {
+    selectedItems.delete(id);
+    if (card) card.classList.remove("selected");
+  }
+  updateSelectedCount();
+}
+
+// "Select all" aplica só aos itens atualmente visíveis (scope = view atual).
+// Unchecking o toggle aqui limpa apenas os visíveis; para limpar tudo, usar
+// clearSelection (botão "Deselect all").
+function toggleSelectAll(checked) {
+  allNews.filter(n => !n.is_excluded).forEach(item => {
+    const cb = document.getElementById(`cb-${item.id}`);
+    if (cb) { cb.checked = checked; toggleItem(item.id, checked); }
+  });
+}
+
+// Deselect all: limpa TUDO (inclusive seleções feitas em outras tabs).
+function clearSelection() {
+  selectedItems.clear();
+  document.querySelectorAll(".news-card").forEach(c => c.classList.remove("selected"));
+  document.querySelectorAll(".form-check-input[id^='cb-']").forEach(cb => { cb.checked = false; });
+  const selAll = document.getElementById("select-all-cb");
+  if (selAll) selAll.checked = false;
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = selectedItems.size;
+  document.getElementById("selected-count").textContent =
+    n === 0 ? "None" : `${n} selected`;
+  document.getElementById("btn-export").disabled = n === 0;
+}
+
+// ── Fetch News ────────────────────────────────────────────────────────────────
+async function fetchNews() {
+  const btn = document.getElementById("btn-refresh");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:2px"></span> Fetching...';
+  showToast("Fetching news... this may take a few minutes.", "info");
+  try {
+    const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`${data.saved} new items added (${data.fetched} found)`, "success");
+      document.getElementById("last-refresh").textContent =
+        "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+      document.getElementById("last-refresh").classList.remove("d-none");
+      await loadNews();
+    } else {
+      showToast("Error: " + (data.error || "unknown"), "danger");
+    }
+  } catch (e) {
+    showToast("Connection error", "danger");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i><span class="d-none d-md-inline ms-1">Refresh</span>';
+  }
+}
+
+// ── News Actions ──────────────────────────────────────────────────────────────
+async function excludeNews(id) {
+  await fetch(API_BASE + `/api/news/${id}/exclude`, { method: "POST" });
+  selectedItems.delete(id);
+  const item = allNews.find(n => n.id === id);
+  if (item) item.is_excluded = 1;
+  const card = document.getElementById(`card-${id}`);
+  if (card) {
+    card.style.transition = "opacity 0.25s";
+    card.style.opacity = "0";
+    setTimeout(() => card.remove(), 250);
+  }
+  updateSelectedCount();
+  updatePageHeader();
+  loadStats();
+}
+
+async function includeNews(id) {
+  await fetch(API_BASE + `/api/news/${id}/include`, { method: "POST" });
+  loadNews();
+}
+
+async function deleteNews(id) {
+  if (!confirm("Permanently delete this item?")) return;
+  await fetch(API_BASE + `/api/news/${id}`, { method: "DELETE" });
+  selectedItems.delete(id);
+  document.getElementById(`card-${id}`)?.remove();
+  allNews = allNews.filter(n => n.id !== id);
+  updateSelectedCount();
+  updatePageHeader();
+  loadStats();
+}
+
+// ── Add News ──────────────────────────────────────────────────────────────────
+async function addNews() {
+  const title   = document.getElementById("add-title").value.trim();
+  const url     = document.getElementById("add-url").value.trim();
+  const groupId = parseInt(document.getElementById("add-group").value);
+  const date    = document.getElementById("add-date").value;
+  const source  = document.getElementById("add-source").value.trim();
+  if (!title || !url) { showToast("Title and URL are required", "warning"); return; }
+  const res = await fetch(API_BASE + "/api/news", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, url, group_id: groupId, source,
+      published_at: date ? date + "T12:00:00" : undefined }),
+  });
+  const data = await res.json();
+  if (data.success) {
+    bootstrap.Modal.getInstance(document.getElementById("addNewsModal")).hide();
+    ["add-title", "add-url", "add-source"].forEach(id => { document.getElementById(id).value = ""; });
+    showToast("News added", "success");
+    loadNews();
+  } else {
+    showToast("Error: " + (data.error || "unknown"), "danger");
+  }
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+const EXPORT_ORANGE = "#EC7000";
+
+function exportSupergroup(item) {
+  const cid = item._category_id || categorizeNews(item);
+  if (cid === 1 || cid === 2) return "Agribusiness";
+  if (cid === 3 || cid === 4) return "Food & Beverage";
+  return "Other";
+}
+
+function sourceFromUrl(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); }
+  catch { return "Link"; }
+}
+
+function openExportModal() {
+  if (selectedItems.size === 0) { showToast("Select at least one item", "warning"); return; }
+
+  // Source: selectedItems (Map persistente, sobrevive a tab-switch).
+  const selected = Array.from(selectedItems.values());
+  const buckets = { "Agribusiness": [], "Food & Beverage": [], "Other": [] };
+  selected.forEach(item => buckets[exportSupergroup(item)].push(item));
+  // Ordenação inicial por data desc; user pode reordenar manualmente depois.
+  Object.values(buckets).forEach(arr =>
+    arr.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""))
+  );
+
+  const today = new Date();
+  const dateLong = today.toLocaleDateString("en-GB",
+    { day: "numeric", month: "long", year: "numeric" });
+  const subject = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+
+  const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
+
+  exportState = { sections, buckets, subject, dateLong };
+  renderExportPreview();
+  new bootstrap.Modal(document.getElementById("exportModal")).show();
+}
+
+function buildExportHtmlPlain() {
+  if (!exportState) return { html: "", plain: "", fullHtml: "" };
+  const { sections, buckets } = exportState;
+  const orange = EXPORT_ORANGE;
+  const orangeHeader = (txt) =>
+    `<p style="margin:10px 0 4px 0;font-weight:bold;font-size:12pt;color:${orange};">`
+    + `<font color="${orange}"><b>${txt}</b></font></p>`;
+
+  let html = "";
+  html += `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">`;
+  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 18px 0;">`
+        + `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</b></p>`;
+
+  sections.forEach(sec => {
+    html += orangeHeader(escHtml(sec));
+    html += `<ul style="margin:4px 0 12px 0;padding-left:24px;">`;
+    buckets[sec].forEach(item => {
+      html += `<li style="margin-bottom:2px;">${escHtml(item.title)}</li>`;
+    });
+    html += `</ul>`;
+  });
+
+  const sep = `<p style="border-top:1px dashed #888;margin:18px 0;line-height:0;">&nbsp;</p>`;
+
+  sections.forEach(sec => {
+    html += sep;
+    html += orangeHeader(`Main Headlines – ${escHtml(sec)}`);
+    html += `<p style="border-top:1px dashed #888;margin:4px 0 14px 0;line-height:0;">&nbsp;</p>`;
+    buckets[sec].forEach(item => {
+      const d = formatDate(item.published_at);
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      html += `<div style="margin-bottom:14px;">`
+            +   `<div style="font-weight:bold;"><b>${escHtml(item.title)}</b></div>`
+            +   `<div>${escHtml(d)}</div>`
+            +   `<div>Source: <a href="${escHtml(item.url)}" target="_blank">${escHtml(srcName)}</a></div>`
+            + `</div>`;
+    });
+  });
+  html += `</div>`;
+
+  let plain = `*** Itaú BBA | Agribusiness, Food & Beverage - Daily News ***\n\n`;
+  sections.forEach(sec => {
+    plain += `${sec}\n`;
+    buckets[sec].forEach(item => { plain += `  - ${item.title}\n`; });
+    plain += `\n`;
+  });
+  plain += `${"-".repeat(70)}\n\n`;
+  sections.forEach(sec => {
+    plain += `Main Headlines - ${sec}\n${"-".repeat(70)}\n\n`;
+    buckets[sec].forEach(item => {
+      const d = formatDate(item.published_at);
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      plain += `${item.title}\n${d}\nSource: ${srcName} (${item.url})\n\n`;
+    });
+  });
+
+  const fullHtml =
+    `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
+  return { html, plain, fullHtml };
+}
+
+// Render interactive preview with per-item reorder arrows + remove button.
+// User clicks ↑/↓ to rearrange before firing email; the final export (Outlook /
+// clipboard) uses whatever order the user left the list in.
+function renderExportPreview() {
+  if (!exportState) return;
+  const { sections, buckets } = exportState;
+  const orange = EXPORT_ORANGE;
+
+  let preview = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">`;
+  preview += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 12px 0;">`
+          + `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</b></p>`;
+  preview += `<p style="font-size:11px;color:#6B7280;margin:0 0 14px 0;text-align:center;">`
+          + `Use ↑ ↓ to reorder · × to remove · top = shown first in email</p>`;
+
+  sections.forEach(sec => {
+    const items = buckets[sec];
+    preview += `<p style="margin:10px 0 4px 0;font-weight:bold;font-size:12pt;color:${orange};">`
+            + `<font color="${orange}"><b>${escHtml(sec)}</b></font></p>`;
+    preview += `<div style="margin:0 0 14px 0;">`;
+    items.forEach((item, idx) => {
+      const isFirst = idx === 0;
+      const isLast = idx === items.length - 1;
+      const upDisabled = isFirst ? "opacity:0.25;pointer-events:none;" : "";
+      const downDisabled = isLast ? "opacity:0.25;pointer-events:none;" : "";
+      preview += `
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #F3F4F6;">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0;">
+            <button type="button" onclick="moveExportItem('${escJs(sec)}',${idx},-1)"
+              style="border:1px solid #E5E7EB;background:#fff;color:#6B7280;border-radius:3px;padding:0 4px;font-size:10px;line-height:14px;cursor:pointer;${upDisabled}"
+              title="Move up">▲</button>
+            <button type="button" onclick="moveExportItem('${escJs(sec)}',${idx},1)"
+              style="border:1px solid #E5E7EB;background:#fff;color:#6B7280;border-radius:3px;padding:0 4px;font-size:10px;line-height:14px;cursor:pointer;${downDisabled}"
+              title="Move down">▼</button>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:500;font-size:12.5px;line-height:1.35;color:#111827;">${escHtml(item.title)}</div>
+            <div style="font-size:11px;color:#9CA3AF;margin-top:2px;">${escHtml(formatDate(item.published_at))} · ${escHtml(item.source && item.source.trim() ? item.source : sourceFromUrl(item.url))}</div>
+          </div>
+          <button type="button" onclick="removeExportItem('${escJs(sec)}',${idx})"
+            style="border:none;background:none;color:#9CA3AF;font-size:16px;line-height:1;padding:2px 6px;cursor:pointer;"
+            title="Remove from email">×</button>
+        </div>`;
+    });
+    preview += `</div>`;
+  });
+  preview += `</div>`;
+
+  document.getElementById("export-preview").innerHTML = preview;
+
+  // Rebuild underlying payload so Outlook / Copy pick up the current ordering.
+  const { html, plain, fullHtml } = buildExportHtmlPlain();
+  window._exportHtml      = fullHtml;
+  window._exportPlainText = plain;
+  window._exportSubject   = exportState.subject;
+  window._exportHtmlInner = html;  // for debugging / potential reuse
+}
+
+function moveExportItem(sec, idx, delta) {
+  if (!exportState) return;
+  const arr = exportState.buckets[sec];
+  if (!arr) return;
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  const [moved] = arr.splice(idx, 1);
+  arr.splice(newIdx, 0, moved);
+  renderExportPreview();
+}
+
+function removeExportItem(sec, idx) {
+  if (!exportState) return;
+  const arr = exportState.buckets[sec];
+  if (!arr) return;
+  arr.splice(idx, 1);
+  // If the section emptied out, drop it from sections to skip empty headers.
+  if (arr.length === 0) {
+    exportState.sections = exportState.sections.filter(s => s !== sec);
+  }
+  // If there's nothing left at all, close the modal.
+  const totalRemaining = exportState.sections.reduce(
+    (n, s) => n + (exportState.buckets[s]?.length || 0), 0);
+  if (totalRemaining === 0) {
+    bootstrap.Modal.getInstance(document.getElementById("exportModal"))?.hide();
+    showToast("Nothing left to export", "info");
+    return;
+  }
+  renderExportPreview();
+}
+
+// Escape a section name for safe use inside a single-quoted onclick attribute.
+function escJs(s) {
+  return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+}
+
+function openInOutlook() {
+  if (!window._exportHtml) return;
+  const subject = window._exportSubject || "Daily News";
+  // Build minimal RFC822 message. X-Unsent:1 tells Outlook to open as a draft.
+  const eml = [
+    "MIME-Version: 1.0",
+    `Subject: ${subject}`,
+    "X-Unsent: 1",
+    'Content-Type: text/html; charset="utf-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    window._exportHtml,
+  ].join("\r\n");
+  const blob = new Blob([eml], { type: "message/rfc822" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  const safeName = subject.replace(/[^\w\d\- ]+/g, "").trim().slice(0, 80) || "daily-news";
+  a.href = url;
+  a.download = `${safeName}.eml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  showToast("Draft downloaded — open the .eml file to send", "success");
+}
+
+async function copyExport() {
+  if (!window._exportHtml) return;
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      const item = new ClipboardItem({
+        "text/html":  new Blob([window._exportHtml],      { type: "text/html"  }),
+        "text/plain": new Blob([window._exportPlainText], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+    } else {
+      await navigator.clipboard.writeText(window._exportPlainText);
+    }
+    showToast("Copied (formatted) — now Open Email and Ctrl+V in the body", "success");
+  } catch (e) {
+    try {
+      await navigator.clipboard.writeText(window._exportPlainText);
+      showToast("Copied as plain text", "success");
+    } catch { showToast("Copy error", "danger"); }
+  }
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() { loadNews(); }
+
+function applySortMode() {
+  sortMode = document.getElementById("sort-mode").value;
+  renderNews(allNews);
+}
+
+function setQuickRange(days) {
+  const today = new Date().toISOString().split("T")[0];
+  const from = new Date(Date.now() - (days - 1) * 86400000).toISOString().split("T")[0];
+  document.getElementById("date-from").value = from;
+  document.getElementById("date-to").value = today;
+  document.querySelectorAll(".quick-range-btn").forEach(btn => {
+    btn.classList.toggle("active", parseInt(btn.dataset.days) === days);
+  });
+  loadNews();
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const res = await fetch(API_BASE + "/api/stats");
+    const data = await res.json();
+    document.getElementById("stat-total").textContent    = data.total;
+    document.getElementById("stat-today").textContent    = data.today;
+    document.getElementById("stat-excluded").textContent = data.excluded;
+  } catch (e) { /* ignore */ }
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+let settingsTab = "groups";
+
+function showSettingsTab(tab) {
+  settingsTab = tab;
+  ["groups","exclusions","stats"].forEach(t => {
+    document.getElementById(`settings-${t}`).classList.toggle("d-none", t !== tab);
+  });
+  document.querySelectorAll("#settings-tabs .nav-link").forEach(a => a.classList.remove("active"));
+  event.target.classList.add("active");
+  if (tab === "exclusions") loadExclusions();
+  if (tab === "groups")     renderGroupSettings();
+  if (tab === "stats")      loadStats();
+}
+
+document.getElementById("settingsModal").addEventListener("show.bs.modal", () => {
+  renderGroupSettings();
+  loadStats();
+});
+
+function renderGroupSettings() {
+  const container = document.getElementById("groups-config");
+  if (!groupsConfig.length) return;
+  container.innerHTML = groupsConfig.map(g => `
+    <div class="mb-4 p-3 border rounded">
+      <h6 class="fw-bold d-flex align-items-center gap-2 mb-3">
+        <span class="group-dot" style="background:${g.color};width:10px;height:10px"></span>
+        ${escHtml(g.name)}
+      </h6>
+      <div class="mb-2">
+        <label class="form-label small fw-medium">PT Queries</label>
+        <div id="kw-pt-tags-${g.id}" class="mb-1">${(g.search_queries_pt||[]).map(k=>kwTag(k,g.id,"pt")).join("")}</div>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" id="kw-pt-input-${g.id}"
+                 placeholder="New PT query..." onkeydown="if(event.key==='Enter') addKw(${g.id},'pt')">
+          <button class="btn btn-outline-secondary" onclick="addKw(${g.id},'pt')">+</button>
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-medium">EN Queries</label>
+        <div id="kw-en-tags-${g.id}" class="mb-1">${(g.search_queries_en||[]).map(k=>kwTag(k,g.id,"en")).join("")}</div>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" id="kw-en-input-${g.id}"
+                 placeholder="New EN query..." onkeydown="if(event.key==='Enter') addKw(${g.id},'en')">
+          <button class="btn btn-outline-secondary" onclick="addKw(${g.id},'en')">+</button>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+function kwTag(text, gid, lang) {
+  return `<span class="keyword-tag" id="tag-${lang}-${gid}-${encodeURIComponent(text)}">
+    ${escHtml(text)}
+    <span class="remove" onclick="removeKw(${gid},'${lang}','${escHtml(text).replace(/'/g,"\\'")}')">×</span>
+  </span>`;
+}
+
+function addKw(gid, lang) {
+  const el = document.getElementById(`kw-${lang}-input-${gid}`);
+  const val = el.value.trim();
+  if (!val) return;
+  const g = groupsConfig.find(x => x.id === gid);
+  if (!g) return;
+  const key = lang === "pt" ? "search_queries_pt" : "search_queries_en";
+  if (!g[key].includes(val)) { g[key].push(val); renderGroupSettings(); }
+  el.value = "";
+}
+
+function removeKw(gid, lang, val) {
+  const g = groupsConfig.find(x => x.id === gid);
+  if (!g) return;
+  const key = lang === "pt" ? "search_queries_pt" : "search_queries_en";
+  g[key] = g[key].filter(k => k !== val);
+  renderGroupSettings();
+}
+
+async function saveSettings() {
+  for (const g of groupsConfig) {
+    await fetch(API_BASE + `/api/groups/${g.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ search_queries_pt: g.search_queries_pt, search_queries_en: g.search_queries_en }),
+    });
+  }
+  bootstrap.Modal.getInstance(document.getElementById("settingsModal")).hide();
+  showToast("Settings saved", "success");
+}
+
+// ── Exclusions ────────────────────────────────────────────────────────────────
+async function loadExclusions() {
+  const res = await fetch(API_BASE + "/api/exclusions");
+  const items = await res.json();
+  const container = document.getElementById("exclusions-list");
+  if (!items.length) {
+    container.innerHTML = '<p class="text-muted small">No learned filters yet.</p>';
+    return;
+  }
+  container.innerHTML = items.map(e => `
+    <div class="exclusion-item">
+      <span>${escHtml(e.pattern)}</span>
+      <button class="btn btn-sm btn-outline-danger" onclick="deleteExclusion(${e.id})">
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>`).join("");
+}
+
+async function addExclusion() {
+  const input = document.getElementById("new-exclusion-pattern");
+  const pattern = input.value.trim();
+  if (!pattern) return;
+  const res = await fetch(API_BASE + "/api/exclusions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pattern }),
+  });
+  const data = await res.json();
+  if (data.success) { input.value = ""; loadExclusions(); showToast("Filter added", "success"); }
+}
+
+async function deleteExclusion(id) {
+  await fetch(API_BASE + `/api/exclusions/${id}`, { method: "DELETE" });
+  loadExclusions();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatDate(dt) {
+  if (!dt) return "";
+  try {
+    const d = new Date(dt.replace(" ", "T"));
+    return d.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch { return dt.split("T")[0]; }
+}
+
+function formatDateUpper(dt) {
+  if (!dt) return "";
+  try {
+    const d = new Date(dt.replace(" ", "T"));
+    const m = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    return `${String(d.getDate()).padStart(2,"0")} ${m[d.getMonth()]} ${d.getFullYear()}`;
+  } catch { return ""; }
+}
+
+function hexToRgba(hex, alpha) {
+  if (!hex || hex.length < 7) return `rgba(100,100,100,${alpha})`;
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function escHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function showLoading(show) {
+  document.getElementById("loading").classList.toggle("d-none", !show);
+  if (show) document.getElementById("news-list").innerHTML = "";
+}
+
+function showToast(msg, type = "info") {
+  const toast = document.getElementById("main-toast");
+  document.getElementById("toast-body").textContent = msg;
+  document.getElementById("toast-title").textContent =
+    { success: "Success", danger: "Error", warning: "Warning", info: "Info" }[type] || "Info";
+  toast.className = `toast align-items-center text-bg-${type} border-0`;
+  bootstrap.Toast.getOrCreateInstance(toast, { delay: 4000 }).show();
+}
+</script>
+</body>
+</html>
