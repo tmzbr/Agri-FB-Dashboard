@@ -45,15 +45,14 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           git add "CVM Buybacks/cvm_buybacks.db"
-          # Só adiciona o HTML se ele existir
           if [ -f "CVM Buybacks/cvm_buybacks.html" ]; then
             git add "CVM Buybacks/cvm_buybacks.html"
           fi
           if git diff --staged --quiet; then
             echo "Sem mudanças."
           else
-            git pull --rebase origin main
             git commit -m "auto: refresh dashboard — $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           fi
