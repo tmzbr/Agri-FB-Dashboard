@@ -407,27 +407,42 @@ function setTab(t) {
   renderComparisonCharts(); // comparison charts follow the Q/M/W tab
 }
 
-// ── Axis helper: returns {min, max, stepSize} where max-min is an exact
+/// ── Axis helper: returns {min, max, stepSize} where max-min is an exact
 //    multiple of stepSize, guaranteeing perfectly uniform tick spacing.
+//
+//    Design goals:
+//    1. Differences between bars are visually clear (don't compress to a
+//       tiny band at the top of the chart).
+//    2. The axis bottom is NOT confused with zero: the lowest bar sits at
+//       least ~25% of the total visible height above the axis minimum,
+//       achieved by placing the axis floor at least 1 full step below min.
 function niceScale(vals, nTicks) {
   nTicks = nTicks || 5;
   if (!vals || !vals.length) return {};
   const mn = Math.min(...vals);
   const mx = Math.max(...vals);
-  const range = (mx - mn) || 1;
-  // pick a "nice" step for ~nTicks ticks
-  let rawStep = range / (nTicks - 1);
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const norm = rawStep / mag;
-  let step = norm <= 1.0 ? 1.0 * mag
-           : norm <= 2.0 ? 2.0 * mag
-           : norm <= 2.5 ? 2.5 * mag
-           : norm <= 5.0 ? 5.0 * mag
-           :               10.0 * mag;
-  // snap min/max to exact multiples of step (with small padding)
-  const axMin = Math.floor((mn - step * 0.15) / step) * step;
-  const axMax = axMin + step * Math.ceil((mx - axMin + step * 0.15) / step);
-  const fix = v => Math.round(v * 1e9) / 1e9; // float artefact guard
+  const range = (mx - mn) || Math.abs(mn) * 0.1 || 1;
+
+  // Step sized for the data range only (not including floor/ceiling padding).
+  // Using (nTicks-2) gives slightly larger steps so the 1-step floor padding
+  // doesn't crowd the scale with too many ticks.
+  let rawStep = range / Math.max(nTicks - 2, 2);
+  const mag   = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm  = rawStep / mag;
+  const step  = norm <= 1.0 ? 1.0 * mag
+              : norm <= 2.0 ? 2.0 * mag
+              : norm <= 2.5 ? 2.5 * mag
+              : norm <= 5.0 ? 5.0 * mag
+              :               10.0 * mag;
+
+  // Floor: snap to step multiple that is at least 1 full step below min.
+  // This guarantees the shortest bar sits ≥ 1 step above the axis bottom,
+  // giving clear visual context that the baseline ≠ 0.
+  const axMin = Math.floor((mn - step) / step) * step;
+  // Ceiling: snap to step multiple with a small top buffer.
+  const axMax = Math.ceil((mx + step * 0.4) / step) * step;
+
+  const fix = v => Math.round(v * 1e9) / 1e9;
   return { min: fix(axMin), max: fix(axMax), stepSize: step };
 }
 
