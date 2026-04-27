@@ -1020,14 +1020,22 @@ def upsert_ipe_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
 # FORMULÁRIO CONSOLIDADO — POSIÇÃO DE GRUPOS (Controlador, CA, Diretoria, etc.)
 # ============================================================================
 
-# Mapeamento X do label de grupo no checkbox da página do Consolidado
-# Confirmado com pdfplumber nos PDFs da VITTIA fev/2026
+# Mapeamento X do '(' do checkbox por grupo — confirmado com pdfplumber VITTIA fev/2026
+# A detecção usa o X do próprio parêntese '(' que precede o 'X',
+# não o X do label de texto (que pode estar fragmentado em múltiplas linhas).
+#
+# Layout confirmado (x0 do '('):
+#   Controlador:          x ≈ 122  → range [115, 145]
+#   Conselho Administração: x ≈ 199  → range [190, 215]
+#   Diretoria:            x ≈ 305  → range [295, 320]  ← label dividido "Direto"+"ria"
+#   Conselho Fiscal:      x ≈ 335  → range [325, 355]
+#   Órgãos Técnicos:      x ≈ 411  → range [403, 425]
 GRUPO_X_RANGES = [
-    (115, 175, "Controlador"),
-    (195, 270, "CA"),        # Conselho Administração
-    (255, 345, "Diretoria"),
-    (330, 400, "CF"),        # Conselho Fiscal
-    (405, 495, "Orgaos"),   # Órgãos Técnicos ou Consultivos
+    (115, 145, "Controlador"),
+    (190, 215, "CA"),        # Conselho Administração
+    (295, 320, "Diretoria"),
+    (325, 355, "CF"),        # Conselho Fiscal
+    (403, 425, "Orgaos"),   # Órgãos Técnicos ou Consultivos
 ]
 GRUPO_LABELS = {
     "Controlador": "Controlador",
@@ -1099,35 +1107,29 @@ def parse_consolidated_pdf(
             if not ws:
                 continue
 
-            # ── Detectar grupo pelo checkbox '( X )' em y≈150-220 ──────────
+            # ── Detectar grupo pelo checkbox '( X )' em y≈140-220 ──────────
+            # Usamos o X do '(' que precede o 'X', não o X do label de texto,
+            # porque o label pode estar fragmentado em múltiplas linhas (ex: "Direto"+"ria")
+            # IMPORTANTE: ordenar por (top, x0) e verificar mesma linha para evitar
+            # que palavras de linhas diferentes quebrem a detecção do padrão '( X )'
             grupo_code = None
             checkbox_words = sorted(
-                [w for w in ws if 150 <= w["top"] <= 220],
-                key=lambda w: w["x0"]
+                [w for w in ws if 140 <= w["top"] <= 220],
+                key=lambda w: (round(w["top"] / 3) * 3, w["x0"])
             )
             for i, w in enumerate(checkbox_words):
                 if w["text"] in ("X", "x") and 0 < i < len(checkbox_words) - 1:
-                    if checkbox_words[i-1]["text"] == "(" and checkbox_words[i+1]["text"] == ")":
-                        # Encontrou '( X )' — qual grupo vem depois?
-                        after_x = checkbox_words[i+1]["x1"]
-                        label_words = [
-                            cw for cw in checkbox_words
-                            if cw["x0"] > after_x and cw["text"] not in ("(", ")", "X", "x")
-                        ]
-                        if label_words:
-                            lx = label_words[0]["x0"]
-                            for x_lo, x_hi, code in GRUPO_X_RANGES:
-                                if x_lo <= lx <= x_hi:
-                                    grupo_code = code
-                                    break
-                        # Fallback texto
-                        if not grupo_code and label_words:
-                            lt = " ".join(lw["text"] for lw in label_words[:3]).lower()
-                            if "control" in lt:   grupo_code = "Controlador"
-                            elif "administr" in lt: grupo_code = "CA"
-                            elif "diretor" in lt or "direto" in lt: grupo_code = "Diretoria"
-                            elif "fiscal" in lt:  grupo_code = "CF"
-                            elif "órgão" in lt or "orgao" in lt or "técn" in lt: grupo_code = "Orgaos"
+                    prev = checkbox_words[i - 1]
+                    nxt  = checkbox_words[i + 1]
+                    # Verificar que estão na mesma linha (y próximo)
+                    if (prev["text"] == "(" and nxt["text"] == ")"
+                            and abs(prev["top"] - w["top"]) < 5
+                            and abs(nxt["top"]  - w["top"]) < 5):
+                        paren_x = prev["x0"]
+                        for x_lo, x_hi, code in GRUPO_X_RANGES:
+                            if x_lo <= paren_x <= x_hi:
+                                grupo_code = code
+                                break
                         break
 
             if not grupo_code:
