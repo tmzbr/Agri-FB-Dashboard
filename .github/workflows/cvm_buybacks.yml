@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # busca histórico completo para evitar conflitos de push
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -53,5 +55,7 @@ jobs:
             echo "Sem mudanças."
           else
             git commit -m "auto: refresh dashboard — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git fetch origin main
+            git rebase origin/main
             git push origin main
           fi
