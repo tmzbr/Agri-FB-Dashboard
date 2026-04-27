@@ -1278,17 +1278,47 @@ def already_ingested_consolidated(
     conn: sqlite3.Connection, cnpj_digits: str, data_ref: str, versao: int
 ) -> bool:
     """
-    Retorna True apenas se todos os 5 grupos com Saldo Final já estão no banco.
-    Isso garante que PDFs com grupos perdidos pelo bug do checkbox (ex: Diretoria)
-    sejam re-parseados e completados corretamente.
+    Lógica de deduplicação robusta para o Formulário Consolidado.
+
+    Retorna True (pula o PDF) apenas se:
+      1. Já existe pelo menos 1 Saldo Final no banco para este (cnpj, mes, versao), E
+      2. O número de grupos com SF é >= ao número de grupos do mês anterior da mesma empresa.
+
+    Isso garante que:
+      - Meses novos (sem nenhuma linha): sempre parseados → OK
+      - Meses já no banco com todos os grupos: pulados → eficiente
+      - Meses no banco com grupos faltando (bug antigo): re-parseados → auto-corrige
+      - Empresas com poucos grupos (ex: SMTO3 só tem Controlador): pulados corretamente
     """
-    r = conn.execute(
+    # Quantos grupos com SF já temos para este mês?
+    current = conn.execute(
         "SELECT COUNT(DISTINCT grupo) FROM consolidated_positions "
         "WHERE cnpj_digits=? AND data_referencia=? AND versao=? "
         "AND tipo_movimentacao='Saldo Final'",
         (cnpj_digits, data_ref, versao),
-    ).fetchone()
-    return r[0] >= 5
+    ).fetchone()[0]
+
+    if current == 0:
+        return False  # nenhuma linha — precisa parsear
+
+    # Quantos grupos tem o mês mais recente já no banco (excluindo este mês)?
+    prev = conn.execute(
+        "SELECT COUNT(DISTINCT grupo) FROM consolidated_positions "
+        "WHERE cnpj_digits=? AND data_referencia < ? "
+        "AND tipo_movimentacao='Saldo Final' "
+        "AND data_referencia = ("
+        "  SELECT MAX(data_referencia) FROM consolidated_positions "
+        "  WHERE cnpj_digits=? AND data_referencia < ? AND tipo_movimentacao='Saldo Final'"
+        ")",
+        (cnpj_digits, data_ref, cnpj_digits, data_ref),
+    ).fetchone()[0]
+
+    if prev == 0:
+        # Primeiro mês no banco — assume completo se tem pelo menos 1 grupo
+        return current >= 1
+
+    # Completo se tem tantos grupos quanto o mês anterior
+    return current >= prev
 
 
 def ingest_consolidated_year(
