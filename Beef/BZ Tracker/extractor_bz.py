@@ -1513,10 +1513,14 @@ def materialise(conn):
             price_incremental = None
 
         # ── Business days and daily average volume ────────────────────────────
-        if biz_d is None:
-            biz_d = _biz_days_between(
-                date.fromisoformat(s), date.fromisoformat(e)
-            )
+        # Always recompute from actual dates: _weekly_raw.biz_days may hold MTD
+        # cumulative biz_days for bulletin-created rows (e.g. 16 for Apr 20-24
+        # meaning "16 biz days in April so far"), whereas vol_daily needs the
+        # number of biz_days in THIS specific week only (e.g. 4 for Apr 20-24
+        # because Apr 21 = Tiradentes holiday).
+        biz_d = _biz_days_between(
+            date.fromisoformat(s), date.fromisoformat(e)
+        )
         vol_daily = (vol_week / biz_d
                      if vol_week is not None and biz_d and biz_d > 0
                      else None)
