@@ -364,13 +364,13 @@ const SUBSECTORS = {
     { id:'beef',      label:'Beef'      },
     { id:'chicken',   label:'Chicken'   },
     { id:'pork',      label:'Pork'      },
-    { id:'food',      label:'Food'      },
+    { id:'staples',   label:'Staples'   },
     { id:'beverages', label:'Beverages' },
   ],
 };
-// Normalize legacy Supabase sector/subsector IDs (food->fnb, bev->fnb, staples->food)
+// Normalize legacy Supabase sector/subsector IDs (food->fnb, bev->fnb; subsector food->staples)
 function normalizeSector(s){ return (s==='food'||s==='bev')?'fnb':s; }
-function normalizeSubsector(s){ return s==='staples'?'food':s; }
+function normalizeSubsector(s){ return s==='food'?'staples':s; }
 
 /* ══ UTILS ══ */
 const esc = s => s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
