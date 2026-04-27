@@ -504,16 +504,43 @@ function recomputeWeekly() {
   });
 }
 
+// ── Daily-volume lookups derived from weekly raw data ────────────────────────
+// Returns {period → vol_tons_daily} for monthly ('YYYY-MM') and quarterly ('QQ##')
+function _buildDailyVolLookup() {
+  const mon = {}, qtr = {};
+  WEEKLY_RAW.forEach(r => {
+    if (r.vol_tons == null || r.biz_days == null || r.biz_days === 0) return;
+    const yr  = parseInt(r.start_date.slice(0, 4));
+    const mo  = parseInt(r.start_date.slice(5, 7));
+    const mKey = r.start_date.slice(0, 7);
+    const qKey = `${Math.ceil(mo / 3)}Q${String(yr).slice(-2)}`;
+    [mon, qtr].forEach((obj, idx) => {
+      const k = idx === 0 ? mKey : qKey;
+      if (!obj[k]) obj[k] = { vol: 0, biz: 0 };
+      obj[k].vol += r.vol_tons;
+      obj[k].biz += r.biz_days;
+    });
+  });
+  const toDaily = obj => {
+    const out = {};
+    Object.entries(obj).forEach(([k, v]) => { out[k] = v.biz > 0 ? v.vol / v.biz : null; });
+    return out;
+  };
+  return { mon: toDaily(mon), qtr: toDaily(qtr) };
+}
+
 function recomputeAll() {
-  MONTHLY    = recomputeMonthly();
+  const dvol  = _buildDailyVolLookup();
+  MONTHLY    = recomputeMonthly().map(r => ({ ...r, vol_tons_daily: dvol.mon[r.period] ?? null }));
   WEEKLY     = recomputeWeekly();
-  QUARTERLY  = buildQuarterly(MONTHLY);
+  QUARTERLY  = buildQuarterly(MONTHLY, dvol.qtr);
   SEASONALITY = buildSeasonality(MONTHLY);
   render();
 }
 
 // ─── QUARTERLY AGGREGATION ───────────────────────────────────────────────────
-function buildQuarterly(monthly) {
+function buildQuarterly(monthly, qtrDailyVol) {
+  qtrDailyVol = qtrDailyVol || {};
   const map = {};
   monthly.forEach(r => {
     if (r.spreadX == null) return;
@@ -547,7 +574,8 @@ function buildQuarterly(monthly) {
       cepea_r_kg:   avg(e._grain),
       spread:       avg(e._spread),
       spreadX:      avg(e._spreadX),
-      vol_tons:     sum(e._vol),
+      vol_tons:       sum(e._vol),
+      vol_tons_daily: qtrDailyVol[e.period] ?? null,
     }));
 }
 
@@ -620,9 +648,10 @@ async function loadDB() {
     db.close();
 
     // Initial computation with default settings (lag=2, corn=66%)
-    MONTHLY    = recomputeMonthly();
+    const dvol0 = _buildDailyVolLookup();
+    MONTHLY    = recomputeMonthly().map(r => ({ ...r, vol_tons_daily: dvol0.mon[r.period] ?? null }));
     WEEKLY     = recomputeWeekly();
-    QUARTERLY  = buildQuarterly(MONTHLY);
+    QUARTERLY  = buildQuarterly(MONTHLY, dvol0.qtr);
     SEASONALITY = buildSeasonality(MONTHLY);
 
     loadEl.style.display = 'none';
@@ -1141,8 +1170,8 @@ function buildReferenceData() {
   }
 }
 
-function _setREF(periods, tag, hasVolume, volUnit = "'000 t", volFn = null) {
-  const defaultFn = p => p.hasVol ? (p.d?.vol_tons != null ? p.d.vol_tons / 1000 : null) : null;
+function _setREF(periods, tag, hasVolume, volUnit = "t/biz day", volFn = null) {
+  const defaultFn = p => p.hasVol ? (p.d?.vol_tons_daily ?? null) : null;
   REF = {
     labels:    periods.map(p => p.label),
     usd:       periods.map(p => p.d?.secex_usd_kg ?? null),
@@ -1317,38 +1346,4 @@ function renderPriceRefChart() {
           min: usdScale.min, max: usdScale.max,
           title: { display: true, text: 'USD/kg',
             color: '#1A1A1A', font: { size: 9, weight: '600' } },
-          ticks: { color: '#1A1A1A', font: { size: 9 },
-            stepSize: usdScale.stepSize, callback: v => v.toFixed(2) },
-          grid: { color: 'rgba(0,0,0,0.05)' },
-        },
-        yBrl: {
-          type: 'linear', position: 'right',
-          min: brlScale.min, max: brlScale.max,
-          title: { display: true, text: 'BRL/kg',
-            color: '#FF5500', font: { size: 9, weight: '600' } },
-          ticks: { color: '#FF5500', font: { size: 9 },
-            stepSize: brlScale.stepSize, callback: v => v.toFixed(2) },
-          grid: { drawOnChartArea: false },
-        },
-        x: {
-          ticks: { color: '#999', font: { size: 9 }, maxRotation: 0 },
-          grid: { color: 'rgba(0,0,0,0.04)' },
-        },
-      },
-    },
-  });
-}
-
-// ─── FULL RENDER ─────────────────────────────────────────────────────────────
-function render() {
-  renderCharts();
-  renderSeasonalityChart();
-  renderComparisonCharts();
-  renderTable();
-}
-
-// ─── BOOT ────────────────────────────────────────────────────────────────────
-loadDB();
-</script>
-</body>
-</html>
+      
