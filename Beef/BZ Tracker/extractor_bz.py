@@ -646,29 +646,14 @@ def seed_weekly_raw(conn):
                                 vol_tons, rev_000usd, biz_days)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(start_date) DO UPDATE SET
-            -- Seed price is now exact (6 dp from SECEX bulletin) — always update
-            price_usd_kg = CASE
-                WHEN excluded.price_usd_kg IS NOT NULL THEN excluded.price_usd_kg
-                ELSE _weekly_raw.price_usd_kg
-            END,
-            -- vol_tons: seed is MTD cumulative; keep if existing is already valid
-            vol_tons = CASE
-                WHEN excluded.vol_tons IS NOT NULL AND (
-                    _weekly_raw.vol_tons IS NULL OR _weekly_raw.vol_tons < 100.0
-                ) THEN excluded.vol_tons
-                ELSE _weekly_raw.vol_tons
-            END,
-            -- rev_000usd: seed is exact from SECEX bulletin — always update
-            -- (overwrites any previously rounded value computed from price × vol)
-            rev_000usd = CASE
-                WHEN excluded.rev_000usd IS NOT NULL THEN excluded.rev_000usd
-                ELSE _weekly_raw.rev_000usd
-            END,
-            biz_days = CASE
-                WHEN excluded.biz_days IS NOT NULL AND _weekly_raw.biz_days IS NULL
-                    THEN excluded.biz_days
-                ELSE _weekly_raw.biz_days
-            END
+            -- SEED is always authoritative: fully replace all fields.
+            -- Partial updates (the old approach) caused price corruption when
+            -- rev was updated but vol/end_date were left from a stale bulletin row.
+            end_date     = excluded.end_date,
+            price_usd_kg = excluded.price_usd_kg,
+            vol_tons     = excluded.vol_tons,
+            rev_000usd   = excluded.rev_000usd,
+            biz_days     = excluded.biz_days
         """,
         enriched
     )

@@ -811,8 +811,9 @@ function renderTable() {
       <th style="width:10%;">FX<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/USD</span></th>
       <th style="width:14%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:14%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
-      <th style="width:12%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
-      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(×)</span></th>
+      <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/day</span></th>
+      <th style="width:14%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(×)</span></th>
     </tr>`;
     body.innerHTML = WEEKLY.slice().reverse().map(r => `<tr>
       <td>${r.start_date ?? '—'}</td>
@@ -822,6 +823,7 @@ function renderTable() {
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${fmtBRL(r.cepea_r_kg)}</td>
       <td>${r.vol_tons != null ? (r.vol_tons / 1000).toFixed(1) : '—'}</td>
+      <td>${(r.vol_tons != null && r.biz_days > 0) ? Math.round(r.vol_tons / r.biz_days).toLocaleString() : '—'}</td>
       <td>${fmtSpread(r.spread)}</td>
     </tr>`).join('');
   }
