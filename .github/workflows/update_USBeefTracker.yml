@@ -2,7 +2,7 @@ name: Weekly Beef Data Update
 
 on:
   schedule:
-    - cron: '0 14 * * 1'   # toda segunda às 14h UTC (11h Brasília)
+    - cron: '0 12 * * 2'   # toda terça às 12h UTC (9h Brasília)
   workflow_dispatch:
 
 permissions:
