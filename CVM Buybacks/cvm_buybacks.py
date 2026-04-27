@@ -34,6 +34,7 @@ import re
 import sqlite3
 import time
 import zipfile
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
