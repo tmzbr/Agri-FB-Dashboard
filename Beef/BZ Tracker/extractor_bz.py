@@ -662,6 +662,24 @@ def seed_weekly_raw(conn):
     conn.commit()
     print(f"  [WEEKLY] {len(WEEKLY_SEED)} rows seeded/validated in _weekly_raw.")
 
+    # Clean up superseded rows: delete any _weekly_raw row whose start_date falls
+    # strictly inside a SEED range (start > seed_start AND start <= seed_end).
+    # This removes phantom rows created by outdated bulletin logic (e.g. Apr 20-24
+    # when the SEED now defines Apr 18-24 as the canonical row).
+    deleted = 0
+    for s_str, e_str, *_ in WEEKLY_SEED:
+        rows = conn.execute(
+            "SELECT start_date FROM _weekly_raw WHERE start_date > ? AND start_date <= ?",
+            (s_str, e_str)
+        ).fetchall()
+        for (sd,) in rows:
+            conn.execute("DELETE FROM _weekly_raw WHERE start_date = ?", (sd,))
+            print(f"  [WEEKLY] Deleted superseded row: {sd} (covered by {s_str}→{e_str})")
+            deleted += 1
+    if deleted:
+        conn.commit()
+        print(f"  [WEEKLY] Cleaned up {deleted} superseded row(s).")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CEPEA WEB SCRAPER (incremental daily updates)

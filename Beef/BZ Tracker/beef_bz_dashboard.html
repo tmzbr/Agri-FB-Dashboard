@@ -438,7 +438,9 @@ function niceScale(vals, nTicks) {
   // Floor: snap to step multiple that is at least 1 full step below min.
   // This guarantees the shortest bar sits ≥ 1 step above the axis bottom,
   // giving clear visual context that the baseline ≠ 0.
-  const axMin = Math.floor((mn - step) / step) * step;
+  // However, never go negative when all data is positive (would imply negative volumes etc.).
+  let axMin = Math.floor((mn - step) / step) * step;
+  if (mn >= 0 && axMin < 0) axMin = 0;
   // Ceiling: snap to step multiple with a small top buffer.
   const axMax = Math.ceil((mx + step * 0.4) / step) * step;
 
