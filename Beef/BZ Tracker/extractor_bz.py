@@ -1559,8 +1559,10 @@ def materialise(conn):
             now_iso,
         ))
 
+    # Rebuild weekly table from scratch so deleted _weekly_raw rows don't linger.
+    conn.execute("DELETE FROM weekly")
     conn.executemany(
-        "INSERT OR REPLACE INTO weekly"
+        "INSERT INTO weekly"
         "(start_date,end_date,secex_usd_kg,fx,secex_brl_kg,cepea_r_kg,spread,"
         "vol_tons,biz_days,vol_tons_daily,updated_at)"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
