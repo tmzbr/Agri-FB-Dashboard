@@ -259,8 +259,10 @@ WEEKLY_SEED = [
     ("2026-03-09","2026-03-13",5.848168,115678.5,666888.9),
     ("2026-03-16","2026-03-20",5.825231,167061.8,966208.5),
     ("2026-03-23","2026-03-31",5.892906,233951.5,1360383.2),
-    # ── 2026-Apr (first bulletin: Apr 1-10, biz_days=7) ────────────────────────
-    ("2026-04-01","2026-04-10",6.078718,97264.669,591244.475),
+    # ── 2026-Apr ─────────────────────────────────────────────────────────────────
+    ("2026-04-01","2026-04-10",6.078718,97264.669,591244.475),   # biz_days=7
+    ("2026-04-11","2026-04-17",6.255470,153353.3,942105.2),      # biz_days=5
+    ("2026-04-20","2026-04-24",6.340334,216266.444,1340995.538), # biz_days=4 (Mon–Thu)
 ]
 
 
@@ -1313,34 +1315,29 @@ def fetch_weekly_bulletin(conn):
             e_date = str(today)
 
         # ── NEW BULLETIN DETECTION ────────────────────────────────────────────
-        # If biz_days from the bulletin is greater than what the latest stored
-        # row already covers, a new SECEX bulletin was published.
-        # Instead of overwriting the existing row (which destroys historical data),
-        # create a NEW incremental row whose start_date = next business day after
-        # the previous row's end_date, storing the new MTD cumulative values.
-        # materialise() will de-accumulate correctly when it sees multiple rows.
-        if (biz_days is not None and existing_bd is not None
-                and biz_days > existing_bd):
+        # Compare the end_date the new bulletin would produce against the
+        # latest stored row's end_date.  Using end_date (rather than biz_days)
+        # avoids the MTD-vs-weekly confusion: SEED rows store weekly biz_days
+        # while bulletin rows store MTD cumulative biz_days.
+        new_end_dt = _nth_biz_day(target_yr, target_mo, biz_days) if biz_days else None
+        new_e_str  = str(new_end_dt) if new_end_dt else str(today)
+
+        if new_e_str > e_date:
+            # Bulletin covers a period BEYOND the latest stored row → new row
             prev_end_dt  = date.fromisoformat(e_date)
             new_start_dt = prev_end_dt + _td(days=1)
             while new_start_dt.weekday() >= 5:   # skip weekends
                 new_start_dt += _td(days=1)
-            new_end_dt = _nth_biz_day(target_yr, target_mo, biz_days)
             s_date = str(new_start_dt)
-            e_date = str(new_end_dt) if new_end_dt else str(today)
+            e_date = new_e_str
             existing_price = None
-            print(f"  [BULLETIN] New bulletin detected (biz_days {existing_bd}→{biz_days})"
+            print(f"  [BULLETIN] New bulletin detected (end {e_date} → {new_e_str})"
                   f" — inserting NEW row {s_date} → {e_date}")
         else:
-            # Same bulletin or first row — update in place
-            if biz_days is not None and biz_days > 0:
-                end_dt = _nth_biz_day(target_yr, target_mo, biz_days)
-                if end_dt:
-                    new_e = str(end_dt)
-                    if new_e != e_date:
-                        print(f"  [BULLETIN] Correcting end_date: {e_date} → {new_e} "
-                              f"(biz_days={biz_days})")
-                        e_date = new_e
+            # Same or older bulletin — update existing row in place
+            if new_e_str != e_date and new_end_dt:
+                print(f"  [BULLETIN] Correcting end_date: {e_date} → {new_e_str}")
+                e_date = new_e_str
             print(f"  [BULLETIN] Updating existing row: {s_date} → {e_date}")
 
     # Validate existing_price; don't carry forward a previously bad value
