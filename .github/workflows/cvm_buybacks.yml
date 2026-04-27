@@ -1,11 +1,8 @@
 name: Update CVM Buybacks DB (v2 — IPE Individual)
 
 on:
-  # Toda segunda e quinta-feira às 10:00 UTC (07:00 BRT).
-  # IPEs individuais são publicados mensalmente, mas verificamos
-  # frequentemente para capturar reapresentações.
   schedule:
-    - cron: "0 10 * * 1,4"
+    - cron: "0 10 * * 1,4"   # segunda e quinta, 10:00 UTC (07:00 BRT)
 
   workflow_dispatch:
     inputs:
@@ -43,15 +40,17 @@ jobs:
         if: ${{ github.event.inputs.bootstrap == 'true' }}
         run: python cvm_buybacks.py --bootstrap
 
-      - name: Commit DB
+      - name: Commit DB + HTML
         working-directory: ${{ github.workspace }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "CVM Buybacks/cvm_buybacks.db"
+          git add "CVM Buybacks/cvm_buybacks.html"
           if git diff --staged --quiet; then
             echo "Sem mudanças."
           else
-            git commit -m "auto: refresh cvm_buybacks.db — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git pull --rebase origin main
+            git commit -m "auto: refresh dashboard — $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           fi
