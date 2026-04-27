@@ -262,7 +262,7 @@ WEEKLY_SEED = [
     # ── 2026-Apr ─────────────────────────────────────────────────────────────────
     ("2026-04-01","2026-04-10",6.078718,97264.669,591244.475),   # biz_days=7
     ("2026-04-11","2026-04-17",6.255470,153353.3,942105.2),      # biz_days=5
-    ("2026-04-20","2026-04-24",6.340334,216266.444,1340995.538), # biz_days=4 (Mon–Thu)
+    ("2026-04-18","2026-04-24",6.340334,216266.444,1340995.538), # biz_days=4 (Apr21=Tiradentes)
 ]
 
 
@@ -1332,9 +1332,7 @@ def fetch_weekly_bulletin(conn):
         if new_e_str > e_date:
             # Bulletin covers a period BEYOND the latest stored row → new row
             prev_end_dt  = date.fromisoformat(e_date)
-            new_start_dt = prev_end_dt + _td(days=1)
-            while new_start_dt.weekday() >= 5:   # skip weekends
-                new_start_dt += _td(days=1)
+            new_start_dt = prev_end_dt + _td(days=1)  # D+1 calendar (no weekend skip)
             s_date = str(new_start_dt)
             e_date = new_e_str
             existing_price = None
