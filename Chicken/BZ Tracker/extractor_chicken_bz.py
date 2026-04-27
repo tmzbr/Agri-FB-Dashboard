@@ -741,25 +741,10 @@ def seed_weekly_raw(conn):
         INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(start_date) DO UPDATE SET
-            end_date = excluded.end_date,
-            price_usd_kg = CASE
-                WHEN _weekly_raw.price_usd_kg IS NULL THEN excluded.price_usd_kg
-                WHEN _weekly_raw.price_usd_kg < 0.5   THEN excluded.price_usd_kg
-                WHEN _weekly_raw.price_usd_kg > 10.0  THEN excluded.price_usd_kg
-                ELSE _weekly_raw.price_usd_kg
-            END,
-            vol_tons = CASE
-                WHEN excluded.vol_tons IS NOT NULL AND (
-                    _weekly_raw.vol_tons IS NULL OR
-                    _weekly_raw.vol_tons < 100.0
-                ) THEN excluded.vol_tons
-                ELSE _weekly_raw.vol_tons
-            END,
-            biz_days = CASE
-                WHEN excluded.biz_days IS NOT NULL AND _weekly_raw.biz_days IS NULL
-                    THEN excluded.biz_days
-                ELSE _weekly_raw.biz_days
-            END
+            end_date     = excluded.end_date,
+            price_usd_kg = excluded.price_usd_kg,
+            vol_tons     = excluded.vol_tons,
+            biz_days     = excluded.biz_days
         """,
         enriched
     )
@@ -889,265 +874,168 @@ def fetch_cepea_daily(conn):
 # ══════════════════════════════════════════════════════════════════════════════
 def fetch_weekly_bulletin(conn):
     """
-    Fetch SECEX weekly bulletin Excel and update _weekly_raw with current
-    week's price_usd_kg and vol_tons (MTD cumulative) for poultry (aves).
+    Fetch MDIC weekly bulletin from the fixed URL:
+      https://balanca.economia.gov.br/balanca/semanal/Setores_Produtos.xlsx
+
+    This file is updated every week and always holds the current MTD cumulative
+    data for exports by sector/product (CUCI).
+
+    File structure (sheet EXP):
+      Row 7, col 2 : period header e.g. "Abr/2026"
+      Col 1        : product description
+      Col 6        : Toneladas MTD (cumulative from 1st of month)
+      Col 10       : Preço US$/Tonelada → divide by 1000 for USD/kg
+
+    vol_tons stored as MTD cumulative; materialise() de-accumulates monthly.
     """
-    import io, re as _re
-
-    BASE     = "https://balanca.economia.gov.br"
-    PAGE_URL = f"{BASE}/balanca/pg_principal_bc/principais_resultados.html"
-
+    import io, re as _re, zipfile as _zf
     from datetime import date as _date, timedelta as _td
 
-    PT_MON = {1:"Jan",2:"Fev",3:"Mar",4:"Abr",5:"Mai",6:"Jun",
-              7:"Jul",8:"Ago",9:"Set",10:"Out",11:"Nov",12:"Dez"}
-    PT_MON_REV = {v.lower(): k for k, v in PT_MON.items()}
-    today  = _date.today()
-    yr     = today.year
-    mo     = today.month
-    wk_num = today.isocalendar()[1]
+    XLSX_URL   = "https://balanca.economia.gov.br/balanca/semanal/Setores_Produtos.xlsx"
+    PT_MON_REV = {"jan":1,"fev":2,"mar":3,"abr":4,"mai":5,"jun":6,
+                  "jul":7,"ago":8,"set":9,"out":10,"nov":11,"dez":12}
+    POULTRY_KW = ("aves", "frango", "galinha", "peru", "pato", "0207")
+    today = _date.today()
 
-    # ── Step 1: find xlsx URL from page ──────────────────────────────────────
-    xlsx_url = None
-    KEYWORDS = ("cuci", "produto", "semana", "boletim", "isic", "ativ")
-    try:
-        import requests as _req
-        html_r = _req.get(
-            PAGE_URL,
-            headers={"Accept": "text/html,application/xhtml+xml",
-                     "User-Agent": "Mozilla/5.0"},
-            timeout=30, verify=False,
-        )
-        page_text = html_r.text
-        href_links = _re.findall(r'href=["\']([^"\']+\.xlsx?)["\']',
-                                 page_text, _re.IGNORECASE)
-        all_xlsx   = _re.findall(r'["\']([^"\']*\.xlsx?)["\']',
-                                  page_text, _re.IGNORECASE)
-        candidates = href_links + all_xlsx
-        print(f"  [BULLETIN] Page fetched. xlsx candidates: {len(candidates)}")
-        for lnk in candidates:
-            if any(k in lnk.lower() for k in KEYWORDS):
-                xlsx_url = lnk if lnk.startswith("http") else f"{BASE}{lnk}"
-                print(f"  [BULLETIN] Found via page scrape: {xlsx_url}")
-                break
-    except Exception as exc:
-        print(f"  [BULLETIN] Page fetch error: {exc}")
-
-    # ── Step 2: guessed URL patterns ─────────────────────────────────────────
-    if xlsx_url is None:
-        print("  [BULLETIN] Trying guessed URL patterns …")
-        guesses = []
-        for w in range(wk_num, wk_num - 3, -1):
-            w = max(w, 1)
-            for tpl in (
-                f"/balanca/bd/boletim/CUCI_EXP_SEMANA_{yr}_{w:02d}.xlsx",
-                f"/balanca/bd/boletim/AtividadeEconomica_EXP_SEMANA_{yr}_{w:02d}.xlsx",
-                f"/balanca/bd/boletim/PRODUTO_EXP_SEMANA_{yr}_{w:02d}.xlsx",
-            ):
-                guesses.append(BASE + tpl)
-
-        for url in guesses:
-            try:
-                import requests as _req
-                probe = _req.head(url, timeout=10, verify=False,
-                                  headers={"User-Agent": "Mozilla/5.0"})
-                if probe.status_code == 200:
-                    xlsx_url = url
-                    print(f"  [BULLETIN] Guessed URL: {xlsx_url}")
-                    break
-                else:
-                    print(f"  [BULLETIN]   {probe.status_code} {url.split('/')[-1]}")
-            except Exception:
-                pass
-
-    if xlsx_url is None:
-        import os
-        xlsx_url = os.environ.get("BULLETIN_XLSX_URL")
-        if xlsx_url:
-            print(f"  [BULLETIN] Using env override: {xlsx_url}")
-        else:
-            print("  [BULLETIN] Could not locate Excel file.")
-            return 0
-
-    # ── Step 3: download Excel ────────────────────────────────────────────────
-    print(f"  [BULLETIN] Downloading: {xlsx_url}")
-    r2 = get(xlsx_url)
-    if r2 is None:
+    # ── Download ──────────────────────────────────────────────────────────────
+    print(f"  [BULLETIN] Downloading Setores_Produtos.xlsx …")
+    r = get(XLSX_URL)
+    if r is None:
         return 0
 
+    # ── Load (MDIC files always have drawing refs — strip them) ───────────────
     try:
-        import openpyxl, zipfile as _zf, re as _re2
-        raw_bytes = r2.content
+        import openpyxl
+        raw = r.content
         try:
-            wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True)
-        except Exception as exc1:
-            if "drawing" in str(exc1).lower() or "no item named" in str(exc1).lower():
-                print("  [BULLETIN] Drawing ref error — stripping and retrying …")
-                buf_fix = io.BytesIO()
-                with _zf.ZipFile(io.BytesIO(raw_bytes), 'r') as zin:
-                    with _zf.ZipFile(buf_fix, 'w', _zf.ZIP_DEFLATED) as zout:
-                        for item in zin.infolist():
-                            if 'drawing' in item.filename.lower():
-                                continue
-                            data = zin.read(item.filename)
-                            if item.filename.endswith('.rels'):
-                                data = _re2.sub(
-                                    rb'<Relationship[^>]+/drawing[^>]+/?>',
-                                    b'', data
-                                )
-                            zout.writestr(item, data)
-                buf_fix.seek(0)
-                wb = openpyxl.load_workbook(buf_fix, data_only=True)
-            else:
-                print(f"  [BULLETIN] Excel parse error: {exc1}")
-                return 0
-    except Exception as exc:
-        print(f"  [BULLETIN] Excel parse error: {exc}")
-        return 0
-
-    # ── Step 4: parse sheet for poultry row ───────────────────────────────────
-    sheets_to_try = [wb.active] + [wb[s] for s in wb.sheetnames if wb[s] != wb.active]
-
-    # Poultry search terms (CUCI/SECEX uses Portuguese descriptions)
-    POULTRY_KEYWORDS = ("aves", "frango", "galinha", "peru", "pato", "0207")
-
-    def _parse_sheet(ws):
-        bull_year = bull_month = None
-        for hrow in ws.iter_rows(max_row=10):
-            for cell in hrow:
-                v = str(cell.value or "").strip()
-                m = _re.search(
-                    r'\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*/(\d{4})\b',
-                    v, _re.IGNORECASE)
-                if m:
-                    bull_month = PT_MON_REV[m.group(1).lower()[:3]]
-                    bull_year  = int(m.group(2))
-                    break
-            if bull_year:
-                break
-
-        ton_col = price_col = usd_col = cat_header_row = None
-        for row in ws.iter_rows(max_row=30):
-            for cell in row:
-                v   = str(cell.value or "").strip().lower()
-                col = cell.column
-                if v.startswith("ton") and "media" not in v and ton_col is None:
-                    ton_col = col
-                    cat_header_row = cell.row
-                if ("preço" in v or "preco" in v or "us$/ton" in v) and price_col is None:
-                    price_col = col
-                if "us$ mil" in v and "media" not in v and usd_col is None:
-                    usd_col = col
-            if ton_col is not None and cat_header_row is not None:
-                if price_col is not None or usd_col is not None:
-                    break
-
-        if ton_col is None or cat_header_row is None:
-            return None, None, None, None
-
-        # Find poultry row
-        poultry_row = None
-        for row in ws.iter_rows(min_row=cat_header_row + 1):
-            for cell in row[:3]:
-                v = str(cell.value or "").lower()
-                if any(kw in v for kw in POULTRY_KEYWORDS):
-                    poultry_row = cell.row
-                    print(f"  [BULLETIN] Found poultry row {poultry_row}: '{str(cell.value or '')[:50]}'")
-                    break
-            if poultry_row:
-                break
-
-        if poultry_row is None:
-            # Fallback: dump some rows for debugging
-            print("  [BULLETIN] Poultry row not found. First 20 description rows:")
-            for row in ws.iter_rows(min_row=cat_header_row + 1, max_row=cat_header_row + 20):
-                v = str(row[0].value or "") if row else ""
-                if v.strip():
-                    print(f"    row {row[0].row}: '{v[:60]}'")
-            return None, None, None, None
-
-        vol_tons = ws.cell(row=poultry_row, column=ton_col).value
-
-        if price_col is not None:
-            price_per_ton = ws.cell(row=poultry_row, column=price_col).value
-        elif usd_col is not None:
-            rev_mil = ws.cell(row=poultry_row, column=usd_col).value
-            try:
-                price_per_ton = (float(rev_mil) * 1000.0 / float(vol_tons)) if vol_tons else None
-            except Exception:
-                price_per_ton = None
-        else:
-            price_per_ton = None
-
-        try:
-            vol_tons = float(str(vol_tons).replace(",", ".")) if vol_tons else None
-            price_per_ton = float(str(price_per_ton).replace(",", ".")) if price_per_ton else None
+            wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
         except Exception:
-            vol_tons = price_per_ton = None
+            buf = io.BytesIO()
+            with _zf.ZipFile(io.BytesIO(raw), 'r') as zin:
+                with _zf.ZipFile(buf, 'w', _zf.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        if 'drawing' in item.filename.lower():
+                            continue
+                        data = zin.read(item.filename)
+                        if item.filename.endswith('.rels'):
+                            data = _re.sub(
+                                rb'<Relationship[^>]+/drawing[^>]+/?>', b'', data)
+                        zout.writestr(item, data)
+            buf.seek(0)
+            wb = openpyxl.load_workbook(buf, data_only=True)
+    except Exception as exc:
+        print(f"  [BULLETIN] Excel load error: {exc}")
+        return 0
 
-        # price_usd_kg: the bulletin uses USD/TON; divide by 1000
-        price_usd_kg = price_per_ton / 1000.0 if price_per_ton else None
+    ws = wb['EXP'] if 'EXP' in wb.sheetnames else wb.active
 
-        return bull_year, bull_month, price_usd_kg, vol_tons
-
-    # Try each sheet
-    result = (None, None, None, None)
-    for ws in sheets_to_try:
-        result = _parse_sheet(ws)
-        if result[0] is not None:
+    # ── Parse period from header rows (e.g. "Abr/2026") ──────────────────────
+    bull_year = bull_month = None
+    for ri in range(1, 12):
+        for c in range(1, min(ws.max_column + 1, 16)):
+            v = str(ws.cell(ri, c).value or "")
+            m = _re.search(
+                r'(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*/(\d{4})',
+                v, _re.IGNORECASE)
+            if m:
+                bull_month = PT_MON_REV[m.group(1).lower()[:3]]
+                bull_year  = int(m.group(2))
+                break
+        if bull_year:
             break
 
-    bull_year, bull_month, price_usd_kg, vol_tons = result
     if bull_year is None:
-        print("  [BULLETIN] Could not parse any sheet for poultry data.")
+        print("  [BULLETIN] Could not parse period from file header.")
         return 0
 
-    # ── Guard: skip if bulletin vol_tons is not genuinely new ────────────────
-    # SECEX bulletin is always cumulative MTD from the 1st of the month.
-    # If the latest known row for this month already has vol_tons >= bulletin,
-    # it means we seeded more recent data — nothing to insert.
-    existing = conn.execute(
-        """
-        SELECT start_date, end_date, vol_tons FROM _weekly_raw
-        WHERE  strftime('%Y-%m', start_date) = ?
-        ORDER  BY start_date DESC LIMIT 1
-        """,
-        (f"{bull_year}-{bull_month:02d}",)
+    period_str = f"{bull_year}-{bull_month:02d}"
+    print(f"  [BULLETIN] Period: {period_str}")
+
+    # ── Find poultry row ──────────────────────────────────────────────────────
+    # Column layout (confirmed from live file):
+    #   col 1  = Descrição
+    #   col 2  = US$ Mil (MTD current year)
+    #   col 6  = Toneladas (MTD current year)  ← vol_tons
+    #   col 10 = Preço US$/Tonelada            ← price (÷1000 → USD/kg)
+    bull_price_usd_kg = bull_vol_tons = None
+    for ri in range(1, ws.max_row + 1):
+        desc = str(ws.cell(ri, 1).value or "").lower()
+        if any(kw in desc for kw in POULTRY_KW):
+            try:
+                vol   = float(ws.cell(ri, 6).value  or 0)
+                price = float(ws.cell(ri, 10).value or 0)
+                if vol > 0 and price > 0:
+                    bull_vol_tons     = vol
+                    bull_price_usd_kg = price / 1000.0
+                    print(f"  [BULLETIN] '{ws.cell(ri,1).value}'[:55]: "
+                          f"vol_mtd={vol:.0f} t, price={bull_price_usd_kg:.4f} USD/kg")
+            except Exception:
+                pass
+            break
+
+    if bull_vol_tons is None:
+        print("  [BULLETIN] Poultry row not found or zero data.")
+        return 0
+
+    # ── Guard: skip if vol already covered ───────────────────────────────────
+    last_row = conn.execute(
+        "SELECT start_date, end_date, vol_tons FROM _weekly_raw "
+        "WHERE strftime('%Y-%m', start_date) = ? ORDER BY start_date DESC LIMIT 1",
+        (period_str,)
     ).fetchone()
 
-    if existing:
-        exist_start, exist_end, exist_vol = existing
-        if vol_tons is not None and exist_vol is not None and vol_tons <= exist_vol + 1.0:
-            print(f"  [BULLETIN] No new data for {bull_year}-{bull_month:02d} "
-                  f"(bulletin vol={vol_tons:.0f} <= known={exist_vol:.0f}) — skipping.")
-            return 0
-        # Genuine update: extend the existing row's end_date and vol
-        week_start = exist_start
-        week_end   = str(today)
-    else:
-        # First reading for this month — starts on the 1st
-        week_start = f"{bull_year}-{bull_month:02d}-01"
-        week_end   = str(today)
+    if last_row and last_row[2] is not None and bull_vol_tons <= last_row[2] + 1.0:
+        print(f"  [BULLETIN] Already up to date for {period_str} "
+              f"(bulletin={bull_vol_tons:.0f} t ≤ stored={last_row[2]:.0f} t).")
+        return 0
 
-    biz_days = _biz_days_between(
-        date.fromisoformat(week_start), date.fromisoformat(week_end)
-    )
+    # ── Date range for the new entry ─────────────────────────────────────────
+    # start = day after last stored end_date for this month (or 1st of month)
+    # end   = today
+    last_end = conn.execute(
+        "SELECT MAX(end_date) FROM _weekly_raw "
+        "WHERE strftime('%Y-%m', start_date) = ?",
+        (period_str,)
+    ).fetchone()[0]
+
+    if last_end:
+        week_start = (_date.fromisoformat(last_end) + _td(days=1)).isoformat()
+    else:
+        week_start = f"{bull_year}-{bull_month:02d}-01"
+    week_end = str(today)
+
+    biz = _biz_days_between(_date.fromisoformat(week_start), _date.fromisoformat(week_end))
+
+    # Safety: never let the bulletin overwrite a SEED row (start_date already in DB
+    # from a prior hardcoded entry).  Seeds always win; the bulletin should only
+    # INSERT new rows whose start_date is strictly after any existing end_date.
+    existing = conn.execute(
+        "SELECT vol_tons FROM _weekly_raw WHERE start_date=?", (week_start,)
+    ).fetchone()
+    if existing is not None:
+        # The date slot is already taken by a seed row — push week_start forward
+        # to the day after that row's end_date.
+        taken_end = conn.execute(
+            "SELECT end_date FROM _weekly_raw WHERE start_date=?", (week_start,)
+        ).fetchone()[0]
+        week_start = (_date.fromisoformat(taken_end) + _td(days=1)).isoformat()
+        biz = _biz_days_between(_date.fromisoformat(week_start),
+                                _date.fromisoformat(week_end))
+        print(f"  [BULLETIN] Seed conflict — adjusted week_start to {week_start}")
 
     conn.execute(
-        """
-        INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(start_date) DO UPDATE SET
-            end_date     = excluded.end_date,
-            price_usd_kg = COALESCE(excluded.price_usd_kg, _weekly_raw.price_usd_kg),
-            vol_tons     = COALESCE(excluded.vol_tons,     _weekly_raw.vol_tons),
-            biz_days     = excluded.biz_days
-        """,
-        (week_start, week_end, price_usd_kg, vol_tons, biz_days),
+        "INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(start_date) DO UPDATE SET "
+        "  end_date=excluded.end_date, "
+        "  price_usd_kg=COALESCE(excluded.price_usd_kg, _weekly_raw.price_usd_kg), "
+        "  vol_tons=excluded.vol_tons, biz_days=excluded.biz_days",
+        (week_start, week_end, bull_price_usd_kg, bull_vol_tons, biz),
     )
     conn.commit()
-    print(f"  [BULLETIN] Upserted week {week_start}→{week_end}: "
-          f"price={price_usd_kg}, vol_tons={vol_tons}, biz_days={biz_days}")
+    print(f"  [BULLETIN] Upserted {week_start}→{week_end}: "
+          f"price={bull_price_usd_kg:.4f} USD/kg, vol={bull_vol_tons:.0f} t MTD, "
+          f"biz_days={biz}")
     return 1
 
 
@@ -1411,3 +1299,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
