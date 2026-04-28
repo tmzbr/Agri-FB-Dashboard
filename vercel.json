@@ -1,0 +1,11 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)\\.db",
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ]
+}
