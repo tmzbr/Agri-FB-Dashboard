@@ -366,7 +366,7 @@ const SUBSECTORS = {
     { id:'pork',      label:'Pork'      },
     { id:'staples',   label:'Staples'   },
     { id:'beverages', label:'Beverages' },
-  , { id:'equity', label:'Equity Research' }],
+  ],  // equity tab removed
 };
 
 /* ══ UTILS ══ */
@@ -432,8 +432,8 @@ const STATIC_DASHBOARDS = [
   },
   {
     id: 24,
-    sector: 'fnb',
-    subsector: 'equity',
+    sector: 'market-watch',
+    subsector: null,
     title: 'CVM Buybacks',
     description: 'Treasury repurchase programs and buyback activity for 13 Brazilian agri tickers. Source: CVM IPE Individual.',
     source: 'CVM · IPE Individual',
@@ -446,8 +446,8 @@ const STATIC_DASHBOARDS = [
   },
   {
     id: 25,
-    sector: 'fnb',
-    subsector: 'equity',
+    sector: 'market-watch',
+    subsector: null,
     title: 'CVM Insider Trading',
     description: 'Controller, management and board holdings and transactions for 13 Brazilian agri tickers. Source: CVM Formulário Consolidado.',
     source: 'CVM · Formulário Consolidado',
