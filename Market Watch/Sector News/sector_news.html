@@ -124,6 +124,7 @@ body.subnav-visible #filter-bar { top: 96px; }
   border-color: var(--orange) !important; box-shadow: 0 0 0 2px rgba(232,69,10,0.12) !important;
 }
 .filter-range { accent-color: var(--orange); width: 72px; }
+select.filter-input { padding-right: 28px !important; min-width: 80px; }
 .filter-btn {
   background: var(--body-bg) !important; border: 1px solid var(--border) !important;
   color: var(--text-muted) !important; font-size: 12px !important; border-radius: 6px !important;
@@ -331,7 +332,7 @@ body.subnav-visible #filter-bar { top: 96px; }
     </div>
     <div class="d-flex align-items-center gap-1">
       <span class="filter-label">Sort by</span>
-      <select class="form-select form-select-sm filter-input" id="sort-mode" style="width:auto;padding-right:24px" onchange="applySortMode()">
+      <select class="form-select form-select-sm filter-input" id="sort-mode" onchange="applySortMode()">
         <option value="date">Date</option>
         <option value="score">Score</option>
       </select>
