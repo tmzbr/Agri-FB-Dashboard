@@ -347,7 +347,7 @@ function renderKPIs(rows){
     const col = CAT_COLORS[cat];
     el.innerHTML += `
       <div class="kpi-card" style="border-top-color:${col}">
-        <div class="kpi-label">${cat} — FOB</div>
+        <div class="kpi-label">${CAT_LABEL[cat]||cat} — FOB</div>
         <div class="kpi-value">US$ ${fmtB(fob)}</div>
         <div class="kpi-unit">last 12 months</div>
       </div>
@@ -357,7 +357,7 @@ function renderKPIs(rows){
         <div class="kpi-unit">million metric tons</div>
       </div>
       <div class="kpi-card" style="border-top-color:${col}">
-        <div class="kpi-label">${cat} — Preço médio</div>
+        <div class="kpi-label">${CAT_LABEL[cat]||cat} — Avg. Price</div>
         <div class="kpi-value">US$ ${fmt(prc,0)}</div>
         <div class="kpi-unit">per metric ton</div>
       </div>`;
