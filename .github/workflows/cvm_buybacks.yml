@@ -44,7 +44,7 @@ jobs:
       - name: Commit DB + HTMLs
         working-directory: ${{ github.workspace }}
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "CVM Buybacks/cvm_buybacks.db"
           [ -f "CVM Buybacks/cvm_buybacks.html" ] && git add "CVM Buybacks/cvm_buybacks.html"
