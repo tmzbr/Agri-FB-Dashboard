@@ -247,25 +247,25 @@ function renderBars(){
 function renderTimeline(){
   const rows=filteredQtr();
   const labels=rows.map(r=>r.quarter);
-  const datasets=[];
-  Object.entries(CO_COLORS).forEach(([co,col])=>{
-    const snap=WByCompany[co];
-    datasets.push({
-      label:`${co} Spread`,
+  const col=CO_COLORS[company];
+  const snap=WByCompany[company];
+  const gmFn=r=>company==='MBRF'?r.mbrf_gm:r.jbs_gm;
+  const datasets=[
+    {
+      label:`${company} Spread`,
       data:rows.map(r=>{const s=calcSpread(r,snap);return s!=null?+(s*100).toFixed(2):null;}),
-      borderColor:col, borderWidth:co===company?2.5:1.5,
-      pointRadius:co===company?3:2, pointHoverRadius:5,
+      borderColor:col, borderWidth:2.5,
+      pointRadius:3, pointHoverRadius:5,
       tension:.3, fill:false, spanGaps:true, yAxisID:'y',
-    });
-    const gm=r=>co==='MBRF'?r.mbrf_gm:r.jbs_gm;
-    datasets.push({
-      label:`${co} Gross Mgn%`,
-      data:rows.map(r=>{const m=gm(r);return m!=null?+(m*100).toFixed(2):null;}),
-      borderColor:col, borderWidth:co===company?1.5:1,
-      borderDash:[6,3], pointRadius:co===company?2:1, pointHoverRadius:5,
+    },
+    {
+      label:`${company} Gross Mgn%`,
+      data:rows.map(r=>{const m=gmFn(r);return m!=null?+(m*100).toFixed(2):null;}),
+      borderColor:col, borderWidth:1.5,
+      borderDash:[6,3], pointRadius:2, pointHoverRadius:5,
       tension:.3, fill:false, spanGaps:true, yAxisID:'y2',
-    });
-  });
+    },
+  ];
   // Compute y2 range from active company's GM% values only, so the active
   // line always fills the axis rather than being squashed by the other company.
   const activeGmVals=rows.map(r=>{
@@ -282,6 +282,8 @@ function renderTimeline(){
   const y2Axis=axisR('Gross Margin %','%');
   if(y2min!==undefined){y2Axis.min=y2min; y2Axis.max=y2max;}
 
+  const titleEl=document.getElementById('timeline-title');
+  if(titleEl) titleEl.textContent=`Spread Proxy % vs. Gross Margin % — ${company}`;
   mkChart('chartTimeline',{type:'line',data:{labels,datasets},
     options:{
       plugins:{
@@ -426,7 +428,7 @@ function buildLayout(){
       </div>
       <div class="card">
         <div class="card-hdr">
-          <span class="card-title">Spread Proxy % vs. Gross Margin % — MBRF &amp; JBS</span>
+          <span class="card-title" id="timeline-title">Spread Proxy % vs. Gross Margin %</span>
           <span class="card-stat">Solid = Spread · Dashed = Gross Mgn</span>
         </div>
         <canvas id="chartTimeline"></canvas>
