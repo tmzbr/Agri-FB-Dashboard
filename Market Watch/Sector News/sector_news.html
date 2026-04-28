@@ -1482,7 +1482,11 @@ function formatDateUpper(dt) {
   try {
     const d = new Date(dt.replace(" ", "T"));
     const m = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-    return `${String(d.getDate()).padStart(2,"0")} ${m[d.getMonth()]} ${d.getFullYear()}`;
+    const date = `${String(d.getDate()).padStart(2,"0")} ${m[d.getMonth()]} ${d.getFullYear()}`;
+    const hasTime = dt.includes("T") || dt.includes(" ");
+    if (!hasTime) return date;
+    const time = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    return `${date} · ${time}`;
   } catch { return ""; }
 }
 
