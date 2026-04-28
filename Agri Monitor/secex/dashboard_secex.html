@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Exportações — Secex</title>
+<title>Exports — Secex</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
@@ -79,36 +79,36 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 
 <div id="state-overlay" class="state-overlay">
   <div class="spinner"></div>
-  <div class="state-msg" id="state-msg">Carregando banco de dados...</div>
+  <div class="state-msg" id="state-msg">Loading database...</div>
 </div>
 
 <div id="app" style="display:none;">
 
   <div class="filter-bar">
     <div class="filter-group">
-      <div class="filter-label">Categoria</div>
+      <div class="filter-label">Category</div>
       <div class="cmdty-pills" id="pills"></div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-group">
-      <div class="filter-label">Período</div>
+      <div class="filter-label">Period</div>
       <div class="seg">
-        <button class="seg-btn on" onclick="setPeriod('monthly',this)">Mensal</button>
-        <button class="seg-btn"    onclick="setPeriod('annual',this)">Anual</button>
+        <button class="seg-btn on" onclick="setPeriod('monthly',this)">Monthly</button>
+        <button class="seg-btn"    onclick="setPeriod('annual',this)">Annual</button>
       </div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-group">
-      <div class="filter-label">Janela</div>
+      <div class="filter-label">Window</div>
       <div class="seg">
-        <button class="seg-btn on" onclick="setYears(5,this)">5 anos</button>
-        <button class="seg-btn"    onclick="setYears(10,this)">10 anos</button>
-        <button class="seg-btn"    onclick="setYears(99,this)">Histórico</button>
+        <button class="seg-btn on" onclick="setYears(5,this)">5 years</button>
+        <button class="seg-btn"    onclick="setYears(10,this)">10 years</button>
+        <button class="seg-btn"    onclick="setYears(99,this)">All time</button>
       </div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-group">
-      <div class="filter-label">Exportar</div>
+      <div class="filter-label">Export</div>
       <button class="btn-dl" onclick="downloadCsv()">&#8659; CSV</button>
     </div>
   </div>
@@ -116,18 +116,18 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   <div class="body">
 
     <div class="section-hdr">
-      <div class="section-title">Últimos 12 meses disponíveis</div>
+      <div class="section-title">Last 12 months available</div>
     </div>
     <div class="kpi-row" id="kpi-row"></div>
 
     <div class="section-hdr">
-      <div class="section-title">Exportações</div>
+      <div class="section-title">Exports</div>
     </div>
     <div class="chart-card">
       <div class="chart-header">
         <div>
-          <div class="chart-title" id="title-exp">Exportações — Valor FOB</div>
-          <div class="chart-sub"   id="sub-exp">Série histórica — USD</div>
+          <div class="chart-title" id="title-exp">Exports — FOB Value</div>
+          <div class="chart-sub"   id="sub-exp">Historical series — USD</div>
         </div>
         <div class="seg">
           <button class="seg-btn on" onclick="setMetric('fob',this)">FOB (USD)</button>
@@ -138,19 +138,19 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
     </div>
 
     <div class="section-hdr">
-      <div class="section-title">Preço Médio (USD/t)</div>
+      <div class="section-title">Average Price (USD/t)</div>
     </div>
     <div class="chart-card">
       <div class="chart-header">
         <div>
-          <div class="chart-title">Preço Médio de Exportação</div>
-          <div class="chart-sub" id="sub-preco">Série histórica — USD por tonelada (FOB ÷ peso)</div>
+          <div class="chart-title">Average Export Price</div>
+          <div class="chart-sub" id="sub-preco">Historical series — USD per metric ton (FOB ÷ peso)</div>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="ch-preco"></canvas></div>
     </div>
 
-    <div class="source-note">Fonte: Secex / MDIC — Atualizado mensalmente via GitHub Actions</div>
+    <div class="source-note">Source: Secex / MDIC — Updated monthly via GitHub Actions</div>
   </div>
 </div>
 
@@ -307,8 +307,8 @@ function render(){
 
 function renderExp(rows){
   const isFob = METRIC==='fob';
-  document.getElementById('title-exp').textContent = isFob ? 'Exportações — Valor FOB' : 'Exportações — Volume';
-  document.getElementById('sub-exp').textContent   = (isFob ? 'Série histórica — USD' : 'Série histórica — kg líquido') + (PERIOD==='annual'?' — anual':' — mensal');
+  document.getElementById('title-exp').textContent = isFob ? 'Exports — FOB Value' : 'Exports — Volume';
+  document.getElementById('sub-exp').textContent   = (isFob ? 'Historical series — USD' : 'Historical series — kg líquido') + (PERIOD==='annual'?' — anual':' — mensal');
   const series = buildSeries(rows, d=>d ? (isFob ? d.fob : d.kg) : null);
   const yFmt   = isFob ? v=>'US$ '+fmtShort(v) : v=>fmtShort(v)+' kg';
   const ttFmt  = isFob ? v=>'US$ '+fmt(v,0) : v=>fmt(v,0)+' kg';
@@ -317,7 +317,7 @@ function renderExp(rows){
 
 function renderPreco(rows){
   document.getElementById('sub-preco').textContent =
-    'Série histórica — USD/t'+(PERIOD==='annual'?' — anual':' — mensal');
+    'Historical series — USD/t'+(PERIOD==='annual'?' — anual':' — mensal');
   const series = buildSeries(rows, d=>d && d.kg>0 ? (d.fob/d.kg*1000) : null);
   series.datasets.forEach(ds=>{ ds.type='line'; ds.fill=false; ds.backgroundColor='transparent'; ds.pointRadius=PERIOD==='monthly'?2:3; });
   series.type = 'line';
@@ -348,17 +348,17 @@ function renderKPIs(rows){
       <div class="kpi-card" style="border-top-color:${col}">
         <div class="kpi-label">${cat} — FOB</div>
         <div class="kpi-value">US$ ${fmtB(fob)}</div>
-        <div class="kpi-unit">últimos 12 meses</div>
+        <div class="kpi-unit">last 12 months</div>
       </div>
       <div class="kpi-card" style="border-top-color:${col}">
         <div class="kpi-label">${cat} — Volume</div>
         <div class="kpi-value">${fmt(kg/1e6,1)} Mt</div>
-        <div class="kpi-unit">milhões de toneladas</div>
+        <div class="kpi-unit">million metric tons</div>
       </div>
       <div class="kpi-card" style="border-top-color:${col}">
         <div class="kpi-label">${cat} — Preço médio</div>
         <div class="kpi-value">US$ ${fmt(prc,0)}</div>
-        <div class="kpi-unit">por tonelada</div>
+        <div class="kpi-unit">per metric ton</div>
       </div>`;
   });
 }
@@ -366,7 +366,7 @@ function renderKPIs(rows){
 function downloadCsv(){
   const rows=filteredRows();
   if(!rows.length){alert('Nenhum dado carregado.');return;}
-  const h=['Ano','Mês','NCM','Categoria','Produto','Valor FOB (USD)','Kg Líquido','Atualizado em'];
+  const h=['Ano','Mês','NCM','Category','Produto','Valor FOB (USD)','Kg Líquido','Atualizado em'];
   const csv='\uFEFF'+[h,...rows.map(r=>[r.co_ano,r.co_mes,r.co_ncm,r.categoria,r.produto,r.vl_fob,r.kg_liquido,r.updated_at])]
     .map(r=>r.map(v=>v==null?'':String(v).replace(/;/g,',')).join(';')).join('\n');
   const a=document.createElement('a');
@@ -383,7 +383,7 @@ function setMsg(m){ document.getElementById('state-msg').textContent=m; }
 function hideOverlay(){ document.getElementById('state-overlay').style.display='none'; document.getElementById('app').style.display='block'; }
 function showError(msg){
   document.getElementById('state-overlay').innerHTML=`<div class="error-box">
-    <h3>Erro ao carregar dados</h3><p>${esc(msg)}</p>
+    <h3>Error loading data</h3><p>${esc(msg)}</p>
     <p style="margin-top:10px;font-size:11px;">Verifique se <code>secex.db</code> existe em
     <code>agrimonitor/secex/secex.db</code> no repositório público.</p></div>`;
 }
