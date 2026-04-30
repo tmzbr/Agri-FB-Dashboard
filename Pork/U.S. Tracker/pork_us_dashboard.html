@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>U.S. Pork Spread Tracker — Itaú BBA</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
+  --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
+  --green:#27AE60;--red:#C0392B;--blue:#2980B9;
+  --int-color:#FF5500;--nint-color:#2980B9;
+  --font:'Segoe UI',Helvetica,Arial,sans-serif;
+}
+html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);
+  min-height:100%;overflow-y:auto;font-size:13px;}
+
+/* ── TOP BAR ── */
+.top-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;height:48px;flex-shrink:0;gap:14px;}
+.back-btn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-mid);
+  cursor:pointer;padding:5px 10px;border-radius:4px;border:1px solid var(--border);
+  background:none;transition:all .15s;white-space:nowrap;}
+.back-btn:hover{color:var(--gray-dark);border-color:#ccc;}
+.back-btn svg{width:14px;height:14px;}
+.top-bar-divider{width:1px;height:22px;background:var(--border);}
+.top-title{font-size:15px;font-weight:700;color:var(--black);}
+.top-sub{font-size:11.5px;color:var(--gray-mid);}
+.top-latest{margin-left:auto;font-size:11px;color:var(--gray-mid);
+  background:#F9F9F9;border:1px solid var(--border);border-radius:4px;
+  padding:4px 10px;white-space:nowrap;}
+.top-latest strong{color:var(--orange);}
+
+/* ── ORANGE RULE ── */
+.orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
+
+/* ── CONTROLS BAR ── */
+.controls-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;height:44px;gap:20px;flex-shrink:0;}
+
+/* Mode toggle — integrated / non-integrated */
+.mode-toggle{display:flex;gap:0;border:1.5px solid var(--border);border-radius:5px;overflow:hidden;}
+.mode-btn{padding:5px 14px;font-size:12px;font-family:var(--font);cursor:pointer;
+  border:none;background:none;color:var(--gray-mid);transition:all .15s;font-weight:600;
+  white-space:nowrap;}
+.mode-btn.active.integrated{background:var(--int-color);color:white;}
+.mode-btn.active.non-integrated{background:var(--nint-color);color:white;}
+.mode-btn:not(.active):hover{background:#f5f5f5;color:var(--gray-dark);}
+.mode-divider{width:1px;background:var(--border);}
+
+.controls-spacer{flex:1;}
+.view-label{font-size:11px;font-weight:700;color:var(--gray-mid);
+  text-transform:uppercase;letter-spacing:.5px;}
+.view-btns{display:flex;gap:4px;}
+.view-btn{padding:4px 12px;font-size:12px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--border);background:none;color:var(--gray-mid);
+  font-family:var(--font);transition:all .15s;}
+.view-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.view-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+
+/* ── MAIN LAYOUT ── */
+.main-wrap{display:flex;flex-direction:column;}
+
+/* ── CHARTS ROW ── */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  padding:12px 16px 8px;flex-shrink:0;}
+.chart-card{background:var(--white);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px 10px;display:flex;flex-direction:column;}
+.chart-card-header{display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:10px;}
+.chart-title{font-size:12.5px;font-weight:700;color:var(--black);}
+.chart-stat{font-size:11px;color:var(--gray-mid);text-align:right;}
+.chart-stat strong{color:var(--orange);}
+.chart-wrap{flex:1;min-height:0;position:relative;height:220px;}
+
+/* ── MODE BADGE ── */
+.mode-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;
+  font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-left:6px;vertical-align:middle;}
+.mode-badge.integrated{background:rgba(255,85,0,.12);color:var(--int-color);}
+.mode-badge.non-integrated{background:rgba(41,128,185,.12);color:var(--nint-color);}
+
+/* ── BOTTOM ROW ── */
+.bottom-row{display:grid;grid-template-columns:236px 1fr;gap:0;
+  border-top:1px solid var(--border);}
+
+/* ── INFO PANEL ── */
+.info-panel{background:var(--white);border-right:1px solid var(--border);
+  padding:14px 14px 24px;overflow-y:auto;}
+.panel-title{font-size:13px;font-weight:700;color:var(--black);
+  margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--orange);}
+.wp-section{font-size:10px;font-weight:700;color:var(--orange);
+  text-transform:uppercase;letter-spacing:.7px;margin:14px 0 8px;}
+.wp-section:first-of-type{margin-top:2px;}
+
+/* formula box */
+.formula-box{background:#FAFAFA;border:1px solid var(--border);border-radius:5px;
+  padding:10px 12px;margin-bottom:8px;}
+.formula-line{font-size:11px;color:var(--gray-dark);line-height:1.7;font-family:monospace;}
+.formula-line span{color:var(--orange);font-weight:700;}
+
+/* info rows */
+.info-row{display:flex;justify-content:space-between;align-items:center;
+  padding:4px 0;border-bottom:1px solid #f5f5f5;}
+.info-row:last-child{border-bottom:none;}
+.info-label{font-size:11.5px;color:var(--gray-mid);}
+.info-val{font-size:11.5px;font-weight:600;color:var(--black);}
+.info-val.orange{color:var(--orange);}
+.info-val.blue{color:var(--nint-color);}
+
+.desc-text{font-size:11px;color:var(--gray-mid);line-height:1.5;margin-top:6px;}
+
+/* ── TABLE PANEL ── */
+.table-panel{display:flex;flex-direction:column;min-height:300px;}
+.table-tabs{display:flex;align-items:center;padding:8px 16px 0;
+  border-bottom:1px solid var(--border);background:var(--white);flex-shrink:0;gap:4px;}
+.tab-btn{padding:5px 14px;font-size:12px;border:1px solid var(--border);
+  border-radius:4px 4px 0 0;cursor:pointer;font-family:var(--font);
+  background:none;color:var(--gray-mid);transition:all .12s;}
+.tab-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.table-wrap{overflow:auto;max-height:460px;}
+.table-wrap::-webkit-scrollbar{width:5px;height:5px;}
+.table-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
+table{width:100%;border-collapse:collapse;font-size:11.5px;}
+thead tr{background:#FAFAFA;border-bottom:2px solid var(--border);}
+th{padding:7px 9px;text-align:right;font-weight:700;font-size:10.5px;
+  color:var(--gray-mid);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;
+  position:sticky;top:0;background:#FAFAFA;z-index:1;}
+th:first-child{text-align:left;}
+td{padding:5px 9px;text-align:right;border-bottom:1px solid #F5F5F5;
+  color:var(--gray-dark);white-space:nowrap;}
+td:first-child{text-align:left;font-weight:600;color:var(--black);}
+tr:hover td{background:#FFF8F5;}
+.td-spread-int{font-weight:700;color:var(--int-color);}
+.td-spread-nint{font-weight:700;color:var(--nint-color);}
+.td-na{color:#ccc;font-size:10.5px;}
+.td-pos{color:var(--green);font-weight:600;}
+.td-neg{color:var(--red);font-weight:600;}
+
+/* ── LOADING OVERLAY ── */
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.92);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999;}
+.spinner{width:36px;height:36px;border:3px solid #eee;
+  border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#loading p{font-size:13px;color:var(--gray-mid);}
+
+/* ── NOTE BAR ── */
+.note-bar{background:#FFFBF8;border-top:1px solid #FFD9C8;
+  padding:5px 20px;font-size:10.5px;color:var(--gray-mid);flex-shrink:0;}
+.note-bar em{color:var(--orange);}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading pork_us.db…</p>
+</div>
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <button class="back-btn" onclick="goBack()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10 3L5 8l5 5"/>
+    </svg>
+    Back
+  </button>
+  <div class="top-bar-divider"></div>
+  <div>
+    <div class="top-title">🇺🇸 U.S. Pork Spread Tracker</div>
+    <div class="top-sub" id="top-sub">Quarterly spread model — select Integrated or Non-Integrated view</div>
+  </div>
+  <div class="top-latest">Latest: <strong id="latest-q">—</strong></div>
+</div>
+<div class="orange-rule"></div>
+
+<!-- CONTROLS BAR -->
+<div class="controls-bar">
+
+  <!-- Mode selector -->
+  <span class="view-label">MODE:</span>
+  <div class="mode-toggle">
+    <button class="mode-btn active integrated" data-mode="integrated" onclick="setMode('integrated')">
+      Integrated
+    </button>
+    <div class="mode-divider"></div>
+    <button class="mode-btn non-integrated" data-mode="non-integrated" onclick="setMode('non-integrated')">
+      Non-Integrated
+    </button>
+  </div>
+
+  <div class="controls-spacer"></div>
+
+  <!-- View range -->
+  <span class="view-label">VIEW:</span>
+  <div class="view-btns">
+    <button class="view-btn" data-view="all"  onclick="setView('all')">All</button>
+    <button class="view-btn active" data-view="3y" onclick="setView('3y')">Last 3 Years</button>
+    <button class="view-btn" data-view="1y"  onclick="setView('1y')">Last 12 Months</button>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main-wrap">
+
+  <!-- CHARTS ROW -->
+  <div class="charts-row">
+    <!-- LEFT: QoQ Delta -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title" id="chart1-title">QoQ ΔSpread — by Quarter</div>
+        <div class="chart-stat" id="chart1-stat">r = <strong>—</strong> &nbsp; R² = <strong>—</strong> &nbsp; N = <strong>—</strong></div>
+      </div>
+      <div class="chart-wrap"><canvas id="deltaChart"></canvas></div>
+    </div>
+    <!-- RIGHT: Level -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title" id="chart2-title">Spread Level — by Quarter</div>
+        <div class="chart-stat" id="chart2-stat">Solid = Spread &nbsp;·&nbsp; Dashed = Avg</div>
+      </div>
+      <div class="chart-wrap"><canvas id="levelChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM ROW -->
+  <div class="bottom-row">
+
+    <!-- INFO PANEL -->
+    <div class="info-panel">
+      <div class="panel-title">Spread Model</div>
+
+      <div class="wp-section">Formula</div>
+      <div class="formula-box" id="formula-box">
+        <!-- filled by JS -->
+      </div>
+      <div class="desc-text" id="formula-desc"></div>
+
+      <div class="wp-section">Latest Quarter</div>
+      <div class="info-row">
+        <span class="info-label">Carcass Cutout</span>
+        <span class="info-val" id="info-carcass">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Hog Price</span>
+        <span class="info-val" id="info-hog">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Feed Grain (6m)</span>
+        <span class="info-val" id="info-fg">—</span>
+      </div>
+      <div class="info-row" style="margin-top:4px;border-top:2px solid var(--border);padding-top:6px;">
+        <span class="info-label" style="font-weight:600;">Spread</span>
+        <span class="info-val orange" id="info-spread" style="font-size:13px;">—</span>
+      </div>
+
+      <div class="wp-section">Series Stats</div>
+      <div class="info-row">
+        <span class="info-label">Avg (all)</span>
+        <span class="info-val" id="stat-avg">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Max</span>
+        <span class="info-val" id="stat-max">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Min</span>
+        <span class="info-val" id="stat-min">—</span>
+      </div>
+    </div>
+
+    <!-- TABLE PANEL -->
+    <div class="table-panel">
+      <div class="table-tabs">
+        <button class="tab-btn active">Quarterly</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- bottom-row -->
+
+  <div class="note-bar">
+    <em>Integrated spread</em>: (Carcass ÷ 45.36) ÷ (Feed Grain USD/kg × 5.8) &nbsp;·&nbsp;
+    <em>Non-Integrated spread</em>: (Carcass ÷ Hog Price) ÷ 45.36 &nbsp;·&nbsp;
+    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg (6-month lag) · FCR: 5.8×
+  </div>
+
+</div><!-- main-wrap -->
+
+<script>
+// ─── GLOBALS ──────────────────────────────────────────────────────────────────
+let DB_ROWS     = [];
+let charts      = {};
+let currentMode = 'integrated';   // 'integrated' | 'non-integrated'
+let currentView = '3y';
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
+function goBack() {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ action: 'closeDash' }, '*');
+  } else {
+    window.history.back();
+  }
+}
+
+// ─── LOAD DB ─────────────────────────────────────────────────────────────────
+async function loadDB() {
+  const loadEl = document.getElementById('loading');
+  try {
+    const SQL = await initSqlJs({
+      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+    });
+    const cbv  = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const resp = await fetch(`pork_us.db?v=${cbv}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: pork_us.db not found`);
+    const buf  = await resp.arrayBuffer();
+    const db   = new SQL.Database(new Uint8Array(buf));
+
+    const stmt = db.exec(`
+      SELECT quarter, year_q, year, q,
+             carcass, hog_price, corn, sbm, fc_spot, fc_6m,
+             feed_grain_6m, spread_integrated, spread_non_integrated
+      FROM quarterly ORDER BY year_q ASC
+    `);
+    if (!stmt.length) throw new Error("Empty database");
+    const cols = stmt[0].columns;
+    DB_ROWS = stmt[0].values.map(r => {
+      const o = {}; cols.forEach((c,i) => { o[c] = r[i]; }); return o;
+    });
+    db.close();
+
+    loadEl.style.display = 'none';
+
+    const latest = [...DB_ROWS].reverse().find(r =>
+      r.spread_integrated != null || r.spread_non_integrated != null);
+    if (latest) document.getElementById('latest-q').textContent = latest.quarter;
+
+    render();
+  } catch(e) {
+    loadEl.innerHTML = `<div style="text-align:center;padding:40px">
+      <div style="font-size:14px;color:#c00;margin-bottom:8px;">⚠ Failed to load pork_us.db</div>
+      <div style="font-size:12px;color:#888;">${e.message}</div>
+    </div>`;
+  }
+}
+
+// ─── MODE & VIEW ─────────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  render();
+}
+
+function setView(v) {
+  currentView = v;
+  document.querySelectorAll('.view-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === v));
+  renderCharts();
+}
+
+// ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+function getSpread(row) {
+  return currentMode === 'integrated'
+    ? row.spread_integrated
+    : row.spread_non_integrated;
+}
+
+function spreadColor() {
+  return currentMode === 'integrated'
+    ? getComputedStyle(document.documentElement).getPropertyValue('--int-color').trim()
+    : getComputedStyle(document.documentElement).getPropertyValue('--nint-color').trim();
+}
+
+function spreadLabel() {
+  return currentMode === 'integrated'
+    ? 'Integrated Spread (×)'
+    : 'Non-Integrated Spread (USD/kg)';
+}
+
+function formatSpread(v) {
+  if (v == null) return null;
+  return currentMode === 'integrated'
+    ? v.toFixed(3) + '×'
+    : v.toFixed(4) + ' USD/kg';
+}
+
+function computeSeries() {
+  return DB_ROWS.map((row, i) => {
+    const spread     = getSpread(row);
+    const prevRow    = i > 0 ? DB_ROWS[i-1] : null;
+    const prevSpread = prevRow ? getSpread(prevRow) : null;
+    const dSpread    = (spread != null && prevSpread != null) ? (spread - prevSpread) : null;
+    return { ...row, spread, dSpread };
+  });
+}
+
+function filterByView(series) {
+  if (currentView === 'all') return series;
+  const last = [...series].reverse().find(r => r.spread != null);
+  if (!last) return series;
+  const cuts = { '3y': 12, '1y': 4 };
+  const cutQ = cuts[currentView] || 0;
+  const idx  = series.findIndex(r => r.quarter === last.quarter);
+  return series.slice(Math.max(0, idx - cutQ + 1));
+}
+
+// ─── PEARSON ─────────────────────────────────────────────────────────────────
+function pearson(xs, ys) {
+  const pairs = xs.map((x,i) => [x,ys[i]]).filter(([a,b]) => a!=null && b!=null);
+  const n = pairs.length;
+  if (n < 4) return { r:null, r2:null, n };
+  const mx = pairs.reduce((s,[a])=>s+a,0)/n;
+  const my = pairs.reduce((s,[,b])=>s+b,0)/n;
+  let num=0, dx=0, dy=0;
+  for (const [a,b] of pairs) { num+=(a-mx)*(b-my); dx+=(a-mx)**2; dy+=(b-my)**2; }
+  const r = Math.sqrt(dx*dy)>0 ? num/Math.sqrt(dx*dy) : null;
+  return { r, r2: r!=null ? r*r : null, n };
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render() {
+  updateInfoPanel();
+  renderCharts();
+  renderTable();
+}
+
+// ─── INFO PANEL ──────────────────────────────────────────────────────────────
+function updateInfoPanel() {
+  const color = spreadColor();
+  const isInt = currentMode === 'integrated';
+
+  // Formula box
+  document.getElementById('formula-box').innerHTML = isInt ? `
+    <div class="formula-line">spread = <span>(Carcass / 45.36)</span></div>
+    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(FeedGrain × 5.8)</span></div>
+  ` : `
+    <div class="formula-line">spread = <span>(Carcass / HogPrice)</span></div>
+    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>45.36</span></div>
+  `;
+
+  document.getElementById('formula-desc').textContent = isInt
+    ? 'Integrated producers own hog farms. Spread measures carcass value (USD/kg) relative to feed input cost, using a 6-month production lag and FCR of 5.8×.'
+    : 'Non-integrated packers buy live hogs on the open market. Spread measures packing margin per kg (USD/kg), reflecting the carcass-to-hog price differential.';
+
+  // Top sub
+  document.getElementById('top-sub').innerHTML = isInt
+    ? 'Integrated spread — Carcass ÷ Feed Cost &nbsp;<span class="mode-badge integrated">Integrated</span>'
+    : 'Non-Integrated spread — Carcass ÷ Hog Price &nbsp;<span class="mode-badge non-integrated">Non-Integrated</span>';
+
+  // Latest quarter stats
+  const latest = [...DB_ROWS].reverse().find(r =>
+    r.spread_integrated != null || r.spread_non_integrated != null);
+  if (latest) {
+    document.getElementById('info-carcass').textContent =
+      latest.carcass != null ? `$${latest.carcass.toFixed(2)}/cwt` : '—';
+    document.getElementById('info-hog').textContent =
+      latest.hog_price != null ? `$${latest.hog_price.toFixed(2)}/cwt` : '—';
+    document.getElementById('info-fg').textContent =
+      latest.feed_grain_6m != null ? `$${latest.feed_grain_6m.toFixed(4)}/kg` : '—';
+
+    const sv = getSpread(latest);
+    const infoSpread = document.getElementById('info-spread');
+    infoSpread.textContent = sv != null ? formatSpread(sv) : '—';
+    infoSpread.style.color = color;
+  }
+
+  // Series stats
+  const all = DB_ROWS.map(r => getSpread(r)).filter(v => v != null);
+  if (all.length) {
+    const avg = all.reduce((s,v)=>s+v,0)/all.length;
+    const mx  = Math.max(...all);
+    const mn  = Math.min(...all);
+    document.getElementById('stat-avg').textContent = formatSpread(avg);
+    document.getElementById('stat-max').textContent = formatSpread(mx);
+    document.getElementById('stat-min').textContent = formatSpread(mn);
+  }
+}
+
+// ─── CHART 1: QoQ Delta ──────────────────────────────────────────────────────
+function renderCharts() {
+  const allSeries = computeSeries();
+  const series    = filterByView(allSeries);
+  const color     = spreadColor();
+  const isInt     = currentMode === 'integrated';
+
+  // Stats over full series
+  const allValid = allSeries.filter(r => r.dSpread != null);
+  const corrSelf = pearson(allValid.map(r => r.spread), allValid.map((_,i) => i));
+  const rStr  = '—'; // no external GM to correlate against for pork
+  document.getElementById('chart1-stat').innerHTML =
+    `N = <strong>${allValid.length}</strong> quarters`;
+
+  // Chart titles
+  document.getElementById('chart1-title').textContent =
+    `QoQ ΔSpread — ${isInt ? 'Integrated' : 'Non-Integrated'}`;
+  document.getElementById('chart2-title').textContent =
+    `Spread Level — ${isInt ? 'Integrated (×)' : 'Non-Integrated (USD/kg)'}`;
+
+  // Average line for level chart
+  const validSpreads = allSeries.filter(r => r.spread != null).map(r => r.spread);
+  const avg = validSpreads.length ? validSpreads.reduce((s,v)=>s+v,0)/validSpreads.length : null;
+
+  // ── Chart 1: QoQ Delta ────────────────────────────────────────────────────
+  const deltaValid = series.filter(r => r.dSpread != null);
+  const deltaLabels = deltaValid.map(r => r.quarter);
+  const deltaData   = deltaValid.map(r => r.dSpread);
+
+  const ctx1 = document.getElementById('deltaChart').getContext('2d');
+  if (charts.delta) charts.delta.destroy();
+  charts.delta = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: deltaLabels,
+      datasets: [{
+        label: 'ΔSpread',
+        data: deltaData,
+        backgroundColor: deltaData.map(v =>
+          v >= 0
+            ? (isInt ? 'rgba(255,85,0,0.80)' : 'rgba(41,128,185,0.80)')
+            : 'rgba(160,160,160,0.55)'
+        ),
+        borderRadius: 3,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const sign = v >= 0 ? '+' : '';
+              return isInt
+                ? `ΔSpread: ${sign}${v.toFixed(4)}×`
+                : `ΔSpread: ${sign}${v.toFixed(5)} USD/kg`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
+        y: {
+          grid:{color:'#f0f0f0'},
+          ticks:{font:{size:10},color:'#888',
+            callback: v => (v>=0?'+':'')+v.toFixed(isInt?3:4)+(isInt?'×':'')},
+        }
+      }
+    }
+  });
+
+  // ── Chart 2: Level ────────────────────────────────────────────────────────
+  const levelValid  = series.filter(r => r.spread != null);
+  const levelLabels = levelValid.map(r => r.quarter);
+  const levelData   = levelValid.map(r => r.spread);
+  const avgLine     = levelData.map(() => avg);
+
+  const ctx2 = document.getElementById('levelChart').getContext('2d');
+  if (charts.level) charts.level.destroy();
+  charts.level = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: levelLabels,
+      datasets: [
+        {
+          label: spreadLabel(),
+          data: levelData,
+          borderColor: color,
+          backgroundColor: isInt ? 'rgba(255,85,0,0.07)' : 'rgba(41,128,185,0.07)',
+          tension: 0.35, borderWidth: 2.5,
+          pointRadius: 3, pointBackgroundColor: color,
+          fill: true, spanGaps: true,
+        },
+        {
+          label: 'Historical Avg',
+          data: avgLine,
+          borderColor: '#aaa',
+          backgroundColor: 'transparent',
+          tension: 0, borderWidth: 1.5, borderDash: [6,4],
+          pointRadius: 0, spanGaps: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position:'top', labels:{font:{size:10.5},boxWidth:12,padding:12,color:'#555'} },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return null;
+              const lbl = ctx.dataset.label;
+              return isInt
+                ? `${lbl}: ${v.toFixed(3)}×`
+                : `${lbl}: ${v.toFixed(4)} USD/kg`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
+        y: {
+          grid:{color:'#f0f0f0'},
+          ticks:{font:{size:10},color:color,
+            callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
+          title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
+            font:{size:9.5},color:color}
+        }
+      }
+    }
+  });
+
+  // chart2 stat — show avg vs latest
+  if (avg != null && levelData.length) {
+    const latest = levelData[levelData.length-1];
+    const vs = latest - avg;
+    const vsStr = (vs >= 0 ? '+' : '') + (isInt ? vs.toFixed(3)+'×' : vs.toFixed(4)+' USD/kg');
+    document.getElementById('chart2-stat').innerHTML =
+      `Avg: <strong>${isInt ? avg.toFixed(3)+'×' : avg.toFixed(4)+' USD/kg'}</strong>
+       &nbsp;·&nbsp; Latest vs Avg: <strong>${vsStr}</strong>`;
+  }
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const isInt   = currentMode === 'integrated';
+  const thead   = document.getElementById('table-head');
+  const tbody   = document.getElementById('table-body');
+  const tdClass = isInt ? 'td-spread-int' : 'td-spread-nint';
+  const fmtN    = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
+
+  thead.innerHTML = `<tr>
+    <th style="text-align:left;">Quarter</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
+    <th>Feed Grain<br><span style="font-weight:400;font-size:9.5px;">USD/kg (6m lag)</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu</span></th>
+    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/ton</span></th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
+                : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg)</span>'}</th>
+    <th>QoQ Δ</th>
+  </tr>`;
+
+  const series = computeSeries();
+  const rows   = [...series].reverse();
+
+  tbody.innerHTML = rows.map(r => {
+    const sv = getSpread(r);
+    const spreadFmt = sv != null
+      ? `<span class="${tdClass}">${formatSpread(sv)}</span>`
+      : '<span class="td-na">—</span>';
+
+    let deltaFmt = '<span class="td-na">—</span>';
+    if (r.dSpread != null) {
+      const sign  = r.dSpread >= 0 ? '+' : '';
+      const cls   = r.dSpread >= 0 ? 'td-pos' : 'td-neg';
+      const dStr  = isInt
+        ? sign + r.dSpread.toFixed(3) + '×'
+        : sign + r.dSpread.toFixed(4);
+      deltaFmt = `<span class="${cls}">${dStr}</span>`;
+    }
+
+    return `<tr>
+      <td>${r.quarter}</td>
+      <td>${fmtN(r.carcass)}</td>
+      <td>${fmtN(r.hog_price)}</td>
+      <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+      <td>${fmtN(r.corn, 2)}</td>
+      <td>${fmtN(r.sbm, 0)}</td>
+      <td>${spreadFmt}</td>
+      <td>${deltaFmt}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadDB();
+</script>
+</body>
+</html>
