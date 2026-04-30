@@ -490,6 +490,20 @@ const STATIC_DASHBOARDS = [
     note: null,
     footer: null,
   },
+  {
+    id: 12,
+    sector: 'fnb',
+    subsector: 'pork',
+    title: 'U.S. Pork Spread Tracker',
+    description: 'Quarterly U.S. pork spread model — Integrated (Carcass/FeedGrain) and Non-Integrated (Carcass/Hog Price) views. USDA AMS carcass cutout & hog prices with 6-month feed grain lag.',
+    source: 'USDA AMS · USDA ERS',
+    tags: ['U.S.', 'Pork', 'Spread', 'Carcass', 'USDA'],
+    visible_to_all: true,
+    coming_soon: false,
+    display_order: 12,
+    note: null,
+    footer: null,
+  },
 ];
 
 async function loadAllData(){
@@ -640,6 +654,7 @@ const DASH_MODULES = {
   25: 'CVM Buybacks/cvm_insider.html',
   10: 'Chicken/BZ Tracker/chicken_bz_dashboard.html',
   11: 'Pork/BZ Tracker/pork_bz_dashboard.html',
+  12: 'Pork/U.S. Tracker/pork_us_dashboard.html',
   23: 'Market Watch/Sector News/sector_news.html',
 };
 
