@@ -35,13 +35,13 @@ jobs:
           pip install requests openpyxl pdfplumber
 
       - name: Run extractor_pork_us.py
-        working-directory: Pork/U.S. Tracker
+        working-directory: 'Pork/U.S. Tracker'
         run: python extractor_pork_us.py
         env:
           USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
 
       - name: Verify pork_us.db
-        working-directory: Pork/U.S. Tracker
+        working-directory: 'Pork/U.S. Tracker'
         run: |
           python3 - <<'EOF'
           import sqlite3, os
