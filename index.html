@@ -476,6 +476,20 @@ const STATIC_DASHBOARDS = [
     note: null,
     footer: null,
   },
+  {
+    id: 11,
+    sector: 'fnb',
+    subsector: 'pork',
+    title: 'BZ Pork Spread Tracker',
+    description: 'Weekly and monthly SECEX pork export price vs. grain basket spread (margin %). Corn 66% + Soy PNA 34% (BRL/sc60kg), 6-month lag. NCM 0203 with BCB PTAX FX.',
+    source: 'MDIC · CEPEA/ESALQ · BCB',
+    tags: ['Brazil', 'Pork', 'Spread', 'SECEX', 'CEPEA'],
+    visible_to_all: true,
+    coming_soon: false,
+    display_order: 11,
+    note: null,
+    footer: null,
+  },
 ];
 
 async function loadAllData(){
@@ -625,6 +639,7 @@ const DASH_MODULES = {
   24: 'CVM Buybacks/cvm_buybacks.html',
   25: 'CVM Buybacks/cvm_insider.html',
   10: 'Chicken/BZ Tracker/chicken_bz_dashboard.html',
+  11: 'Pork/BZ Tracker/pork_bz_dashboard.html',
   23: 'Market Watch/Sector News/sector_news.html',
 };
 
