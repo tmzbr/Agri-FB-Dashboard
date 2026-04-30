@@ -1367,7 +1367,20 @@ def main():
     corn_rows    = fetch_corn()
     sbm_rows     = fetch_sbm()
 
-    # Merge into weekly rows by date
+    # ── Normalise all fresh data to a single canonical date ─────────────────
+    # Sources publish on different days (carcass=weekly Friday, hog=daily, corn=daily).
+    # We anchor everything to today's date so all fields land on the same row.
+    # The seed already has clean weekly periods; fresh data just needs to merge cleanly.
+    from datetime import date as _date
+    today_str = _date.today().isoformat()
+
+    # Find most recent date across all fetched data
+    all_dates = [r["date"].strftime("%Y-%m-%d")
+                 for data in [carcass_rows, hog_rows, corn_rows, sbm_rows]
+                 for r in data]
+    canonical_dt = max(all_dates) if all_dates else today_str
+    print(f"  Canonical date for fresh data: {canonical_dt}")
+
     fresh: dict = {}
     for label, field, data in [
         ("carcass",   "carcass",   carcass_rows),
@@ -1376,9 +1389,9 @@ def main():
         ("sbm",       "sbm",       sbm_rows),
     ]:
         for r in data:
-            dt = r["date"].strftime("%Y-%m-%d")
-            fresh.setdefault(dt, {})["report_date"] = dt
-            fresh[dt][field] = r["value"]
+            # All fresh fields go onto the canonical_dt row (newest date wins)
+            fresh.setdefault(canonical_dt, {})["report_date"] = canonical_dt
+            fresh[canonical_dt][field] = r["value"]
 
     # Compute derived fields for fresh rows
     for dt, row in fresh.items():
