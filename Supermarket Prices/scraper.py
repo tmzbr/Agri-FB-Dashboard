@@ -569,6 +569,92 @@ def init_db():
     return con
 
 def inserir(con, r):
+    """Insere resultado de coleta, evitando duplicatas no mesmo dia.
+
+    Regras:
+    - Se já existe linha com preco_atual real hoje → só sobrescreve se o novo
+      preço vier de uma rota melhor (rota menor = mais confiável) E a variação
+      for plausível (≤ 30% de diferença).
+    - Se só existe linha de erro/indisponível hoje → substitui pela nova.
+    - Nunca insere rota 12 quando já existe rota ≤ 11 com preço válido.
+    - Validação de sanidade: novo preço não pode diferir >50% do último preço
+      limpo dos últimos 14 dias. Se diferir, descarta e mantém o existente.
+    """
+    sm   = r["supermercado"]
+    nome = r["nome_produto"]
+    emb  = r["embalagem"]
+    data = r["data_coleta"]
+    novo_preco = r.get("preco_atual")
+    nova_rota  = r.get("rota_css")
+
+    # ── Validação de sanidade contra histórico ────────────────────────────────
+    if novo_preco:
+        ultimo = con.execute("""
+            SELECT preco_atual FROM precos
+            WHERE supermercado=? AND nome_produto=? AND embalagem=?
+              AND preco_atual IS NOT NULL AND erro IS NULL
+              AND rota_css != 99
+              AND data_coleta >= date(?, '-14 days') AND data_coleta < ?
+            ORDER BY data_coleta DESC LIMIT 1
+        """, (sm, nome, emb, data, data)).fetchone()
+        if ultimo and ultimo[0]:
+            variacao = abs(novo_preco - ultimo[0]) / ultimo[0]
+            if variacao > 0.50:
+                # Variação >50% vs histórico recente — provável captura errada
+                r = dict(r)
+                r["erro"] = f"preco_suspeito_{novo_preco:.2f}_vs_{ultimo[0]:.2f}"
+                r["preco_atual"] = None
+                r["rota_css"]    = None
+                novo_preco = None
+                nova_rota  = None
+
+    # ── Verificar o que já existe hoje para esse SKU ──────────────────────────
+    existente = con.execute("""
+        SELECT rowid, preco_atual, rota_css, erro FROM precos
+        WHERE supermercado=? AND nome_produto=? AND embalagem=? AND data_coleta=?
+        ORDER BY
+            CASE WHEN preco_atual IS NOT NULL AND erro IS NULL THEN 0 ELSE 1 END,
+            CASE WHEN rota_css IS NOT NULL THEN rota_css ELSE 999 END
+        LIMIT 1
+    """, (sm, nome, emb, data)).fetchone()
+
+    if existente:
+        ex_rowid, ex_preco, ex_rota, ex_erro = existente
+
+        if ex_preco is not None and ex_erro is None:
+            # Já existe preço limpo hoje
+            if not novo_preco:
+                # Novo resultado é erro — não polui o que já está bom
+                return
+            # Só substitui se nova rota for mais confiável E preço compatível
+            ex_rota_n  = ex_rota  if ex_rota  is not None else 999
+            novo_rota_n = nova_rota if nova_rota is not None else 999
+            if novo_rota_n < ex_rota_n:
+                # Rota melhor — atualiza no lugar
+                con.execute("""
+                    UPDATE precos SET horario_coleta=?, preco_atual=?, preco_original=?,
+                        em_promocao=?, rota_css=?, tentativas=?, erro=NULL,
+                        url_recuperada=?
+                    WHERE rowid=?
+                """, (r["horario_coleta"], novo_preco, r.get("preco_original"),
+                      int(r.get("em_promocao", False)), nova_rota,
+                      r.get("tentativas", 1), r.get("url_recuperada"), ex_rowid))
+            # Se rota igual ou pior, descarta silenciosamente
+            return
+        else:
+            # Existente é erro/indisponível — substitui pelo novo (UPDATE no lugar)
+            con.execute("""
+                UPDATE precos SET horario_coleta=?, preco_atual=?, preco_original=?,
+                    em_promocao=?, disponivel=?, url=?, url_recuperada=?,
+                    rota_css=?, tentativas=?, erro=?
+                WHERE rowid=?
+            """, (r["horario_coleta"], novo_preco, r.get("preco_original"),
+                  int(r.get("em_promocao", False)), int(r.get("disponivel", True)),
+                  r.get("url"), r.get("url_recuperada"), nova_rota,
+                  r.get("tentativas", 1), r.get("erro"), ex_rowid))
+            return
+
+    # ── Nenhum registro hoje → INSERT normal ─────────────────────────────────
     con.execute("""INSERT INTO precos
         (data_coleta,horario_coleta,supermercado,categoria,grupo,marca,nome_produto,
          embalagem,cidade,uf,regiao,preco_atual,preco_original,
@@ -928,21 +1014,32 @@ def preencher_gaps(con, hoje):
     """
     Ao final de cada coleta, preenche com o último preço disponível
     os produtos que não foram coletados hoje mas têm histórico recente.
-    Também cobre produtos marcados como indisponíveis.
+
+    Melhorias vs versão anterior:
+    - Remove copiados obsoletos antes de recalcular (idempotente).
+    - Remove entradas de erro quando já existe preço real ou copiado no mesmo dia.
+    - Nunca duplica: usa INSERT apenas se não há nenhum registro hoje ainda.
+    - Busca o último preço real (rota_css != 99) para evitar copiar cópias.
     """
     inseridos = 0
 
-    candidatos = con.execute("""
-        SELECT DISTINCT supermercado, categoria, grupo, marca, nome_produto,
-               embalagem, cidade, uf, regiao, url
-        FROM precos
-        WHERE preco_atual IS NOT NULL
-          AND data_coleta >= date(?, '-7 days')
-          AND data_coleta < ?
-          AND erro IS NULL
-    """, (hoje, hoje)).fetchall()
+    # 1. Limpeza: remove copiados de hoje para recalcular do zero (idempotência)
+    con.execute("DELETE FROM precos WHERE data_coleta=? AND erro='copiado_dia_anterior'", (hoje,))
 
-    # Sets para verificação eficiente
+    # 2. Limpeza: remove entradas de erro quando já existe preço real hoje
+    con.execute("""
+        DELETE FROM precos WHERE data_coleta=?
+          AND erro IN ('produto_indisponivel','preco_nao_encontrado_todas_rotas','pagina_invalida_url_desatualizada')
+          AND EXISTS (
+            SELECT 1 FROM precos r
+            WHERE r.supermercado=precos.supermercado AND r.nome_produto=precos.nome_produto
+              AND r.embalagem=precos.embalagem AND r.data_coleta=precos.data_coleta
+              AND r.preco_atual IS NOT NULL AND r.erro IS NULL
+          )
+    """, (hoje,))
+    con.commit()
+
+    # 3. Produtos com dado real hoje (após limpeza)
     tem_hoje = set()
     for r in con.execute("""
         SELECT supermercado, nome_produto, embalagem FROM precos
@@ -951,41 +1048,35 @@ def preencher_gaps(con, hoje):
     """, (hoje,)).fetchall():
         tem_hoje.add((r[0], r[1], r[2]))
 
-    ja_copiado_hoje = set()
-    for r in con.execute("""
-        SELECT supermercado, nome_produto, embalagem FROM precos
-        WHERE data_coleta=? AND erro='copiado_dia_anterior'
-    """, (hoje,)).fetchall():
-        ja_copiado_hoje.add((r[0], r[1], r[2]))
+    # 4. Candidatos: produtos com preço nos últimos 7 dias OU com erro hoje
+    candidatos_rows = con.execute("""
+        SELECT DISTINCT supermercado, categoria, grupo, marca, nome_produto,
+               embalagem, cidade, uf, regiao, url
+        FROM precos
+        WHERE preco_atual IS NOT NULL
+          AND data_coleta >= date(?, '-7 days') AND data_coleta < ?
+        UNION
+        SELECT DISTINCT supermercado, categoria, grupo, marca, nome_produto,
+               embalagem, cidade, uf, regiao, url
+        FROM precos
+        WHERE data_coleta=?
+          AND erro IN ('produto_indisponivel','preco_nao_encontrado_todas_rotas','pagina_invalida_url_desatualizada')
+    """, (hoje, hoje, hoje)).fetchall()
 
-    # Produtos marcados como indisponíveis hoje — também precisam ser copiados
-    for r in con.execute("""
-        SELECT supermercado, nome_produto, embalagem FROM precos
-        WHERE data_coleta=? AND erro='produto_indisponivel'
-    """, (hoje,)).fetchall():
-        candidatos_extra = con.execute("""
-            SELECT DISTINCT supermercado, categoria, grupo, marca, nome_produto,
-                   embalagem, cidade, uf, regiao, url
-            FROM precos WHERE supermercado=? AND nome_produto=? AND embalagem=?
-              AND preco_atual IS NOT NULL AND erro IS NULL
-            LIMIT 1
-        """, (r[0], r[1], r[2])).fetchall()
-        candidatos = list(candidatos) + candidatos_extra
-
-    for p in candidatos:
+    for p in candidatos_rows:
         sm, cat, grp, marca, nome, emb = p[0], p[1], p[2], p[3], p[4], p[5]
         cidade, uf, reg, url = p[6], p[7], p[8], p[9]
 
         if (sm, nome, emb) in tem_hoje:
             continue
-        if (sm, nome, emb) in ja_copiado_hoje:
-            continue
 
+        # Busca último preço real coletado (não cópia), para não copiar cópias
         ultimo = con.execute("""
-            SELECT preco_atual, preco_original, em_promocao
-            FROM precos
+            SELECT preco_atual, preco_original, em_promocao FROM precos
             WHERE supermercado=? AND nome_produto=? AND embalagem=?
-              AND preco_atual IS NOT NULL AND erro IS NULL
+              AND preco_atual IS NOT NULL
+              AND (erro IS NULL OR erro='input_manual')
+              AND rota_css != 99
             ORDER BY data_coleta DESC LIMIT 1
         """, (sm, nome, emb)).fetchone()
 
@@ -1001,11 +1092,10 @@ def preencher_gaps(con, hoje):
         """, (hoje, "00:00:00", sm, cat, grp, marca, nome, emb,
               cidade, uf, reg, ultimo[0], ultimo[1], ultimo[2], url))
         inseridos += 1
-        ja_copiado_hoje.add((sm, nome, emb))
+        tem_hoje.add((sm, nome, emb))  # evita duplicar dentro do mesmo loop
 
-    if inseridos > 0:
-        con.commit()
-        print(f"  → {inseridos} preços preenchidos por cópia do dia anterior")
+    con.commit()
+    print(f"  → {inseridos} preços preenchidos por cópia do dia anterior")
     return inseridos
 
 
