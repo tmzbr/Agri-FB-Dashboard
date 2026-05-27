@@ -1001,7 +1001,9 @@ async function fetchNews() {
     const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST" });
     const data = await res.json();
     if (data.success) {
-      showToast(`${data.saved} novas notícias adicionadas (${data.fetched} encontradas)`, "success");
+      const saved = data.saved ?? data.new ?? data.added ?? "–";
+      const fetched = data.fetched ?? data.found ?? data.total ?? "–";
+      showToast(`${saved} novas notícias adicionadas (${fetched} encontradas)`, "success");
       document.getElementById("last-refresh").textContent =
         "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
       document.getElementById("last-refresh").classList.remove("d-none");
