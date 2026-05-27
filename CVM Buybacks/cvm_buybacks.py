@@ -1192,15 +1192,28 @@ def already_ingested_consolidated(
     Lógica de deduplicação robusta para o Formulário Consolidado.
 
     Retorna True (pula o PDF) apenas se:
-      1. Já existe pelo menos 1 Saldo Final no banco para este (cnpj, mes, versao), E
-      2. O número de grupos com SF é >= ao número de grupos do mês anterior da mesma empresa.
+      1. Todo grupo que tem Saldo Inicial também tem Saldo Final, E
+      2. O número de grupos com SF é >= ao número de grupos do mês anterior.
 
-    Isso garante que:
-      - Meses novos (sem nenhuma linha): sempre parseados → OK
-      - Meses já no banco com todos os grupos: pulados → eficiente
-      - Meses no banco com grupos faltando (bug antigo): re-parseados → auto-corrige
-      - Empresas com poucos grupos (ex: SMTO3 só tem Controlador): pulados corretamente
+    Isso garante que grupos com SI mas sem SF (parse truncado) sejam
+    sempre re-parseados, independentemente de outros grupos estarem completos.
     """
+    # Grupos que têm SI mas não têm SF → parse incompleto
+    grupos_sem_sf = conn.execute(
+        "SELECT COUNT(DISTINCT grupo) FROM consolidated_positions "
+        "WHERE cnpj_digits=? AND data_referencia=? AND versao=? "
+        "AND tipo_movimentacao='Saldo Inicial' "
+        "AND grupo NOT IN ("
+        "  SELECT DISTINCT grupo FROM consolidated_positions "
+        "  WHERE cnpj_digits=? AND data_referencia=? AND versao=? "
+        "  AND tipo_movimentacao='Saldo Final'"
+        ")",
+        (cnpj_digits, data_ref, versao, cnpj_digits, data_ref, versao),
+    ).fetchone()[0]
+
+    if grupos_sem_sf > 0:
+        return False  # algum grupo tem SI mas não SF → re-parsear
+
     # Quantos grupos com SF já temos para este mês?
     current = conn.execute(
         "SELECT COUNT(DISTINCT grupo) FROM consolidated_positions "
