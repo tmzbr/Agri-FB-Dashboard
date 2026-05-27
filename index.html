@@ -537,9 +537,10 @@ async function doLogin(){
   const btn   = document.getElementById('login-btn');
   const errEl = document.getElementById('login-error');
   errEl.textContent='';
-  if(!email||!pass){ errEl.textContent='Please enter your email and password.'; return; }
+  const resolvedEmail = email === 'ibba' ? 'ibba@itaubba.com' : email;
+  if(!resolvedEmail||!pass){ errEl.textContent='Please enter your email and password.'; return; }
   btn.disabled=true; btn.textContent='Signing in...';
-  const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
+  const { data, error } = await sb.auth.signInWithPassword({ email: resolvedEmail, password:pass });
   if(error){
     btn.disabled=false; btn.textContent='Sign In';
     errEl.textContent='Invalid credentials or account inactive. Please contact your administrator.';
@@ -547,7 +548,7 @@ async function doLogin(){
   }
   STATE.authSession = data.session;
   btn.disabled=false; btn.textContent='Sign In';
-  await loadUserAndData(email);
+  await loadUserAndData(resolvedEmail);
   // Log login event (fire and forget — don't block login)
   logEvent('login', null);
 }
