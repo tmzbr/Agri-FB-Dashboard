@@ -1813,6 +1813,49 @@ def main() -> None:
         current_year = date.today().year
         if args.bootstrap:
             years = list(range(BOOTSTRAP_START_YEAR, current_year + 1))
+            # ── Limpeza antes do bootstrap ────────────────────────────────
+            # Garante re-parse de meses com dados incompletos, independente
+            # de qual .db está no repositório.
+            # Passagem 1: SI sem SF (parse visivelmente truncado)
+            # Passagem 2: meses hardcoded com parse silenciosamente incompleto
+            FORCE_REPARSE: dict[str, list[str]] = {
+                # ABEV3: parser antigo perdia entregas de ações restritas
+                # em PDFs com Diretoria de múltiplas páginas
+                "07526557000100": [
+                    "2025-12-01", "2026-01-01", "2026-02-01", "2026-03-01",
+                ],
+            }
+            to_delete: set[tuple[str, str]] = set()
+            for row in conn.execute("""
+                SELECT DISTINCT cnpj_digits, data_referencia
+                FROM consolidated_positions
+                WHERE tipo_movimentacao='Saldo Inicial'
+                  AND (cnpj_digits, data_referencia, grupo) NOT IN (
+                      SELECT cnpj_digits, data_referencia, grupo
+                      FROM consolidated_positions
+                      WHERE tipo_movimentacao='Saldo Final'
+                  )
+            """).fetchall():
+                to_delete.add((row[0], row[1]))
+            for cnpj_d, meses in FORCE_REPARSE.items():
+                for mes in meses:
+                    to_delete.add((cnpj_d, mes))
+            if to_delete:
+                log.info("Bootstrap: limpando %d meses para re-parse...", len(to_delete))
+                for cnpj_d, mes_d in sorted(to_delete):
+                    n = conn.execute(
+                        "DELETE FROM consolidated_positions "
+                        "WHERE cnpj_digits=? AND data_referencia=?",
+                        (cnpj_d, mes_d),
+                    ).rowcount
+                    if n:
+                        ticker = conn.execute(
+                            "SELECT ticker FROM companies WHERE cnpj_digits=?", (cnpj_d,)
+                        ).fetchone()
+                        log.info("  Deletado %s %s: %d linhas",
+                                 ticker[0] if ticker else cnpj_d, mes_d, n)
+                conn.commit()
+            # ─────────────────────────────────────────────────────────────
         else:
             years = [current_year]
             if date.today().month <= 2:
