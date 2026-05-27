@@ -914,10 +914,21 @@ def parse_consolidated_pdf(
                 lines_map[y_key].append(w)
             sorted_ys = sorted(lines_map.keys())
 
-            # Páginas de continuação não têm cabeçalho Saldo Inicial →
-            # começar já em movimentacoes para não perder linhas
-            section = "movimentacoes" if is_continuation else None
-            op_buffer: list[list] = []
+            # Páginas de continuação:
+            #   - começar já em movimentacoes (sem cabeçalho Saldo Inicial)
+            #   - preservar op_buffer da página anterior para completar
+            #     operações multi-linha quebradas na virada de página
+            if is_continuation:
+                section = "movimentacoes"
+                # Buffer sempre começa vazio em cada página.
+                # Fragmentos do topo da página de continuação (ex: "DE OPÇÕES")
+                # são capturados pelo mecanismo de concatenação no loop abaixo:
+                # se flush_op retornar None (sem dia), a linha é appendada ao buffer
+                # e associada à próxima operação completa.
+                op_buffer = []
+            else:
+                section = None
+                op_buffer = []
 
             def make_row(tipo_mov, tipo_ativo, caract, intermediario, dia,
                          quantidade, preco, volume):
@@ -1093,6 +1104,17 @@ def parse_consolidated_pdf(
                 quantidade     = norm_num(" ".join(qty_w))
                 preco          = norm_num(" ".join(preco_w))
                 volume         = norm_num(" ".join(vol_w))
+                # Quando op_words vazio mas há DIA+QTY e intermediário "Direto c/ a Cia",
+                # inferir operação pelo intermediário: operações diretas com a empresa
+                # são tipicamente exercício de opção ou entrega de ações restritas.
+                # Usamos o preço como discriminador: se > 0 → exercício de opção.
+                if not operacao and dia is not None and quantidade is not None:
+                    intermediario_lower = (intermediario or "").lower()
+                    if "direto" in intermediario_lower and "cia" in intermediario_lower:
+                        if preco and preco > 0:
+                            operacao = "Exercício de opção de compra"
+                        else:
+                            operacao = "Entrega de ações restritas"
                 if not operacao:
                     return None
                 # Descartar fragmentos sem dados úteis
@@ -1150,8 +1172,14 @@ def parse_consolidated_pdf(
                 ]
                 if dia_words and op_buffer:
                     rec = flush_op(op_buffer, section)
-                    if rec: rows.append(rec)
-                    op_buffer = [line]
+                    if rec:
+                        rows.append(rec)
+                        op_buffer = [line]
+                    else:
+                        # Buffer anterior incompleto (sem dia/qty suficiente) —
+                        # pode ser fragmento de texto (ex: "EXERCÍCIO") que pertence
+                        # a esta nova operação. Concatenar ao invés de descartar.
+                        op_buffer.append(line)
                 else:
                     op_buffer.append(line)
 
@@ -1465,26 +1493,62 @@ GRUPO_TO_ROLE: dict[str, str] = {
 
 
 def _classify_op(op: str | None) -> str | None:
+    """
+    Classifica operações para o INSIDER_AGG do dashboard.
+    Inclui todos os eventos que alteram a posição (aumentam ou reduzem),
+    de forma que net = buy - sell fecha com SF - SI publicados na CVM.
+
+    buy  → aumenta posição: compras a mercado, vesting, exercício de opção,
+            plano de remuneração, bonificação, subscrição, posse,
+            doação recebida, devolução de empréstimo
+    sell → reduz posição:   vendas a mercado, renúncia/saída, doação cedida,
+            contratação de empréstimo, desligamento
+    None → não altera posição: reeleição, eleição, transferência,
+            reorganização societária, N/A e outros eventos administrativos
+    """
     if not op:
         return None
     o = op.lower()
-    # Eventos corporativos sem direção de mercado → ignorar no dashboard
-    if any(x in o for x in ["renúncia", "renuncia", "reeleição", "eleicao", "eleição",
-                              "não reeleição", "reorganizaç", "transferê", "transfere",
-                              "intercompany", "listagem", "acordo de acionista",
-                              "signatári", "inclusão de acionista"]):
+
+    # ── Eventos que NÃO alteram posição → None ────────────────────────
+    if any(x in o for x in [
+        "reeleição", "eleição", "eleicao", "não reeleição",
+        "reorganizaç", "reorganizacao",
+        "transferê", "transfere", "intercompany",
+        "listagem", "acordo de acionista", "signatári",
+        "inclusão de acionista", "n/a",
+    ]):
         return None
-    if any(x in o for x in ["venda", "desligamento", "saída", "saida", "doador",
-                              "liquidaç", "contratação de empréstimo",
-                              "contratacao de emprestimo"]):
+
+    # ── Reduzem posição → sell ────────────────────────────────────────
+    if any(x in o for x in [
+        "venda",
+        "renúncia", "renuncia",
+        "desligamento", "saída", "saida",
+        "doador",
+        "contratação de empréstimo", "contratacao de emprestimo",
+        "liquidaç",
+    ]):
         return "sell"
-    if any(x in o for x in ["compra", "subscri", "exercí", "exerci", "restritas",
-                              "bonificac", "bonificaç", "desdobr", "plano", "posse",
-                              "ilp", "incorpora", "devolução de empréstimo",
-                              "devolucao de emprestimo", "vista", "termo",
-                              "option", "opções", "opção", "donatário", "donatario",
-                              "de opções", "vesting"]):
+
+    # ── Aumentam posição → buy ────────────────────────────────────────
+    if any(x in o for x in [
+        "compra",
+        "entrega de ações restritas", "entrega de ações bônus",
+        "exercício de opção", "exercicio de opcao",
+        "de opções", "de opcoes",
+        "ações de plano", "acoes de plano",
+        "units de plano",
+        "desdobramento", "bonificaç", "bonificac",
+        "subscri",
+        "posse",
+        "donatário", "donatario",
+        "devolução de empréstimo", "devolucao de emprestimo",
+        "outorga",
+        "vista", "termo",
+    ]):
         return "buy"
+
     return None
 
 
