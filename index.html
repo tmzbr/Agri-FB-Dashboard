@@ -340,6 +340,7 @@ const STATE = {
   searchQuery: '',
   usersExpanded: false,
   analyticsPeriod: 30,
+  analyticsRecentLimit: 20,
   // Loaded from Supabase:
   portalUsers: [],
   dashboards: [],
@@ -1383,8 +1384,9 @@ async function buildPaneAnalytics(){
   const topDashes = Object.entries(opensByDash)
     .sort((a,b)=>b[1]-a[1]).slice(0,10);
 
-  // Recent activity (last 20 events)
-  const recent = logs.slice(0,20);
+  // Recent activity with configurable limit
+  const recentLimit = STATE.analyticsRecentLimit || 20;
+  const recent = logs.slice(0, recentLimit);
 
   const periodBtns = [7,30,90].map(d=>
     `<button class="${STATE.analyticsPeriod===d?'active':''}" onclick="STATE.analyticsPeriod=${d};renderContent();">${d}d</button>`
@@ -1459,8 +1461,13 @@ async function buildPaneAnalytics(){
     </div>
 
     <div class="analytics-chart-card">
-      <div class="analytics-chart-title">Recent Activity</div>
-      ${recentRows ? `<table class="analytics-table"><thead><tr><th></th><th>User</th><th>Event</th><th>Time</th></tr></thead><tbody>${recentRows}</tbody></table>` : '<div class="analytics-empty">No activity yet</div>'}
+      <div class="analytics-chart-title">
+        Recent Activity
+        <div style="display:flex;gap:6px;">
+          ${[20,50,100].map(n=>`<button onclick="STATE.analyticsRecentLimit=${n};renderContent();" style="padding:4px 10px;border:1px solid var(--border);border-radius:5px;font-size:11px;cursor:pointer;background:${recentLimit===n?'var(--orange)':'white'};color:${recentLimit===n?'white':'var(--gray-dark)'};font-weight:${recentLimit===n?'600':'400'};">${n}</button>`).join('')}
+        </div>
+      </div>
+      ${recentRows ? `<div style="max-height:420px;overflow-y:auto;"><table class="analytics-table"><thead><tr><th></th><th>User</th><th>Event</th><th>Time</th></tr></thead><tbody>${recentRows}</tbody></table></div>` : '<div class="analytics-empty">No activity yet</div>'}
     </div>
   </div>
   <script>
