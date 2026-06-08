@@ -110,6 +110,41 @@ def _biz_days_between(start_dt, end_dt):
     return count
 
 
+def _nth_biz_day(year, month, n):
+    """Return the date of the nth business day in month (1-indexed), excl. BR holidays."""
+    from datetime import timedelta
+    hols = _br_holidays(year)
+    d = date(year, month, 1)
+    count = 0
+    for _ in range(60):
+        if d.weekday() < 5 and str(d) not in hols:
+            count += 1
+            if count == n:
+                return d
+        d += timedelta(days=1)
+    return None
+
+
+def _bulletin_end_date(year, month, biz_days):
+    """
+    Compute the SECEX bulletin end_date from MTD biz_days.
+
+    SECEX publishes every Monday. The bulletin period ends on the Monday of
+    publication, which is the next Monday on or after the last business day of
+    the reporting week. When that Monday falls in the next month, the end_date
+    is capped at the last calendar day of the current month.
+    """
+    from datetime import timedelta
+    from calendar import monthrange
+    last_biz = _nth_biz_day(year, month, biz_days)
+    if last_biz is None:
+        return None
+    days_to_mon = (0 - last_biz.weekday()) % 7   # 0 if already Monday
+    candidate = last_biz + timedelta(days=days_to_mon)
+    last_day = date(year, month, monthrange(year, month)[1])
+    return min(candidate, last_day)
+
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 DB_PATH   = Path(__file__).parent / "chicken_bz.db"
 TIMEOUT   = 30
@@ -885,7 +920,13 @@ def fetch_weekly_bulletin(conn):
       Row 7, col 2 : period header e.g. "Abr/2026"
       Col 1        : product description
       Col 6        : Toneladas MTD (cumulative from 1st of month)
+      Col 7        : Ton/MédDiária → biz_days = round(vol / media)
       Col 10       : Preço US$/Tonelada → divide by 1000 for USD/kg
+
+    end_date is anchored via _nth_biz_day(year, month, biz_days), which returns
+    the exact calendar date of the Nth business day accounting for BR holidays —
+    same approach as the beef extractor.  Falls back to last day of month (past
+    months) or today (current month) when media_diaria is unavailable.
 
     vol_tons stored as MTD cumulative; materialise() de-accumulates monthly.
     """
@@ -956,9 +997,10 @@ def fetch_weekly_bulletin(conn):
     # Column layout (confirmed from live file):
     #   col 1  = Descrição
     #   col 2  = US$ Mil (MTD current year)
-    #   col 6  = Toneladas (MTD current year)  ← vol_tons
-    #   col 10 = Preço US$/Tonelada            ← price (÷1000 → USD/kg)
-    bull_price_usd_kg = bull_vol_tons = None
+    #   col 6  = Toneladas (MTD current year)     ← vol_tons
+    #   col 7  = Ton/MédDiária (daily average)    ← used to compute biz_days
+    #   col 10 = Preço US$/Tonelada               ← price (÷1000 → USD/kg)
+    bull_price_usd_kg = bull_vol_tons = bull_media_diaria = None
     for ri in range(1, ws.max_row + 1):
         desc = str(ws.cell(ri, 1).value or "").lower()
         if any(kw in desc for kw in POULTRY_KW):
@@ -968,8 +1010,15 @@ def fetch_weekly_bulletin(conn):
                 if vol > 0 and price > 0:
                     bull_vol_tons     = vol
                     bull_price_usd_kg = price / 1000.0
+                    try:
+                        m = float(ws.cell(ri, 7).value or 0)
+                        if m > 0:
+                            bull_media_diaria = m
+                    except Exception:
+                        pass
                     print(f"  [BULLETIN] '{ws.cell(ri,1).value}'[:55]: "
-                          f"vol_mtd={vol:.0f} t, price={bull_price_usd_kg:.4f} USD/kg")
+                          f"vol_mtd={vol:.0f} t, price={bull_price_usd_kg:.4f} USD/kg"
+                          + (f", media={bull_media_diaria:.0f} t/dia" if bull_media_diaria else ""))
             except Exception:
                 pass
             break
@@ -978,21 +1027,46 @@ def fetch_weekly_bulletin(conn):
         print("  [BULLETIN] Poultry row not found or zero data.")
         return 0
 
-    # ── Guard: skip if vol already covered ───────────────────────────────────
+    # ── Compute biz_days and anchor end_date via _nth_biz_day ────────────────
+    # The bulletin reports Ton/MédDiária; biz_days = round(vol_MTD / media).
+    # _nth_biz_day() returns the exact calendar date of that Nth business day,
+    # accounting for Brazilian national holidays — same approach as beef extractor.
+    bull_biz_days = None
+    if bull_media_diaria:
+        bull_biz_days = round(bull_vol_tons / bull_media_diaria)
+
+    if bull_biz_days:
+        end_dt = _bulletin_end_date(bull_year, bull_month, bull_biz_days)
+        week_end = str(end_dt) if end_dt else None
+        print(f"  [BULLETIN] biz_days={bull_biz_days} → end_date={week_end}")
+    else:
+        week_end = None
+
+    # Fallback when media_diaria unavailable: past month → last calendar day; current → today
+    if week_end is None:
+        from calendar import monthrange as _mr
+        bull_date = _date(bull_year, bull_month, 1)
+        if bull_date < _date(today.year, today.month, 1):
+            week_end = str(_date(bull_year, bull_month, _mr(bull_year, bull_month)[1]))
+        else:
+            week_end = str(today)
+        print(f"  [BULLETIN] media_diaria unavailable — fallback end_date={week_end}")
+
+    # ── Guard: skip if this bulletin doesn't advance the period ──────────────
+    # Compare end_dates rather than volumes: a new bulletin advances the period
+    # when its computed end_date is strictly later than what's already stored.
     last_row = conn.execute(
         "SELECT start_date, end_date, vol_tons FROM _weekly_raw "
         "WHERE strftime('%Y-%m', start_date) = ? ORDER BY start_date DESC LIMIT 1",
         (period_str,)
     ).fetchone()
 
-    if last_row and last_row[2] is not None and bull_vol_tons <= last_row[2] + 1.0:
+    if last_row and last_row[1] is not None and week_end <= last_row[1]:
         print(f"  [BULLETIN] Already up to date for {period_str} "
-              f"(bulletin={bull_vol_tons:.0f} t ≤ stored={last_row[2]:.0f} t).")
+              f"(end {week_end} ≤ stored {last_row[1]}).")
         return 0
 
     # ── Date range for the new entry ─────────────────────────────────────────
-    # start = day after last stored end_date for this month (or 1st of month)
-    # end   = today
     last_end = conn.execute(
         "SELECT MAX(end_date) FROM _weekly_raw "
         "WHERE strftime('%Y-%m', start_date) = ?",
@@ -1002,10 +1076,21 @@ def fetch_weekly_bulletin(conn):
     if last_end:
         week_start = (_date.fromisoformat(last_end) + _td(days=1)).isoformat()
     else:
-        week_start = f"{bull_year}-{bull_month:02d}-01"
-    week_end = str(today)
+        # No rows yet for this month — check if any prior row's end_date bleeds
+        # into this month (e.g. last week of previous month ended on the 1st or
+        # 2nd of the new month).  If so, start after that row to avoid overlap.
+        month_start = f"{bull_year}-{bull_month:02d}-01"
+        bleed_end = conn.execute(
+            "SELECT MAX(end_date) FROM _weekly_raw WHERE end_date >= ?",
+            (month_start,)
+        ).fetchone()[0]
+        if bleed_end:
+            week_start = (_date.fromisoformat(bleed_end) + _td(days=1)).isoformat()
+        else:
+            week_start = month_start
 
-    biz = _biz_days_between(_date.fromisoformat(week_start), _date.fromisoformat(week_end))
+    biz = bull_biz_days if bull_biz_days else _biz_days_between(
+        _date.fromisoformat(week_start), _date.fromisoformat(week_end))
 
     # Safety: never let the bulletin overwrite a SEED row (start_date already in DB
     # from a prior hardcoded entry).  Seeds always win; the bulletin should only
@@ -1194,12 +1279,13 @@ def materialise(conn):
         if vol_mtd is not None:
             inc_vol  = max(0.0, vol_mtd - prev_vol)
             prev_vol = vol_mtd
-        # Compute biz_days from dates if not stored
-        if biz_d is None:
-            biz_d = _biz_days_between(
-                date.fromisoformat(start_date),
-                date.fromisoformat(end_date or start_date)
-            )
+        # Always recompute from actual dates: _weekly_raw.biz_days may hold MTD
+        # cumulative (e.g. 20 for the last week of the month), but vol_daily
+        # needs the count for THIS specific week only.
+        biz_d = _biz_days_between(
+            date.fromisoformat(start_date),
+            date.fromisoformat(end_date or start_date)
+        )
         deacc.append((start_date, end_date, price_usd_kg, inc_vol, biz_d))
 
     weekly_out = []
@@ -1251,6 +1337,94 @@ def materialise(conn):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FILL MISSING WEEKLY GAPS FROM OFFICIAL MONTHLY TOTALS
+# ══════════════════════════════════════════════════════════════════════════════
+def fill_weekly_gaps(conn):
+    """
+    Detects and auto-fills missing closing weeks of completed months.
+
+    Root cause: SECEX publishes each week's bulletin on the following Monday.
+    When the last week of a month is published late (e.g. the May 26-30 bulletin
+    arrives after the extractor already moved to June data), the weekly row is
+    never inserted, leaving a gap.
+
+    Fix: compare the highest MTD cumulative vol stored in _weekly_raw for each
+    closed month against the official monthly total in _secex_raw.  If a gap
+    exists (> 1 ton) AND the MDIC total is >= the last weekly MTD (i.e. MDIC has
+    the full month, not a partial snapshot), insert a synthetic closing week.
+    materialise() then de-accumulates it to the true incremental weekly price.
+    """
+    from datetime import timedelta
+
+    today = date.today()
+    filled = 0
+
+    completed = conn.execute(
+        "SELECT year, month, vol_tons, price_usd_kg FROM _secex_raw"
+        " WHERE vol_tons IS NOT NULL AND price_usd_kg IS NOT NULL"
+        " ORDER BY year, month"
+    ).fetchall()
+
+    for yr, mo, total_vol, monthly_price in completed:
+        # Only backfill months that are fully closed (strictly before current month)
+        if (yr, mo) >= (today.year, today.month):
+            continue
+
+        prefix = f"{yr:04d}-{mo:02d}"
+
+        # Last _weekly_raw row for this month (highest MTD)
+        last = conn.execute(
+            "SELECT start_date, end_date, vol_tons FROM _weekly_raw"
+            " WHERE strftime('%Y-%m', start_date) = ? ORDER BY start_date DESC LIMIT 1",
+            (prefix,)
+        ).fetchone()
+
+        if last is None:
+            continue  # no weekly data for this month at all — skip
+
+        last_start, last_end, last_mtd_vol = last
+
+        if last_mtd_vol is None:
+            continue
+
+        # Safety: if MDIC total < last weekly MTD, MDIC data is still partial — skip
+        if total_vol < last_mtd_vol - 1.0:
+            continue
+
+        vol_gap = total_vol - last_mtd_vol
+        if vol_gap < 1.0:
+            continue  # already complete
+
+        # Compute the synthetic closing-week date range
+        last_day = date(yr, mo, monthrange(yr, mo)[1])
+        gap_start = date.fromisoformat(last_end) + timedelta(days=1)
+
+        if gap_start > last_day:
+            continue  # defensive: last_end is already past month-end
+
+        biz_d = _biz_days_between(gap_start, last_day)
+
+        conn.execute(
+            "INSERT OR REPLACE INTO _weekly_raw"
+            "(start_date, end_date, price_usd_kg, vol_tons, biz_days)"
+            " VALUES(?,?,?,?,?)",
+            (str(gap_start), str(last_day),
+             round(monthly_price, 6),
+             total_vol,   # MTD = monthly total (de-accumulated in materialise)
+             biz_d)
+        )
+        conn.commit()
+
+        print(f"  [GAP-FILL] {prefix}: inserted gap week {gap_start} → {last_day}"
+              f" | vol_gap={vol_gap:,.1f} t")
+        filled += 1
+
+    if filled == 0:
+        print("  [GAP-FILL] No gaps detected.")
+    return filled
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
@@ -1289,6 +1463,9 @@ def main():
     # ── 5. Weekly bulletin + fill ─────────────────────────────────────────────
     fetch_weekly_bulletin(conn)
     fill_secex_from_weekly(conn)
+
+    # ── 5b. Auto-fill any closing weeks missed due to late bulletin publication ─
+    fill_weekly_gaps(conn)
 
     # ── 6. Materialise ────────────────────────────────────────────────────────
     materialise(conn)
