@@ -374,6 +374,7 @@ def _br_holidays(year):
     }
     if year >= 2024:                     # Consciência Negra became national in 2024
         h.add(str(date(year, 11, 20)))
+    h.add(str(e + timedelta(days=60)))   # Corpus Christi (ponto facultativo federal)
     return h
 
 
@@ -405,6 +406,30 @@ def _nth_biz_day(year, month, n):
                 return d
         d += timedelta(days=1)
     return None
+
+
+def _bulletin_end_date(year, month, biz_days):
+    """
+    Compute the SECEX bulletin end_date from MTD biz_days.
+
+    end_date = last business day of the reporting period (_nth_biz_day).
+    Exception: if this is the last week of the month (biz_days >= total biz
+    days in month), extend end_date to the last calendar day so the next
+    month starts on the 1st with no gap.
+    """
+    last_biz = _nth_biz_day(year, month, biz_days)
+    if last_biz is None:
+        return None
+    last_day = date(year, month, monthrange(year, month)[1])
+    # Count total business days in month
+    total_biz = sum(
+        1 for d in range(1, last_day.day + 1)
+        if date(year, month, d).weekday() < 5
+        and str(date(year, month, d)) not in _br_holidays(year)
+    )
+    if biz_days >= total_biz:
+        return last_day
+    return last_biz
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -998,45 +1023,63 @@ def fetch_weekly_bulletin(conn):
     mo     = today.month
     wk_num = today.isocalendar()[1]
 
+    # ── Step 0: try the canonical fixed URL first ─────────────────────────────
+    # balanca.economia.gov.br/balanca/semanal/Setores_Produtos.xlsx is the same
+    # file the chicken tracker uses and is always current. Trying it first avoids
+    # the slower scraping/guessing steps and keeps both trackers in sync.
+    xlsx_url = None
+    FIXED_URL = f"{BASE}/balanca/semanal/Setores_Produtos.xlsx"
+    try:
+        import requests as _req
+        probe0 = _req.head(FIXED_URL, timeout=10, verify=False,
+                           headers={"User-Agent": "Mozilla/5.0"})
+        if probe0.status_code == 200:
+            xlsx_url = FIXED_URL
+            print(f"  [BULLETIN] Fixed URL OK: {FIXED_URL}")
+        else:
+            print(f"  [BULLETIN] Fixed URL returned {probe0.status_code} — falling back to discovery")
+    except Exception as exc:
+        print(f"  [BULLETIN] Fixed URL probe error: {exc}")
+
     # ── Step 1: fetch HTML and search broadly for xlsx links ──────────────────
     # NOTE: we use requests directly (not get()) to avoid the duplicate-headers
     #       bug that occurs when get()'s hdrs= and **kwargs both carry 'headers'.
-    xlsx_url = None
     KEYWORDS = ("cuci", "produto", "semana", "boletim", "isic", "ativ")
-    try:
-        import requests as _req
-        html_r = _req.get(
-            PAGE_URL,
-            headers={"Accept": "text/html,application/xhtml+xml",
-                     "User-Agent": "Mozilla/5.0"},
-            timeout=30,
-            verify=False,
-        )
-        page_text = html_r.text
+    if xlsx_url is None:
+        try:
+            import requests as _req
+            html_r = _req.get(
+                PAGE_URL,
+                headers={"Accept": "text/html,application/xhtml+xml",
+                         "User-Agent": "Mozilla/5.0"},
+                timeout=30,
+                verify=False,
+            )
+            page_text = html_r.text
 
-        # Search 1a: href attributes containing .xls / .xlsx
-        href_links = _re.findall(r'href=["\']([^"\']+\.xlsx?)["\']',
-                                 page_text, _re.IGNORECASE)
-        # Search 1b: any URL-like string with .xlsx in entire page source
-        #            (catches JS bundle strings like "/path/file.xlsx")
-        all_xlsx = _re.findall(r'["\']([^"\']*\.xlsx?)["\']',
-                                page_text, _re.IGNORECASE)
+            # Search 1a: href attributes containing .xls / .xlsx
+            href_links = _re.findall(r'href=["\']([^"\']+\.xlsx?)["\']',
+                                     page_text, _re.IGNORECASE)
+            # Search 1b: any URL-like string with .xlsx in entire page source
+            #            (catches JS bundle strings like "/path/file.xlsx")
+            all_xlsx = _re.findall(r'["\']([^"\']*\.xlsx?)["\']',
+                                    page_text, _re.IGNORECASE)
 
-        candidates = href_links + all_xlsx
-        print(f"  [BULLETIN] Page fetched ({len(page_text):,} chars). "
-              f"xlsx candidates found: {len(candidates)}")
+            candidates = href_links + all_xlsx
+            print(f"  [BULLETIN] Page fetched ({len(page_text):,} chars). "
+                  f"xlsx candidates found: {len(candidates)}")
 
-        for lnk in candidates:
-            if any(k in lnk.lower() for k in KEYWORDS):
-                xlsx_url = lnk if lnk.startswith("http") else f"{BASE}{lnk}"
-                print(f"  [BULLETIN] Found via page scrape: {xlsx_url}")
-                break
+            for lnk in candidates:
+                if any(k in lnk.lower() for k in KEYWORDS):
+                    xlsx_url = lnk if lnk.startswith("http") else f"{BASE}{lnk}"
+                    print(f"  [BULLETIN] Found via page scrape: {xlsx_url}")
+                    break
 
-        if not xlsx_url and candidates:
-            print(f"  [BULLETIN] Candidates (no keyword match): {candidates[:8]}")
+            if not xlsx_url and candidates:
+                print(f"  [BULLETIN] Candidates (no keyword match): {candidates[:8]}")
 
-    except Exception as exc:
-        print(f"  [BULLETIN] Page fetch error: {exc}")
+        except Exception as exc:
+            print(f"  [BULLETIN] Page fetch error: {exc}")
 
     # ── Step 2: guessed URL patterns (SECEX naming conventions) ──────────────
     if xlsx_url is None:
@@ -1308,7 +1351,7 @@ def fetch_weekly_bulletin(conn):
             s_date = f"{yr_s}-{mo_s}-01"
             # End: compute from biz_days if available, else use today
             if biz_days:
-                end_dt = _nth_biz_day(target_yr, target_mo, biz_days)
+                end_dt = _bulletin_end_date(target_yr, target_mo, biz_days)
                 e_date = str(end_dt) if end_dt else str(today)
             else:
                 e_date = str(today - _td(days=max(0, today.weekday() - 4)) if today.weekday() > 4 else today)
@@ -1344,7 +1387,7 @@ def fetch_weekly_bulletin(conn):
         # latest stored row's end_date.  Using end_date (rather than biz_days)
         # avoids the MTD-vs-weekly confusion: SEED rows store weekly biz_days
         # while bulletin rows store MTD cumulative biz_days.
-        new_end_dt = _nth_biz_day(target_yr, target_mo, biz_days) if biz_days else None
+        new_end_dt = _bulletin_end_date(target_yr, target_mo, biz_days) if biz_days else None
         new_e_str  = str(new_end_dt) if new_end_dt else str(today)
 
         if new_e_str > e_date:
@@ -1440,6 +1483,94 @@ def fill_secex_from_weekly(conn):
             filled += 1
 
     conn.commit()
+    return filled
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FILL MISSING WEEKLY GAPS FROM OFFICIAL MONTHLY TOTALS
+# ══════════════════════════════════════════════════════════════════════════════
+def fill_weekly_gaps(conn):
+    """
+    Detects and auto-fills missing closing weeks of completed months.
+
+    Root cause: SECEX publishes each week's bulletin on the following Monday.
+    When the last week of a month is published late (e.g. the May 23-29 bulletin
+    arrives on June 3), the daily GitHub Actions run may have already processed
+    June data by then, and fetch_weekly_bulletin() skips past months once a newer
+    bulletin is live.  This leaves a gap in _weekly_raw.
+
+    Fix: compare the highest MTD cumulative volume stored in _weekly_raw for each
+    closed month against the official monthly total in _secex_raw.  If a gap
+    exists (> 1 ton), insert a synthetic closing week that brings the MTD total
+    up to the official figure.  materialise() then de-accumulates it correctly
+    to produce the true incremental weekly price.
+    """
+    from datetime import timedelta
+
+    today = date.today()
+    filled = 0
+
+    completed = conn.execute(
+        "SELECT year, month, vol_tons, rev_000usd FROM _secex_raw"
+        " WHERE vol_tons IS NOT NULL AND rev_000usd IS NOT NULL"
+        " ORDER BY year, month"
+    ).fetchall()
+
+    for yr, mo, total_vol, total_rev in completed:
+        # Only backfill months that are fully closed (strictly before current month)
+        if (yr, mo) >= (today.year, today.month):
+            continue
+
+        prefix = f"{yr:04d}-{mo:02d}"
+
+        # Last _weekly_raw row for this month (highest MTD)
+        last = conn.execute(
+            "SELECT start_date, end_date, vol_tons, rev_000usd FROM _weekly_raw"
+            " WHERE start_date LIKE ? ORDER BY start_date DESC LIMIT 1",
+            (f"{prefix}-%",)
+        ).fetchone()
+
+        if last is None:
+            continue  # no weekly data for this month at all — skip
+
+        last_start, last_end, last_mtd_vol, last_mtd_rev = last
+
+        if last_mtd_vol is None:
+            continue
+
+        vol_gap = total_vol - last_mtd_vol
+        if vol_gap < 1.0:
+            continue  # already complete
+
+        # Compute the synthetic closing-week date range
+        last_day = date(yr, mo, monthrange(yr, mo)[1])
+        gap_start = date.fromisoformat(last_end) + timedelta(days=1)
+
+        if gap_start > last_day:
+            continue  # defensive: last_end is already past month-end
+
+        gap_price = total_rev / total_vol if total_vol > 0 else None
+        biz_d = _biz_days_between(gap_start, last_day)
+
+        conn.execute(
+            "INSERT OR REPLACE INTO _weekly_raw"
+            "(start_date, end_date, price_usd_kg, vol_tons, rev_000usd, biz_days)"
+            " VALUES(?,?,?,?,?,?)",
+            (str(gap_start), str(last_day),
+             round(gap_price, 6) if gap_price else None,
+             total_vol,   # MTD = monthly total (de-accumulated in materialise)
+             total_rev,
+             biz_d)
+        )
+        conn.commit()
+
+        rev_gap = total_rev - (last_mtd_rev or 0.0)
+        print(f"  [GAP-FILL] {prefix}: inserted gap week {gap_start} → {last_day}"
+              f" | vol_gap={vol_gap:,.1f} t | rev_gap={rev_gap:,.1f} 000 USD")
+        filled += 1
+
+    if filled == 0:
+        print("  [GAP-FILL] No gaps detected.")
     return filled
 
 
@@ -1639,6 +1770,10 @@ def main():
     # Weekly bulletin: fetch latest price + MTD volume (both init and incremental)
     print("\n[→] Fetching SECEX weekly bulletin (price + MTD volume) …")
     fetch_weekly_bulletin(conn)
+
+    # Auto-fill any closing weeks that were missed due to late bulletin publication
+    print("\n[→] Checking for missing weekly gaps …")
+    fill_weekly_gaps(conn)
 
     print("\n[→] Computing spread tables …")
     materialise(conn)

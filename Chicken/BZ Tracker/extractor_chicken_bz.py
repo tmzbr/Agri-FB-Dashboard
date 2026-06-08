@@ -92,6 +92,7 @@ def _br_holidays(year):
     }
     if year >= 2024:
         h.add(str(date(year, 11, 20)))
+    h.add(str(e + timedelta(days=60)))   # Corpus Christi (ponto facultativo federal)
     return h
 
 
@@ -129,20 +130,24 @@ def _bulletin_end_date(year, month, biz_days):
     """
     Compute the SECEX bulletin end_date from MTD biz_days.
 
-    SECEX publishes every Monday. The bulletin period ends on the Monday of
-    publication, which is the next Monday on or after the last business day of
-    the reporting week. When that Monday falls in the next month, the end_date
-    is capped at the last calendar day of the current month.
+    end_date = last business day of the reporting period (_nth_biz_day).
+    Exception: if this is the last week of the month (biz_days >= total biz
+    days in month), extend end_date to the last calendar day so the next
+    month starts on the 1st with no gap.
     """
-    from datetime import timedelta
     from calendar import monthrange
     last_biz = _nth_biz_day(year, month, biz_days)
     if last_biz is None:
         return None
-    days_to_mon = (0 - last_biz.weekday()) % 7   # 0 if already Monday
-    candidate = last_biz + timedelta(days=days_to_mon)
     last_day = date(year, month, monthrange(year, month)[1])
-    return min(candidate, last_day)
+    total_biz = sum(
+        1 for d in range(1, last_day.day + 1)
+        if date(year, month, d).weekday() < 5
+        and str(date(year, month, d)) not in _br_holidays(year)
+    )
+    if biz_days >= total_biz:
+        return last_day
+    return last_biz
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
