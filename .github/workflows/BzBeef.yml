@@ -71,6 +71,7 @@ jobs:
           else
             TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
             git commit -m "auto: refresh beef_bz.db — ${TIMESTAMP}"
+            git pull origin main --no-rebase -X ours
             git push
             echo "beef_bz.db committed and pushed."
           fi
