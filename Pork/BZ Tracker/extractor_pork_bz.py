@@ -93,7 +93,47 @@ def _br_holidays(year):
     }
     if year >= 2024:
         h.add(str(date(year, 11, 20)))
+    h.add(str(e + timedelta(days=60)))   # Corpus Christi (ponto facultativo federal)
     return h
+
+
+def _nth_biz_day(year, month, n):
+    """Return the date of the nth business day in month (1-indexed), excl. BR holidays."""
+    from datetime import timedelta
+    hols = _br_holidays(year)
+    d = date(year, month, 1)
+    count = 0
+    for _ in range(60):
+        if d.weekday() < 5 and str(d) not in hols:
+            count += 1
+            if count == n:
+                return d
+        d += timedelta(days=1)
+    return None
+
+
+def _bulletin_end_date(year, month, biz_days):
+    """
+    Compute the SECEX bulletin end_date from MTD biz_days.
+
+    end_date = last business day of the reporting period (_nth_biz_day).
+    Exception: if this is the last week of the month (biz_days >= total biz
+    days in month), extend end_date to the last calendar day so the next
+    month starts on the 1st with no gap.
+    """
+    from calendar import monthrange
+    last_biz = _nth_biz_day(year, month, biz_days)
+    if last_biz is None:
+        return None
+    last_day = date(year, month, monthrange(year, month)[1])
+    total_biz = sum(
+        1 for d in range(1, last_day.day + 1)
+        if date(year, month, d).weekday() < 5
+        and str(date(year, month, d)) not in _br_holidays(year)
+    )
+    if biz_days >= total_biz:
+        return last_day
+    return last_biz
 
 
 def _biz_days_between(start_dt, end_dt):
@@ -949,7 +989,13 @@ def fetch_weekly_bulletin(conn):
     print(f"  [BULLETIN] Period: {period_str}")
 
     # ── Find pork row ─────────────────────────────────────────────────────────
-    bull_price_usd_kg = bull_vol_tons = None
+    # Column layout (confirmed from live SECEX file):
+    #   col 1  = Descrição
+    #   col 6  = Toneladas (MTD current year)     ← vol_tons
+    #   col 7  = Toneladas (MTD prior year)       ← NOT media diaria
+    #   col 8  = Ton/MédDiária (daily average)    ← used to compute biz_days
+    #   col 10 = Preço US$/Tonelada               ← price (÷1000 → USD/kg)
+    bull_price_usd_kg = bull_vol_tons = bull_media_diaria = None
     for ri in range(1, ws.max_row + 1):
         desc = str(ws.cell(ri, 1).value or "").lower()
         if any(kw in desc for kw in PORK_KW):
@@ -959,8 +1005,15 @@ def fetch_weekly_bulletin(conn):
                 if vol > 0 and price > 0:
                     bull_vol_tons     = vol
                     bull_price_usd_kg = price / 1000.0
+                    try:
+                        m = float(ws.cell(ri, 8).value or 0)
+                        if m > 0:
+                            bull_media_diaria = m
+                    except Exception:
+                        pass
                     print(f"  [BULLETIN] '{ws.cell(ri,1).value}'[:55]: "
-                          f"vol_mtd={vol:.0f} t, price={bull_price_usd_kg:.4f} USD/kg")
+                          f"vol_mtd={vol:.0f} t, price={bull_price_usd_kg:.4f} USD/kg"
+                          + (f", media={bull_media_diaria:.0f} t/dia" if bull_media_diaria else ""))
             except Exception:
                 pass
             break
@@ -969,16 +1022,37 @@ def fetch_weekly_bulletin(conn):
         print("  [BULLETIN] Pork row not found or zero data.")
         return 0
 
-    # ── Guard: skip if vol already covered ───────────────────────────────────
+    # ── Compute biz_days and anchor end_date via _bulletin_end_date ──────────
+    bull_biz_days = None
+    if bull_media_diaria:
+        bull_biz_days = round(bull_vol_tons / bull_media_diaria)
+
+    if bull_biz_days:
+        end_dt   = _bulletin_end_date(bull_year, bull_month, bull_biz_days)
+        week_end = str(end_dt) if end_dt else None
+        print(f"  [BULLETIN] biz_days={bull_biz_days} → end_date={week_end}")
+    else:
+        week_end = None
+
+    if week_end is None:
+        bull_date = _date(bull_year, bull_month, 1)
+        from calendar import monthrange as _mr
+        if bull_date < today.replace(day=1):
+            week_end = str(_date(bull_year, bull_month, _mr(bull_year, bull_month)[1]))
+        else:
+            week_end = str(today)
+        print(f"  [BULLETIN] media_diaria unavailable — fallback end_date={week_end}")
+
+    # ── Guard: skip if this bulletin doesn't advance the period ──────────────
     last_row = conn.execute(
         "SELECT start_date, end_date, vol_tons FROM _weekly_raw "
         "WHERE strftime('%Y-%m', start_date) = ? ORDER BY start_date DESC LIMIT 1",
         (period_str,)
     ).fetchone()
 
-    if last_row and last_row[2] is not None and bull_vol_tons <= last_row[2] + 1.0:
+    if last_row and last_row[1] is not None and week_end <= last_row[1]:
         print(f"  [BULLETIN] Already up to date for {period_str} "
-              f"(bulletin={bull_vol_tons:.0f} t ≤ stored={last_row[2]:.0f} t).")
+              f"(end {week_end} ≤ stored {last_row[1]}).")
         return 0
 
     # ── Date range for the new entry ─────────────────────────────────────────
@@ -991,10 +1065,20 @@ def fetch_weekly_bulletin(conn):
     if last_end:
         week_start = (_date.fromisoformat(last_end) + _td(days=1)).isoformat()
     else:
-        week_start = f"{bull_year}-{bull_month:02d}-01"
-    week_end = str(today)
+        # No rows yet for this month — check if any prior row's end_date bleeds
+        # into this month (e.g. last week of previous month ended on the 1st).
+        month_start = f"{bull_year}-{bull_month:02d}-01"
+        bleed_end = conn.execute(
+            "SELECT MAX(end_date) FROM _weekly_raw WHERE end_date >= ?",
+            (month_start,)
+        ).fetchone()[0]
+        if bleed_end:
+            week_start = (_date.fromisoformat(bleed_end) + _td(days=1)).isoformat()
+        else:
+            week_start = month_start
 
-    biz = _biz_days_between(_date.fromisoformat(week_start), _date.fromisoformat(week_end))
+    biz = bull_biz_days if bull_biz_days else _biz_days_between(
+        _date.fromisoformat(week_start), _date.fromisoformat(week_end))
 
     existing = conn.execute(
         "SELECT vol_tons FROM _weekly_raw WHERE start_date=?", (week_start,)
@@ -1156,9 +1240,10 @@ def materialise(conn):
         monthly_out.append((period, yr, mo, price_usd_kg, fx, secex_brl_kg,
                             cepea_r_kg, spread, now))
 
+    conn.execute("DELETE FROM monthly")
     conn.executemany(
         """
-        INSERT OR REPLACE INTO monthly
+        INSERT INTO monthly
           (period, year, month, secex_usd_kg, fx, secex_brl_kg,
            cepea_r_kg, spread, updated_at)
         VALUES (?,?,?,?,?,?,?,?,?)
@@ -1187,11 +1272,11 @@ def materialise(conn):
         if vol_mtd is not None:
             inc_vol  = max(0.0, vol_mtd - prev_vol)
             prev_vol = vol_mtd
-        if biz_d is None:
-            biz_d = _biz_days_between(
-                date.fromisoformat(start_date),
-                date.fromisoformat(end_date or start_date)
-            )
+        # Always recompute from actual dates (stored biz_days may be MTD cumulative)
+        biz_d = _biz_days_between(
+            date.fromisoformat(start_date),
+            date.fromisoformat(end_date or start_date)
+        )
         deacc.append((start_date, end_date, price_usd_kg, inc_vol, biz_d))
 
     weekly_out = []
@@ -1229,9 +1314,10 @@ def materialise(conn):
         weekly_out.append((start_date, end_date, price_usd_kg, fx, secex_brl_kg,
                            cepea_r_kg, spread, inc_vol, biz_d, vol_daily, now))
 
+    conn.execute("DELETE FROM weekly")
     conn.executemany(
         """
-        INSERT OR REPLACE INTO weekly
+        INSERT INTO weekly
           (start_date, end_date, secex_usd_kg, fx, secex_brl_kg,
            cepea_r_kg, spread, vol_tons, biz_days, vol_tons_daily, updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)
