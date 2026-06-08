@@ -997,8 +997,10 @@ def fetch_weekly_bulletin(conn):
     # Column layout (confirmed from live file):
     #   col 1  = Descrição
     #   col 2  = US$ Mil (MTD current year)
+    #   col 3  = US$ Mil (MTD prior year)
     #   col 6  = Toneladas (MTD current year)     ← vol_tons
-    #   col 7  = Ton/MédDiária (daily average)    ← used to compute biz_days
+    #   col 7  = Toneladas (MTD prior year)       ← NOT media diaria
+    #   col 8  = Ton/MédDiária (daily average)    ← used to compute biz_days
     #   col 10 = Preço US$/Tonelada               ← price (÷1000 → USD/kg)
     bull_price_usd_kg = bull_vol_tons = bull_media_diaria = None
     for ri in range(1, ws.max_row + 1):
@@ -1011,7 +1013,7 @@ def fetch_weekly_bulletin(conn):
                     bull_vol_tons     = vol
                     bull_price_usd_kg = price / 1000.0
                     try:
-                        m = float(ws.cell(ri, 7).value or 0)
+                        m = float(ws.cell(ri, 8).value or 0)
                         if m > 0:
                             bull_media_diaria = m
                     except Exception:
