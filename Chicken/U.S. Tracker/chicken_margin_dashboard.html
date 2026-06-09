@@ -795,21 +795,54 @@ function renderMonthlyTable() {
 }
 
 // ─── WEEKLY TABLE ─────────────────────────────────────────────────────────────
+function weekMonday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function computeWeekly() {
+  const byWeek = {};
+  for (const row of WEEKLY_ROWS) {
+    const wk = weekMonday(row.report_date);
+    if (!byWeek[wk]) byWeek[wk] = [];
+    byWeek[wk].push(row);
+  }
+  const avg = (rows, key) => {
+    const vs = rows.map(r => r[key]).filter(v => v != null);
+    return vs.length ? vs.reduce((s,v) => s+v, 0) / vs.length : null;
+  };
+  return Object.entries(byWeek)
+    .sort(([a],[b]) => b.localeCompare(a))
+    .map(([wk, rows]) => ({
+      week:     wk,
+      breast:   avg(rows,'breast'),
+      leg_qtrs: avg(rows,'leg_qtrs'),
+      wings:    avg(rows,'wings'),
+      tenders:  avg(rows,'tenders'),
+      sbm:      avg(rows,'sbm'),
+      corn:     avg(rows,'corn'),
+      n:        rows.length,
+    }));
+}
+
 function renderWeeklyTable() {
   const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
   thead.innerHTML = `<tr>
-    <th style="text-align:left;">Week</th>
-    <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-    <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-    <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-    <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-    <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
-    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
+    <th style="text-align:left;">Week of (Mon)</th>
+    <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
   </tr>`;
-  const rows = [...WEEKLY_ROWS].reverse();
+  const rows = computeWeekly();
   tbody.innerHTML = rows.map(r => `<tr>
-    <td>${r.report_date}</td>
+    <td>${r.week}</td>
     <td>${fmtN(r.breast)}</td>
     <td>${fmtN(r.leg_qtrs)}</td>
     <td>${fmtN(r.wings)}</td>

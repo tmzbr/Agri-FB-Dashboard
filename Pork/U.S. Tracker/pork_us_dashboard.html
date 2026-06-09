@@ -728,23 +728,53 @@ function renderMonthlyTable() {
   </tr>`).join('');
 }
 
+function weekMonday(dateStr) {
+  // Returns YYYY-MM-DD of the Monday of the ISO week containing dateStr
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const day = d.getUTCDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function computeWeekly() {
+  const byWeek = {};
+  for (const row of WEEKLY_ROWS) {
+    const wk = weekMonday(row.report_date);
+    if (!byWeek[wk]) byWeek[wk] = [];
+    byWeek[wk].push(row);
+  }
+  return Object.entries(byWeek)
+    .sort(([a],[b]) => b.localeCompare(a))   // newest first
+    .map(([wk, rows]) => ({
+      week: wk,
+      carcass:               avgField(rows,'carcass'),
+      hog_price:             avgField(rows,'hog_price'),
+      corn:                  avgField(rows,'corn'),
+      sbm:                   avgField(rows,'sbm'),
+      fc_spot:               avgField(rows,'fc_spot'),
+      spread_non_integrated: avgField(rows,'spread_non_integrated'),
+      n: rows.length,
+    }));
+}
+
 function renderWeeklyTable() {
-  const fmtN = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
+  const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
   const fmtSp = (v) => v != null ? v.toFixed(4)+' USD/kg' : '<span class="td-na">—</span>';
 
   document.getElementById('table-head').innerHTML = `<tr>
-    <th style="text-align:left;">Week</th>
-    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
-    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
-    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu</span></th>
-    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t</span></th>
-    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton</span></th>
-    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg</span></th>
+    <th style="text-align:left;">Week of (Mon)</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu avg</span></th>
+    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t avg</span></th>
+    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton avg</span></th>
+    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
   </tr>`;
 
-  const rows = [...WEEKLY_ROWS].reverse();
+  const rows = computeWeekly();
   document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
-    <td>${r.report_date}</td>
+    <td>${r.week}</td>
     <td>${fmtN(r.carcass)}</td>
     <td>${fmtN(r.hog_price)}</td>
     <td>${fmtN(r.corn,2)}</td>
