@@ -265,27 +265,13 @@ tr:hover td{background:#FFF8F5;}
     <!-- TABLE PANEL -->
     <div class="table-panel">
       <div class="table-tabs">
-        <button class="tab-btn active">Quarterly</button>
+        <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+        <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+        <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
       </div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th style="text-align:left;">Period</th>
-              <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-              <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-              <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-              <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
-              <!-- FIX #7: "SBM" → "Soybean Meal" -->
-              <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
-              <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
-              <!-- FIX #7: "FC" → "Feed Cost" -->
-              <th>Feed Cost<br><span style="font-weight:400;font-size:9.5px;">(selected lag)</span></th>
-              <th>Spread%</th>
-              <!-- FIX #7: "PPC GM%" → "PPC Gross Mg - U.S. Segment" -->
-              <th>PPC Gross Mg<br><span style="font-weight:400;font-size:9.5px;">U.S. Segment</span></th>
-            </tr>
-          </thead>
+          <thead id="table-head"></thead>
           <tbody id="table-body"></tbody>
         </table>
       </div>
@@ -302,10 +288,12 @@ tr:hover td{background:#FFF8F5;}
 
 <script>
 // ─── GLOBALS ──────────────────────────────────────────────────────────────────
-let DB_ROWS    = [];     // raw quarterly rows from SQLite
-let charts     = {};     // Chart.js instances
-let currentView = '3y';  // 'all' | '3y' | '1y'
-let currentLag  = '0q5'; // 'spot' | '0q5' | '1q5'
+let DB_ROWS     = [];     // raw quarterly rows from SQLite
+let WEEKLY_ROWS = [];     // raw weekly rows from SQLite
+let charts      = {};     // Chart.js instances
+let currentView = '3y';   // 'all' | '3y' | '1y'
+let currentLag  = '0q5';  // 'spot' | '0q5' | '1q5'
+let currentTab  = 'quarterly'; // 'quarterly' | 'monthly' | 'weekly'
 const DEFAULTS = { breast:40, leg:34, wings:17, tenders:9, lag:'0q5' };
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
@@ -329,7 +317,7 @@ async function loadDB() {
     const buf  = await resp.arrayBuffer();
     const db   = new SQL.Database(new Uint8Array(buf));
     const stmt = db.exec(`
-      SELECT quarter, year_q, bw, breast, leg_qtrs, wings, tenders,
+      SELECT quarter, year_q, breast, leg_qtrs, wings, tenders,
              sbm, corn, fc_spot, fc_0q5, fc_1q5, ppc_us_gm, ppc_cnl_gm
       FROM quarterly ORDER BY year_q ASC
     `);
@@ -340,6 +328,19 @@ async function loadDB() {
       cols.forEach((c, i) => { obj[c] = r[i]; });
       return obj;
     });
+
+    // Load weekly rows
+    const wstmt = db.exec(`
+      SELECT report_date, breast, leg_qtrs, wings, tenders, sbm, corn
+      FROM weekly ORDER BY report_date ASC
+    `);
+    if (wstmt.length) {
+      const wcols = wstmt[0].columns;
+      WEEKLY_ROWS = wstmt[0].values.map(r => {
+        const obj = {}; wcols.forEach((c,i) => { obj[c] = r[i]; }); return obj;
+      });
+    }
+
     db.close();
     loadEl.style.display = 'none';
     document.getElementById('note-bar').style.display = 'block';
@@ -451,6 +452,15 @@ function setView(v) {
   render();
 }
 
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+  // Show charts only for quarterly
+  document.querySelector('.charts-row').style.display = tab === 'quarterly' ? '' : 'none';
+  render();
+}
+
 function resetDefaults() {
   ['breast','leg','wings','tenders'].forEach(id => {
     document.getElementById(`sl-${id}`).value = DEFAULTS[id];
@@ -552,12 +562,17 @@ function pearson(xs, ys) {
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render() {
-  const series  = computeSeries();
-  const visible = filterByView(series);
-  // FIX R² BUG: pass full series so correlation is always over all available data
-  renderDeltaChart(visible, series);
-  renderLevelChart(visible);
-  renderTable(series);  // table always shows all (newest first)
+  if (currentTab === 'quarterly') {
+    const series  = computeSeries();
+    const visible = filterByView(series);
+    renderDeltaChart(visible, series);
+    renderLevelChart(visible);
+    renderTableQuarterly(series);
+  } else if (currentTab === 'monthly') {
+    renderMonthlyTable();
+  } else {
+    renderWeeklyTable();
+  }
 }
 
 // ─── CHART 1: QoQ Delta ──────────────────────────────────────────────────────
@@ -688,12 +703,27 @@ function renderLevelChart(data) {
   });
 }
 
-// ─── TABLE ────────────────────────────────────────────────────────────────────
-function renderTable(series) {
+// ─── TABLE HELPERS ────────────────────────────────────────────────────────────
+const fmtN   = (v, dec=1) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
+const fmtPct = (v, dec=1) => v != null ? (v*100).toFixed(dec) + '%' : '<span class="td-na">—</span>';
+
+// ─── QUARTERLY TABLE ──────────────────────────────────────────────────────────
+function renderTableQuarterly(series) {
+  const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
+  thead.innerHTML = `<tr>
+    <th style="text-align:left;">Period</th>
+    <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
+    <th>Feed Cost<br><span style="font-weight:400;font-size:9.5px;">(selected lag)</span></th>
+    <th>Spread%</th>
+    <th>PPC Gross Mg<br><span style="font-weight:400;font-size:9.5px;">U.S. Segment</span></th>
+  </tr>`;
   const rows  = [...series].reverse();
-  const fmtN  = (v, dec=1) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
-  const fmtPct = (v, dec=1) => v != null ? (v*100).toFixed(dec) + '%' : '<span class="td-na">—</span>';
   tbody.innerHTML = rows.map(r => {
     const spreadClass = r.spread != null ? 'td-spread' : 'td-na';
     const gmClass     = r.gm     != null ? 'td-gm'     : 'td-na';
@@ -710,6 +740,83 @@ function renderTable(series) {
       <td class="${gmClass}">${fmtPct(r.gm)}</td>
     </tr>`;
   }).join('');
+}
+
+// ─── MONTHLY TABLE ────────────────────────────────────────────────────────────
+function computeMonthly() {
+  const byMonth = {};
+  for (const row of WEEKLY_ROWS) {
+    const m = row.report_date.slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(row);
+  }
+  const avg = (rows, key) => {
+    const vs = rows.map(r => r[key]).filter(v => v != null);
+    return vs.length ? vs.reduce((s,v) => s+v, 0) / vs.length : null;
+  };
+  return Object.entries(byMonth)
+    .sort(([a],[b]) => b.localeCompare(a))   // newest first
+    .map(([month, rows]) => ({
+      month,
+      breast:   avg(rows,'breast'),
+      leg_qtrs: avg(rows,'leg_qtrs'),
+      wings:    avg(rows,'wings'),
+      tenders:  avg(rows,'tenders'),
+      sbm:      avg(rows,'sbm'),
+      corn:     avg(rows,'corn'),
+      n:        rows.length,
+    }));
+}
+
+function renderMonthlyTable() {
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
+  thead.innerHTML = `<tr>
+    <th style="text-align:left;">Month</th>
+    <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
+    <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
+  </tr>`;
+  const rows = computeMonthly();
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td>${r.month}</td>
+    <td>${fmtN(r.breast)}</td>
+    <td>${fmtN(r.leg_qtrs)}</td>
+    <td>${fmtN(r.wings)}</td>
+    <td>${fmtN(r.tenders)}</td>
+    <td>${fmtN(r.sbm,0)}</td>
+    <td>${fmtN(r.corn,2)}</td>
+    <td style="color:#aaa;">${r.n}</td>
+  </tr>`).join('');
+}
+
+// ─── WEEKLY TABLE ─────────────────────────────────────────────────────────────
+function renderWeeklyTable() {
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
+  thead.innerHTML = `<tr>
+    <th style="text-align:left;">Week</th>
+    <th>Breast<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
+  </tr>`;
+  const rows = [...WEEKLY_ROWS].reverse();
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td>${r.report_date}</td>
+    <td>${fmtN(r.breast)}</td>
+    <td>${fmtN(r.leg_qtrs)}</td>
+    <td>${fmtN(r.wings)}</td>
+    <td>${fmtN(r.tenders)}</td>
+    <td>${fmtN(r.sbm,0)}</td>
+    <td>${fmtN(r.corn,2)}</td>
+  </tr>`).join('');
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────

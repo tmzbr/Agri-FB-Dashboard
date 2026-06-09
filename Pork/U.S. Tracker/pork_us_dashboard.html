@@ -275,7 +275,9 @@ tr:hover td{background:#FFF8F5;}
     <!-- TABLE PANEL -->
     <div class="table-panel">
       <div class="table-tabs">
-        <button class="tab-btn active">Quarterly</button>
+        <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+        <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+        <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -298,9 +300,11 @@ tr:hover td{background:#FFF8F5;}
 <script>
 // ─── GLOBALS ──────────────────────────────────────────────────────────────────
 let DB_ROWS     = [];
+let WEEKLY_ROWS = [];
 let charts      = {};
 let currentMode = 'integrated';   // 'integrated' | 'non-integrated'
 let currentView = '3y';
+let currentTab  = 'quarterly';    // 'quarterly' | 'monthly' | 'weekly'
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function goBack() {
@@ -327,7 +331,7 @@ async function loadDB() {
     const stmt = db.exec(`
       SELECT quarter, year_q, year, q,
              carcass, hog_price, corn, sbm, fc_spot, fc_6m,
-             feed_grain_6m, spread_integrated, spread_non_integrated
+             spread_integrated, spread_non_integrated
       FROM quarterly ORDER BY year_q ASC
     `);
     if (!stmt.length) throw new Error("Empty database");
@@ -335,6 +339,20 @@ async function loadDB() {
     DB_ROWS = stmt[0].values.map(r => {
       const o = {}; cols.forEach((c,i) => { o[c] = r[i]; }); return o;
     });
+
+    // Load weekly rows
+    const wstmt = db.exec(`
+      SELECT report_date, carcass, hog_price, corn, sbm,
+             fc_spot, spread_non_integrated
+      FROM weekly ORDER BY report_date ASC
+    `);
+    if (wstmt.length) {
+      const wcols = wstmt[0].columns;
+      WEEKLY_ROWS = wstmt[0].values.map(r => {
+        const o = {}; wcols.forEach((c,i) => { o[c] = r[i]; }); return o;
+      });
+    }
+
     db.close();
 
     loadEl.style.display = 'none';
@@ -366,6 +384,17 @@ function setView(v) {
   document.querySelectorAll('.view-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.view === v));
   renderCharts();
+}
+
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+  // Show charts only for quarterly
+  document.querySelector('.charts-row').style.display = tab === 'quarterly' ? '' : 'none';
+  if (tab === 'quarterly') render();
+  else if (tab === 'monthly') renderMonthlyTable();
+  else renderWeeklyTable();
 }
 
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
@@ -430,8 +459,14 @@ function pearson(xs, ys) {
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render() {
   updateInfoPanel();
-  renderCharts();
-  renderTable();
+  if (currentTab === 'quarterly') {
+    renderCharts();
+    renderTable();
+  } else if (currentTab === 'monthly') {
+    renderMonthlyTable();
+  } else {
+    renderWeeklyTable();
+  }
 }
 
 // ─── INFO PANEL ──────────────────────────────────────────────────────────────
@@ -442,14 +477,16 @@ function updateInfoPanel() {
   // Formula box
   document.getElementById('formula-box').innerHTML = isInt ? `
     <div class="formula-line">spread = <span>(Carcass / 45.36)</span></div>
-    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(FeedGrain × 5.8)</span></div>
+    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(fc_6m / 1000 × 5.8)</span></div>
+    <div class="formula-line" style="margin-top:4px">fc_spot = <span>⅔ × Corn × 39.368</span> + <span>⅓ × SBM</span></div>
+    <div class="formula-line">fc_6m = fc_spot with <span>2-quarter lag</span></div>
   ` : `
     <div class="formula-line">spread = <span>(Carcass / HogPrice)</span></div>
     <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>45.36</span></div>
   `;
 
   document.getElementById('formula-desc').textContent = isInt
-    ? 'Integrated producers own hog farms. Spread measures carcass value (USD/kg) relative to feed input cost, using a 6-month production lag and FCR of 5.8×.'
+    ? 'Integrated producers own hog farms. Feed cost basket: 2/3 corn (Central IL $/bu → $/ton) + 1/3 SBM (Illinois $/ton). fc_6m applies a 2-quarter lag (~6 months). FCR 5.8 kg feed per kg carcass.'
     : 'Non-integrated packers buy live hogs on the open market. Spread measures packing margin per kg (USD/kg), reflecting the carcass-to-hog price differential.';
 
   // Top sub
@@ -466,7 +503,7 @@ function updateInfoPanel() {
     document.getElementById('info-hog').textContent =
       latest.hog_price != null ? `$${latest.hog_price.toFixed(2)}/cwt` : '—';
     document.getElementById('info-fg').textContent =
-      latest.feed_grain_6m != null ? `$${latest.feed_grain_6m.toFixed(4)}/kg` : '—';
+      latest.fc_6m != null ? `$${latest.fc_6m.toFixed(1)}/ton` : '—';
 
     const sv = getSpread(latest);
     const infoSpread = document.getElementById('info-spread');
@@ -635,6 +672,88 @@ function renderCharts() {
   }
 }
 
+// ─── MONTHLY / WEEKLY TABLES ──────────────────────────────────────────────────
+function avgField(rows, key) {
+  const vs = rows.map(r => r[key]).filter(v => v != null);
+  return vs.length ? vs.reduce((s,v) => s+v, 0) / vs.length : null;
+}
+
+function computeMonthly() {
+  const byMonth = {};
+  for (const row of WEEKLY_ROWS) {
+    const m = row.report_date.slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(row);
+  }
+  return Object.entries(byMonth)
+    .sort(([a],[b]) => b.localeCompare(a))
+    .map(([month, rows]) => ({
+      month,
+      carcass:              avgField(rows,'carcass'),
+      hog_price:            avgField(rows,'hog_price'),
+      corn:                 avgField(rows,'corn'),
+      sbm:                  avgField(rows,'sbm'),
+      fc_spot:              avgField(rows,'fc_spot'),
+      spread_non_integrated:avgField(rows,'spread_non_integrated'),
+      n:                    rows.length,
+    }));
+}
+
+function renderMonthlyTable() {
+  const isInt = currentMode === 'integrated';
+  const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
+  const fmtSp = (v) => v != null ? v.toFixed(4)+' USD/kg' : '<span class="td-na">—</span>';
+
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th style="text-align:left;">Month</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu avg</span></th>
+    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t avg</span></th>
+    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton avg</span></th>
+    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
+    <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
+  </tr>`;
+
+  const rows = computeMonthly();
+  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
+    <td>${r.month}</td>
+    <td>${fmtN(r.carcass)}</td>
+    <td>${fmtN(r.hog_price)}</td>
+    <td>${fmtN(r.corn,2)}</td>
+    <td>${fmtN(r.sbm,0)}</td>
+    <td>${fmtN(r.fc_spot,1)}</td>
+    <td><span class="td-spread-nint">${fmtSp(r.spread_non_integrated)}</span></td>
+    <td style="color:#aaa;">${r.n}</td>
+  </tr>`).join('');
+}
+
+function renderWeeklyTable() {
+  const fmtN = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
+  const fmtSp = (v) => v != null ? v.toFixed(4)+' USD/kg' : '<span class="td-na">—</span>';
+
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th style="text-align:left;">Week</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
+    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu</span></th>
+    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t</span></th>
+    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton</span></th>
+    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg</span></th>
+  </tr>`;
+
+  const rows = [...WEEKLY_ROWS].reverse();
+  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
+    <td>${r.report_date}</td>
+    <td>${fmtN(r.carcass)}</td>
+    <td>${fmtN(r.hog_price)}</td>
+    <td>${fmtN(r.corn,2)}</td>
+    <td>${fmtN(r.sbm,0)}</td>
+    <td>${fmtN(r.fc_spot,1)}</td>
+    <td><span class="td-spread-nint">${fmtSp(r.spread_non_integrated)}</span></td>
+  </tr>`).join('');
+}
+
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function renderTable() {
   const isInt   = currentMode === 'integrated';
@@ -647,7 +766,7 @@ function renderTable() {
     <th style="text-align:left;">Quarter</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
-    <th>Feed Grain<br><span style="font-weight:400;font-size:9.5px;">USD/kg (6m lag)</span></th>
+    <th>Feed Cost 6m<br><span style="font-weight:400;font-size:9.5px;">$/ton (2Q lag)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu</span></th>
     <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/ton</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
@@ -678,7 +797,7 @@ function renderTable() {
       <td>${r.quarter}</td>
       <td>${fmtN(r.carcass)}</td>
       <td>${fmtN(r.hog_price)}</td>
-      <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+      <td>${r.fc_6m != null ? r.fc_6m.toFixed(1) : '<span class="td-na">—</span>'}</td>
       <td>${fmtN(r.corn, 2)}</td>
       <td>${fmtN(r.sbm, 0)}</td>
       <td>${spreadFmt}</td>
