@@ -332,15 +332,27 @@ def build_weekly_rows(ct150: dict, cutout: dict, ks: dict, ne: dict) -> list[dic
     )
 
     def _fresh(src_week: str | None, label: str) -> bool:
+        """
+        A source PDF is considered 'fresh' only if its week-ending date is
+        AHEAD of (or at most 1 day behind) the canonical cutout date.
+        This prevents storing a stale previous-week PDF value under the
+        current week's row when the extractor runs before that source is updated.
+
+        Old rule: |delta| <= 7  — too loose; allowed prior-week data to slip in.
+        New rule: src_date >= canonical - 1 day  (src must not be older than 1 day)
+        """
         if not src_week:
             return False
         try:
-            delta = abs((datetime.date.fromisoformat(src_week[:10]) -
-                         datetime.date.fromisoformat(week[:10])).days)
-            if delta <= 7:
+            src_date = datetime.date.fromisoformat(src_week[:10])
+            can_date = datetime.date.fromisoformat(week[:10])
+            # Allow src to be up to 1 day behind canonical (same-week rounding),
+            # but reject anything older (prior week data).
+            if src_date >= can_date - datetime.timedelta(days=1):
                 return True
-            log.warning("%s PDF date %s diverges from canonical %s by >7 days — skipping",
-                        label, src_week[:10], week[:10])
+            log.warning("%s PDF date %s is older than canonical %s by >1 day — skipping "
+                        "(run extractor again after %s PDF is updated)",
+                        label, src_week[:10], week[:10], label)
             return False
         except Exception:
             return False

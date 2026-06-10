@@ -5,7 +5,6 @@ extractor_chicken.py — U.S. Chicken Industry Spread Tracker
 Builds / refreshes  chicken.db  with quarterly data for the dashboard.
 
 DATA SOURCES
-  • Broiler composite wholesale price  → USDA ERS API  (monthly)
   • Chicken parts weekly prices         → USDA AMS API  (weekly, AMS-3646)
   • SBM + Corn prices                   → USDA AMS API  (weekly cost inputs)
   • PPC U.S. Gross Margin               → baked-in from current Excel history;
@@ -22,7 +21,6 @@ OUTPUT
 SCHEMA  — table: quarterly
   quarter    TEXT PRIMARY KEY   e.g. "1Q17"
   year_q     INTEGER            sortable: 20171, 20172 …
-  bw         REAL               (retired — kept as NULL for schema compat)
   breast     REAL               Breast B/S cts/lb          (quarterly avg)
   leg_qtrs   REAL               Leg Quarters cts/lb        (quarterly avg)
   wings      REAL               Wings cts/lb               (quarterly avg)
@@ -38,7 +36,6 @@ SCHEMA  — table: quarterly
 
 SCHEMA  — table: weekly
   report_date TEXT PRIMARY KEY  ISO date "YYYY-MM-DD" of the USDA report week
-  bw          REAL              (retired — always NULL)
   breast      REAL              Breast B/S cts/lb
   leg_qtrs    REAL              Leg Quarters cts/lb
   wings       REAL              Wings cts/lb
@@ -213,41 +210,6 @@ def quarterly_avg(rows: list[dict], yr: int, q: int) -> Optional[float]:
     s, e = qstart(yr, q), qend(yr, q)
     vals = [r["value"] for r in rows if s <= r["date"] <= e]
     return sum(vals)/len(vals) if vals else None
-
-# ─── Broiler Composite from USDA ERS ─────────────────────────────────────────
-ERS_BW_URL = ("https://apps.fas.usda.gov/psdonline/circulars/livestock.pdf")
-# Fallback: use AMS-2920 (Broiler Composite) or the ERS download
-# The ERS table is not easily API-accessible; we use the USDA AMS
-# Broiler report AMS-2020 (National Composite).
-
-AMS_BROILER_ID = "2020"   # AMS Weekly National Composite Broiler report
-
-def fetch_bw_wholesale() -> list[dict]:
-    """
-    Broiler composite wholesale cts/lb — PDF primary, MARS API fallback.
-    """
-    print("  Trying PDF source (pytbroilerfryer.pdf) …")
-    rows = fetch_bw_from_pdf()
-    if rows:
-        return rows
-    print("  PDF empty — falling back to MARS API …")
-    url = f"{AMS_BASE}/{AMS_BROILER_ID}"
-    params = {"startDate": "01/01/2016", "endDate": datetime.now().strftime("%m/%d/%Y"),
-              "allSections": "true"}
-    data = get_json(url, params)
-    rows = []
-    for item in data.get("results", []):
-        try:
-            dt = datetime.strptime(item.get("report_date", ""), "%m/%d/%Y")
-            for field in ("weighted_avg", "price", "avg_price", "wtd_avg",
-                          "composite_price", "national_composite"):
-                v = item.get(field)
-                if v is not None:
-                    rows.append({"date": dt, "value": float(v)})
-                    break
-        except (ValueError, TypeError):
-            continue
-    return rows
 
 # ─── Chicken Parts from USDA AMS Weekly PDF (ams_3646.pdf) ───────────────────
 # URL: https://www.ams.usda.gov/mnreports/ams_3646.pdf  (overwritten weekly)
@@ -436,7 +398,6 @@ def fetch_parts() -> dict[str, list[dict]]:
 AMS_SBM_PDF  = "https://www.ams.usda.gov/mnreports/ams_3511.pdf"
 AMS_CORN_TXT  = "https://www.ams.usda.gov/mnreports/gx_gr115.txt"   # DISCONTINUED Feb 2022
 AMS_CORN_PDF  = "https://www.ams.usda.gov/mnreports/AMS_3192.pdf"    # current source
-AMS_BW_PDF   = "https://www.ams.usda.gov/mnreports/pytbroilerfryer.pdf"
 
 
 def _parse_report_date(text: str) -> "datetime | None":
@@ -679,84 +640,6 @@ def fetch_sbm_from_pdf() -> "list[dict]":
     return []
 
 
-def fetch_bw_from_pdf() -> "list[dict]":
-    """
-    Broiler composite wholesale cts/lb.
-    Primary:  ams_3646.pdf (Weekly Chicken Parts report) — contains
-              'National Composite Whole' row with Wtd Avg in cts/lb.
-    Fallback: pytbroilerfryer.pdf (Daily Broiler/Fryer report).
-    """
-    import re
-    try:
-        import pdfplumber, io
-    except ImportError:
-        print("  ⚠ pdfplumber not installed — skipping BW PDF")
-        return []
-
-    def _extract_bw(pdf_url: str, label: str) -> "list[dict]":
-        try:
-            resp = requests.get(pdf_url, timeout=TIMEOUT)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"  ✗ {label} download failed: {e}")
-            return []
-        try:
-            with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
-                text = "\n".join(p.extract_text() or "" for p in pdf.pages)
-        except Exception as e:
-            print(f"  ✗ {label} parse error: {e}")
-            return []
-
-        dt = _parse_report_date(text)
-        if not dt:
-            print(f"  ⚠ {label}: could not parse date")
-            print("  PDF preview:\n" + text[:500])
-            return []
-
-        price = None
-        lines = text.splitlines()
-
-        # Strategy 1: "National Composite Whole" line (ams_3646.pdf format)
-        # Format: "National Composite Whole  LOW - HIGH  WTD_AVG  CHANGE  VOL  ..."
-        # Wtd Avg is the 3rd standalone decimal (after low and high)
-        for line in lines:
-            if re.search(r"[Nn]ational\s+[Cc]omposite\s+[Ww]hole", line):
-                print(f"  [{label} BW line] {line.strip()}")
-                nums = [float(n) for n in re.findall(r"\b(\d{2,3}\.\d{2})\b", line)
-                        if 40.0 <= float(n) <= 300.0]
-                if len(nums) >= 3:
-                    price = nums[2]   # low, high, wtd_avg
-                elif len(nums) >= 1:
-                    price = nums[-1]  # best guess
-                break
-
-        # Strategy 2: any "Composite" line with a price in range (pytbroilerfryer format)
-        if price is None:
-            for line in lines:
-                if re.search(r"[Cc]omposite", line):
-                    print(f"  [{label} composite line] {line.strip()}")
-                    p = _first_price(line, min_val=40.0, max_val=250.0)
-                    if p:
-                        price = p
-                        break
-
-        if price:
-            print(f"  {label} BW {dt.strftime('%Y-%m-%d')}: {price:.2f} cts/lb")
-            return [{"date": dt, "value": price}]
-        print(f"  ⚠ {label}: BW price not found")
-        return []
-
-    # Try ams_3646.pdf first (same PDF as chicken parts — always current week)
-    print("  Trying BW from ams_3646.pdf (National Composite Whole) …")
-    rows = _extract_bw(AMS_PARTS_PDF, "ams_3646.pdf")
-    if rows:
-        return rows
-
-    # Fallback: dedicated broiler/fryer report
-    print("  Trying BW from pytbroilerfryer.pdf …")
-    return _extract_bw(AMS_BW_PDF, "pytbroilerfryer.pdf")
-
-
 # ─── Feed costs from USDA AMS ────────────────────────────────────────────────
 def fetch_sbm() -> list[dict]:
     """SBM Illinois FOB Truck $/ton — PDF primary, MARS API fallback."""
@@ -818,20 +701,6 @@ def load_from_excel(base_dir: str) -> dict:
 
     data = {}  # keyed by (yr, q)
 
-    # ─ Broiler Composite ─
-    bw_path = os.path.join(base_dir, "Broiler Composite Price.xlsx")
-    if os.path.exists(bw_path):
-        wb = load_workbook(bw_path, data_only=True)
-        ws = wb["broiler"]
-        bw_rows = []
-        for r in ws.iter_rows(min_row=5, values_only=True):
-            dt = r[0]
-            if not dt or not isinstance(dt, datetime): continue
-            v = r[1] if isinstance(r[1], (int, float)) else None
-            if v: bw_rows.append({"date": dt, "value": v})
-        print(f"  Excel BW: {len(bw_rows)} monthly rows")
-        data["bw_rows"] = bw_rows
-
     # ─ Parts + Costs ─
     parts_path = os.path.join(base_dir, "US_Chicken_Weekly_Prices_IBBA.xlsx")
     if os.path.exists(parts_path):
@@ -877,7 +746,6 @@ def _ensure_weekly_table(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS weekly (
             report_date TEXT PRIMARY KEY,
-            bw          REAL,
             breast      REAL,
             leg_qtrs    REAL,
             wings       REAL,
@@ -906,11 +774,11 @@ def _upsert_weekly_dict(weekly: dict, label: str = ""):
 
     ts = datetime.now().isoformat(timespec="seconds")
     inserted = updated = 0
-    FIELDS = ["bw", "breast", "leg_qtrs", "wings", "tenders", "sbm", "corn"]
+    FIELDS = ["breast", "leg_qtrs", "wings", "tenders", "sbm", "corn"]
 
     for date_str, vals in sorted(weekly.items()):
         existing = cur.execute(
-            "SELECT bw, breast, leg_qtrs, wings, tenders, sbm, corn "
+            "SELECT breast, leg_qtrs, wings, tenders, sbm, corn "
             "FROM weekly WHERE report_date=?",
             (date_str,)
         ).fetchone()
@@ -918,11 +786,11 @@ def _upsert_weekly_dict(weekly: dict, label: str = ""):
         if existing is None:
             cur.execute("""
                 INSERT INTO weekly
-                    (report_date, bw, breast, leg_qtrs, wings, tenders, sbm, corn, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                    (report_date, breast, leg_qtrs, wings, tenders, sbm, corn, updated_at)
+                VALUES (?,?,?,?,?,?,?,?)
             """, (
                 date_str,
-                vals.get("bw"),     vals.get("breast"), vals.get("leg_qtrs"),
+                vals.get("breast"), vals.get("leg_qtrs"),
                 vals.get("wings"),  vals.get("tenders"),
                 vals.get("sbm"),    vals.get("corn"),
                 ts
@@ -1018,7 +886,7 @@ def load_weekly_rows_from_db() -> dict:
     Makes the weekly table the single authoritative source for quarterly averages.
     """
     empty = {k: [] for k in [
-        "bw_rows", "breast_rows", "leg_rows", "wings_rows",
+        "breast_rows", "leg_rows", "wings_rows",
         "tenders_rows", "sbm_rows", "corn_rows"
     ]}
     if not os.path.exists(DB_PATH):
@@ -1059,7 +927,6 @@ def build_weekly_db(data: dict):
     """
     # Merge all date-keyed series into a single dict: date → {field: value}
     series_map = {
-        "bw":       data.get("bw_rows",      []),
         "breast":   data.get("breast_rows",  []),
         "leg_qtrs": data.get("leg_rows",     []),
         "wings":    data.get("wings_rows",   []),
@@ -1104,7 +971,7 @@ def load_db_baseline() -> dict:
         con = sqlite3.connect(DB_PATH)
         con.row_factory = sqlite3.Row
         rows = con.execute("""
-            SELECT quarter, bw, breast, leg_qtrs, wings, tenders,
+            SELECT quarter, breast, leg_qtrs, wings, tenders,
                    sbm, corn, fc_spot, fc_0q5, fc_1q5,
                    ppc_us_gm, ppc_cnl_gm
             FROM quarterly
@@ -1140,7 +1007,6 @@ def build_db(data: dict, baseline: dict = None):
         CREATE TABLE IF NOT EXISTS quarterly (
             quarter    TEXT PRIMARY KEY,
             year_q     INTEGER,
-            bw         REAL,
             breast     REAL,
             leg_qtrs   REAL,
             wings      REAL,
@@ -1190,7 +1056,7 @@ def build_db(data: dict, baseline: dict = None):
 
         rows_data[label] = {
             "yr": yr, "q": q,
-            "bw": None, "breast": breast_avg, "leg_qtrs": leg_avg,
+            "breast": breast_avg, "leg_qtrs": leg_avg,
             "wings": wings_avg, "tenders": tenders_avg,
             "sbm": sbm_avg, "corn": corn_avg,
             "fc_spot": fc,
@@ -1218,13 +1084,13 @@ def build_db(data: dict, baseline: dict = None):
 
         cur.execute("""
             INSERT OR REPLACE INTO quarterly
-            (quarter, year_q, bw, breast, leg_qtrs, wings, tenders,
+            (quarter, year_q, breast, leg_qtrs, wings, tenders,
              sbm, corn, fc_spot, fc_0q5, fc_1q5,
              ppc_us_gm, ppc_cnl_gm, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             label, year_q,
-            rd["bw"], rd["breast"], rd["leg_qtrs"], rd["wings"], rd["tenders"],
+            rd["breast"], rd["leg_qtrs"], rd["wings"], rd["tenders"],
             rd["sbm"], rd["corn"], rd["fc_spot"], fc_0q5, fc_1q5,
             rd["ppc_us_gm"], rd["ppc_cnl_gm"], ts
         ))
@@ -1317,7 +1183,6 @@ def main():
     print(f"  → corn: {len(corn_rows)} data point(s)")
 
     fresh_data = {
-        "bw_rows":      [],
         "breast_rows":  parts.get("breast",   []),
         "leg_rows":     parts.get("leg_qtrs", []),
         "wings_rows":   parts.get("wings",    []),

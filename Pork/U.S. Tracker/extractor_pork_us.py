@@ -16,24 +16,29 @@ DATA SOURCES
                             H=carcass USD/cwt)  — Jan 2015 → Apr 2026
 
 SPREAD DEFINITIONS
-  • spread_integrated     = (Carcass / 45.36) / (feed_grain_6m × 5.8)
-    → Integrated producers: own hog farms, cost is feedgrain
-    → Carcass converted to USD/kg (/45.36); feed cost = grain USD/kg × FCR 5.8
-    → FCR 5.8 = kg feed per kg liveweight (pork industry average)
-    → Result: ~1.3–1.8×
+  • spread_integrated     = (Carcass / 45.36) / (fc_6m / 1000 × 5.8)
+    → Integrated producers: own hog farms, cost is feedgrain basket
+    → Carcass converted to USD/kg (/45.36); feed cost = fc_6m/1000 USD/kg × FCR 5.8
+    → FCR 5.8 = kg feed per kg carcass weight (pork industry average)
+    → Result: ~1.5–2.5×
 
   • spread_non_integrated = (Carcass / Hog Price) / 45.36
     → Non-integrated packers: buy live hogs on open market
     → (Carcass ÷ Hog) ratio then /45.36 → USD/kg packer margin
     → Result: ~0.015–0.030 USD/kg
 
-  Feed grain basket: 66% Corn + 34% SBM
-  Feed grain lag:    6 months (feed_grain_6m from seed; fc_6m from corn+sbm with 2Q lag)
+  Feed cost basket (fc_spot, $/ton):
+    fc_spot = (2/3) × corn_$/bu × 39.368  +  (1/3) × sbm_$/ton
+    • 2/3 corn (Central IL $/bu → $/ton via 39.368 bu/ton)
+    • 1/3 SBM  (Illinois FOB $/ton, direct)
+
+  Feed cost lag: 2 quarters (≈ 6 months)
+    fc_6m = quarterly avg fc_spot from 2 quarters prior
 
 UNITS
   Carcass & Hog prices:   USD/cwt
-  feed_grain_6m:          USD/kg (pre-computed in seed)
-  spread_integrated:      dimensionless ratio (~1.3–1.8×)
+  fc_spot / fc_6m:        USD/ton feed
+  spread_integrated:      dimensionless ratio (~1.5–2.5×)
   spread_non_integrated:  USD/kg (~0.015–0.030)
 
 USAGE
@@ -50,9 +55,9 @@ SCHEMA — table: weekly
   hog_price    REAL               Negotiated Barrow & Gilt USD/cwt (national)
   corn         REAL               Corn Central IL $/bu
   sbm          REAL               SBM Illinois FOB $/ton
-  fc_spot      REAL               Feed cost spot: 2.9802*corn + 0.03851*sbm ($/cwt)
-  fc_6m        REAL               Feed cost 6-month lag (USD/cwt)
-  feed_grain_6m REAL              Feed grain basket BRL equiv from seed (USD/kg)
+  fc_spot      REAL               Feed cost spot: (2/3)*corn*39.368 + (1/3)*sbm  ($/ton feed)
+  fc_6m        REAL               Feed cost 2Q lag ($/ton feed)
+  feed_grain_6m REAL              Legacy — kept for seed rows, ignored in new logic
   spread_integrated    REAL       carcass / fc_6m  (×)
   spread_non_integrated REAL      carcass / hog_price  (×)
   updated_at   TEXT               ISO timestamp
@@ -89,10 +94,13 @@ TIMEOUT      = 30
 RETRY        = 3
 USDA_API_KEY = os.environ.get("USDA_API_KEY", "").strip()
 
-# Feed basket weights (same as chicken tracker)
-CORN_WEIGHT  = 2.9802   # lbs corn per lb liveweight equivalent
-SBM_COEFF    = 0.03851  # tons SBM per cwt
-GRAIN_LAG_Q  = 2        # quarters lag (≈6 months) for fc_6m
+# Feed cost basket: 2/3 corn + 1/3 SBM ($/ton feed)
+# fc_spot = CORN_SHARE * corn_$/bu * CORN_BU_PER_TON + SBM_SHARE * sbm_$/ton
+CORN_BU_PER_TON = 39.368   # bushels of corn per metric ton
+CORN_SHARE      = 2 / 3
+SBM_SHARE       = 1 / 3
+HOG_FCR         = 5.8      # kg feed per kg carcass (for spread_integrated)
+GRAIN_LAG_Q     = 2        # quarters lag (≈6 months) for fc_6m
 
 # Quarter range
 _now        = datetime.now()
@@ -904,16 +912,87 @@ def fetch_carcass() -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 # FETCH HOG PRICE  (lsddhps.pdf — National Daily Hog & Pork Summary)
 # ══════════════════════════════════════════════════════════════════════════════
+def _parse_hog_price_from_text(text: str) -> Optional[float]:
+    """
+    Extract Negotiated Barrow & Gilt National Weighted Average (USD/cwt)
+    from PDF text. Handles two known USDA report formats:
+
+    Format A — lsddhps.pdf (National Daily Hog and Pork Summary):
+      NATIONAL - AMS 2675/LM_HG203:
+      $110          ← chart Y-axis label (must be ignored!)
+      Weighted Average: $96.11 $71.03 $100
+      First $XX.XX price on the "Weighted Average:" line = Carcass Base.
+
+    Format B — ams_2675_XXXXX.pdf (Daily Direct Afternoon Hog Report):
+      Negotiated (Carcass) (LM_HG203) (LM_HG206) ...
+      Head Count      1,638
+      Lowest Base Price  87.00
+      Highest Base Price 98.50
+      Weighted Average Price  96.11  96.18  96.11  *
+      First numeric value on the "Weighted Average Price" line = National.
+    """
+    lines = text.splitlines()
+    price = None
+
+    # ── Format A: lsddhps.pdf ────────────────────────────────────────────────
+    # Find "NATIONAL.*LM_HG203" header, then the "Weighted Average:" line.
+    # ⚠ Chart axis labels ($110, $100…) appear between header and data —
+    #   only accept prices on a line that explicitly contains "Weighted Average".
+    for i, line in enumerate(lines):
+        if re.search(r"NATIONAL.*LM_HG203|LM_HG203.*NATIONAL", line, re.IGNORECASE):
+            for j in range(i + 1, min(i + 9, len(lines))):
+                if re.search(r"[Ww]eighted\s+[Aa]verage\s*:", lines[j]):
+                    # "Weighted Average: $96.11 $71.03 $100"
+                    prices = [float(p) for p in re.findall(r"\$([\d.]+)", lines[j])
+                              if 40.0 <= float(p) <= 200.0]
+                    if prices:
+                        price = prices[0]   # Carcass Base (first); Live (second)
+                        print(f"  [Hog Format-A Wtd Avg] {lines[j].strip()}")
+                        break
+            if price:
+                break
+
+    # ── Format B: ams_2675_XXXXX.pdf ────────────────────────────────────────
+    # Find "Negotiated (Carcass).*(LM_HG203)", then "Weighted Average Price" line.
+    if price is None:
+        for i, line in enumerate(lines):
+            if re.search(r"Negotiated\s*\(Carcass\).*LM_HG203", line, re.IGNORECASE):
+                for j in range(i + 1, min(i + 8, len(lines))):
+                    if re.search(r"Weighted Average Price", lines[j]):
+                        # "Weighted Average Price  96.11  96.18  96.11  *"
+                        nums = [float(n) for n in re.findall(r"[\d]+\.[\d]+", lines[j])
+                                if 40.0 <= float(n) <= 200.0]
+                        if nums:
+                            price = nums[0]   # National = first column
+                            print(f"  [Hog Format-B Wtd Avg] {lines[j].strip()}")
+                            break
+                if price:
+                    break
+
+    # ── Fallback: any "Weighted Average" near "Negotiated Barrow" ────────────
+    if price is None:
+        for i, line in enumerate(lines):
+            if re.search(r"[Nn]egotiated.*[Bb]arrow|[Bb]arrow.*[Nn]egotiated", line):
+                for j in range(i, min(i + 8, len(lines))):
+                    if re.search(r"[Ww]eighted\s+[Aa]verage", lines[j]):
+                        nums = [float(p) for p in re.findall(r"[\d]+\.[\d]+", lines[j])
+                                if 40.0 <= float(p) <= 200.0]
+                        if nums:
+                            price = nums[0]
+                            print(f"  [Hog Fallback Wtd Avg] {lines[j].strip()}")
+                            break
+                if price:
+                    break
+
+    return price
+
+
 def fetch_hog_from_pdf() -> list[dict]:
     """
     Parse Negotiated Barrow & Gilt National Weighted Avg (USD/cwt)
     from lsddhps.pdf (National Daily Hog and Pork Summary).
-
-    Target section:
-      NATIONAL - AMS 2675/LM_HG203:
-      $88.00 $92.00 * *
-      $90.42 *
-    The weighted average is on the line after the range line.
+    Delegates price extraction to _parse_hog_price_from_text() which
+    handles both the lsddhps summary format and the ams_2675 detail format.
     """
     try:
         import pdfplumber, io
@@ -937,51 +1016,7 @@ def fetch_hog_from_pdf() -> list[dict]:
         print("  ⚠ Hog PDF: could not parse date")
         return []
 
-    price = None
-    lines = text.splitlines()
-
-    # Strategy 1: find NATIONAL LM_HG203 section, then get weighted avg
-    for i, line in enumerate(lines):
-        if re.search(r"NATIONAL.*LM_HG203|LM_HG203.*NATIONAL", line, re.IGNORECASE):
-            # Look in next 5 lines for a $XX.XX price
-            for j in range(i+1, min(i+6, len(lines))):
-                prices = re.findall(r"\$([\d.]+)", lines[j])
-                valid = [float(p) for p in prices if 40.0 <= float(p) <= 200.0]
-                if valid:
-                    # Weighted average is typically a single price on its own line
-                    if len(valid) == 1:
-                        price = valid[0]
-                    else:
-                        # Take last price (wtd avg comes after range)
-                        price = valid[-1]
-                    print(f"  [Hog PDF LM_HG203] {lines[j].strip()}")
-                    break
-            if price:
-                break
-
-    # Strategy 2: "Weighted Average" line near "Negotiated Barrow"
-    if price is None:
-        for i, line in enumerate(lines):
-            if re.search(r"[Nn]egotiated.*[Bb]arrow|[Bb]arrow.*[Nn]egotiated", line):
-                for j in range(i, min(i+8, len(lines))):
-                    if re.search(r"[Ww]eighted\s+[Aa]verage|[Ww]td\s+[Aa]vg", lines[j]):
-                        p = _first_price(lines[j], 40.0, 200.0)
-                        if p:
-                            price = p
-                            print(f"  [Hog PDF Wtd Avg] {lines[j].strip()}")
-                            break
-                if price:
-                    break
-
-    # Strategy 3: search for "Average Net Price" in hog section
-    if price is None:
-        for line in lines:
-            if re.search(r"[Aa]verage\s+[Nn]et\s+[Pp]rice", line):
-                p = _first_price(line, 40.0, 200.0)
-                if p:
-                    price = p
-                    print(f"  [Hog PDF Avg Net Price] {line.strip()}")
-                    break
+    price = _parse_hog_price_from_text(text)
 
     if price:
         print(f"  Hog PDF {dt.strftime('%Y-%m-%d')}: {price:.2f} USD/cwt")
@@ -1297,17 +1332,18 @@ def materialise_quarterly(conn):
         label = f"{q}Q{str(yr)[2:]}"
         yq    = yr * 10 + q
 
-        # fc_6m: use fc_spot from 2 quarters ago (≈6 months)
+        # fc_6m: fc_spot averaged 2 quarters ago (≈6 months lag)
         fc_6m = fc_spot_by_q.get(quarters[i-2]) if i >= 2 else None
 
         carcass   = avg(d["carcass"])
         hog_price = avg(d["hog_price"])
-        fg6m      = avg(d["feed_grain_6m"])
 
-        # spread_integrated     = (Carcass/45.36) / (feed_grain_6m * 5.8)
-        # spread_non_integrated  = (Carcass/Hog) / 45.36
-        spread_int  = ((carcass / 45.36) / (fg6m * 5.8)) if (carcass and fg6m) else avg(d["spread_int"])
-        spread_nint = ((carcass / hog_price) / 45.36)     if (carcass and hog_price) else avg(d["spread_nint"])
+        # spread_integrated  = (Carcass/45.36) / (fc_6m/1000 × HOG_FCR)
+        #   carcass/45.36     → USD/kg carcass
+        #   fc_6m/1000×5.8    → USD/kg carcass equiv feed cost ($/ton ÷ 1000 × FCR)
+        # spread_non_integrated = (Carcass/Hog) / 45.36
+        spread_int  = ((carcass / 45.36) / (fc_6m / 1000 * HOG_FCR)) if (carcass and fc_6m) else None
+        spread_nint = ((carcass / hog_price) / 45.36)                 if (carcass and hog_price) else avg(d["spread_nint"])
 
         conn.execute("""
             INSERT OR REPLACE INTO quarterly
@@ -1398,9 +1434,9 @@ def main():
         corn = row.get("corn")
         sbm  = row.get("sbm")
         if corn and sbm:
-            # fc_spot in USD/cwt: (2.9802 lb corn/lb × corn $/bu ÷ 56 lb/bu × 100)
-            #                   + (0.03851 ton SBM/cwt × sbm $/ton)
-            row["fc_spot"] = round(2.9802 * corn / 56 * 100 + 0.03851 * sbm, 4)
+            # fc_spot in $/ton feed:
+            #   (2/3) × corn_$/bu × 39.368 bu/ton  +  (1/3) × sbm_$/ton
+            row["fc_spot"] = round(CORN_SHARE * corn * CORN_BU_PER_TON + SBM_SHARE * sbm, 4)
 
         carcass   = row.get("carcass")
         hog_price = row.get("hog_price")
