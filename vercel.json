@@ -1,5 +1,15 @@
 {
+  "buildCommand": "sh build.sh",
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; font-src 'self' fonts.gstatic.com cdn.jsdelivr.net; img-src 'self' data: blob: *; connect-src 'self' https://*.supabase.co; frame-src 'self'; worker-src 'self' blob:; object-src 'none';"
+        }
+      ]
+    },
     {
       "source": "/(.*)\\.db",
       "headers": [

@@ -327,7 +327,17 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 <script>
 /* ══ SUPABASE ══ */
 const { createClient } = supabase;
-const sb = createClient('https://vhxvlmyataclkpamvzpe.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoeHZsbXlhdGFjbGtwYW12enBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MDU2NDEsImV4cCI6MjA4OTk4MTY0MX0.g3v_I0NvKPTHYOU7hEl7rDtwtC2LBktvn9yj1RKE3tg');
+const sb = createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__');
+
+/* ══ AUTH COOKIE — keeps .db files gated to authenticated sessions ══ */
+function setAuthCookie(session) {
+  if (!session?.access_token) return;
+  const exp = session.expires_at || Math.floor(Date.now() / 1000) + 3600;
+  document.cookie = `ibba_auth=${encodeURIComponent(session.access_token)}; path=/; Secure; SameSite=Strict; expires=${new Date(exp * 1000).toUTCString()}`;
+}
+function clearAuthCookie() {
+  document.cookie = 'ibba_auth=; path=/; Max-Age=0; Secure; SameSite=Strict';
+}
 
 /* ══ STATE ══ */
 const STATE = {
@@ -352,7 +362,7 @@ const STATE = {
     analysts: [],
   },
 };
-window.STATE = STATE;  // expose to iframes (e.g. sector_news.html reads window.parent.STATE.currentUser.is_admin)
+window.__portalIsAdmin = () => !!STATE.currentUser?.is_admin;
 
 const SECTORS = [
   { id:'agri',         label:'Agribusiness'                  },
@@ -386,9 +396,14 @@ function setLoading(show, msg='Loading...'){
 async function init(){
   setLoading(true, 'Connecting...');
   // Check existing session
+  sb.auth.onAuthStateChange((event, session) => {
+    if (session) setAuthCookie(session);
+    else clearAuthCookie();
+  });
   const { data:{ session } } = await sb.auth.getSession();
   if(session){
     STATE.authSession = session;
+    setAuthCookie(session);
     await loadUserAndData(session.user.email);
     return;
   }
@@ -537,24 +552,25 @@ async function doLogin(){
   const btn   = document.getElementById('login-btn');
   const errEl = document.getElementById('login-error');
   errEl.textContent='';
-  const resolvedEmail = email === 'ibba' ? 'ibba@itaubba.com' : email;
-  if(!resolvedEmail||!pass){ errEl.textContent='Please enter your email and password.'; return; }
+  if(!email||!pass){ errEl.textContent='Please enter your email and password.'; return; }
   btn.disabled=true; btn.textContent='Signing in...';
-  const { data, error } = await sb.auth.signInWithPassword({ email: resolvedEmail, password:pass });
+  const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
   if(error){
     btn.disabled=false; btn.textContent='Sign In';
     errEl.textContent='Invalid credentials or account inactive. Please contact your administrator.';
     return;
   }
   STATE.authSession = data.session;
+  setAuthCookie(data.session);
   btn.disabled=false; btn.textContent='Sign In';
-  await loadUserAndData(resolvedEmail);
+  await loadUserAndData(email);
   // Log login event (fire and forget — don't block login)
   logEvent('login', null);
 }
 
 async function doLogout(){
   await sb.auth.signOut();
+  clearAuthCookie();
   STATE.currentUser=null; STATE.authSession=null;
   STATE.dashboards=[]; STATE.portalUsers=[]; STATE.activeDash=null;
   document.getElementById('screen-app').classList.remove('active');

@@ -577,7 +577,7 @@ function isAdminUser() {
   try {
     const p = window.parent;
     if (!p || p === window) return false;
-    return !!(p.STATE && p.STATE.currentUser && p.STATE.currentUser.is_admin);
+    return !!(typeof p.__portalIsAdmin === 'function' && p.__portalIsAdmin());
   } catch (e) { return false; }
 }
 

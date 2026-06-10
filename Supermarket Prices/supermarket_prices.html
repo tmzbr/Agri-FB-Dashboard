@@ -454,11 +454,10 @@ function showTab(id,btn){
   document.getElementById("page-"+id)?.classList.add("active"); btn.classList.add("active");
 }
 function init(){
-  // Admin check via parent STATE
+  // Admin check via parent portal
   try {
-    var isAdmin = window.parent && window.parent.STATE && 
-                  window.parent.STATE.currentUser && 
-                  window.parent.STATE.currentUser.is_admin;
+    var isAdmin = window.parent && typeof window.parent.__portalIsAdmin === 'function' &&
+                  window.parent.__portalIsAdmin();
     if (!isAdmin) {
       document.querySelectorAll('.btn-excel').forEach(function(b){ b.style.display='none'; });
     }
