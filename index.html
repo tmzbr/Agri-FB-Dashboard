@@ -271,7 +271,7 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <div class="login-title">Agribusiness, Food &amp; Beverage</div>
     <div class="login-sub">Equity Research Portal</div>
     <label class="login-label" for="inp-user">Corporate Email</label>
-    <input id="inp-user" class="login-input" type="email" placeholder="your.name@corporateemail.com" autocomplete="email"/>
+    <input id="inp-user" class="login-input" type="text" placeholder="your.name@corporateemail.com" autocomplete="email"/>
     <label class="login-label" for="inp-pass">Password</label>
     <input id="inp-pass" class="login-input" type="password" placeholder="Enter your password" autocomplete="current-password"/>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
@@ -546,13 +546,17 @@ function showLogin(){
 
 /* ══ AUTH ══ */
 async function doLogin(){
-  const email = document.getElementById('inp-user').value.trim().toLowerCase();
+  const raw   = document.getElementById('inp-user').value.trim().toLowerCase();
   const pass  = document.getElementById('inp-pass').value;
   const btn   = document.getElementById('login-btn');
   const errEl = document.getElementById('login-error');
   errEl.textContent='';
-  if(!email||!pass){ errEl.textContent='Please enter your email and password.'; return; }
+  if(!raw||!pass){ errEl.textContent='Please enter your email and password.'; return; }
   btn.disabled=true; btn.textContent='Signing in...';
+  // Resolve alias from portal_users (e.g. 'ibba' → real email)
+  let email = raw;
+  const { data: aliasRows } = await sb.from('portal_users').select('email').eq('alias', raw).maybeSingle();
+  if(aliasRows?.email) email = aliasRows.email;
   const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
   if(error){
     btn.disabled=false; btn.textContent='Sign In';
