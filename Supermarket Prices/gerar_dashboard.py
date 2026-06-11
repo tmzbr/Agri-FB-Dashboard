@@ -551,8 +551,6 @@ tr:hover td{{background:#fafafa}}
 </div>
 
 <script>
-const USUARIOS = {{"ryumatsuyama":"admin123","brunotomazetto":"admin123","gustavotroyano":"admin123"}};
-const SENHA_GLOBAL = "ibbafb123";
 const TODOS    = {todos_j};
 const ERROS_H  = {erros_j};
 const HIST     = {hist_j};
