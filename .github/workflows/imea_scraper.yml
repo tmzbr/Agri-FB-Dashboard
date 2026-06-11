@@ -27,6 +27,9 @@ jobs:
         run: pip install requests pandas openpyxl
 
       - name: Roda scraper
+        env:
+          IMEA_USER: ${{ secrets.IMEA_USER }}
+          IMEA_PASS: ${{ secrets.IMEA_PASS }}
         run: python "Agri Monitor/imea/extractor_imea.py"
 
       - name: Commit do banco
