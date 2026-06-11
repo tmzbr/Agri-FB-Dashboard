@@ -691,30 +691,46 @@ def fetch_conab_preco(conn, now_str):
     if n_fail:
         log.warning(f"  [CONAB] {n_fail} linhas com data inválida ignoradas")
 
-    # Inserir média mensal em preco_conab
-    inserted = 0
+    # Inserir (ou atualizar) média mensal em preco_conab.
+    # INSERT OR REPLACE garante que cada (cultura, produto, nivel, data) tenha
+    # exatamente 1 linha — rodadas repetidas atualizam o valor em vez de duplicar.
+    inserted = updated = 0
     for (cultura, ym), precos in records.items():
         _, bag_kg, prod_label, nivel, _, _ = PROD_MAP[
             next(k for k, v in PROD_MAP.items() if v[0] == cultura)
         ]
         avg_kg   = round(sum(precos) / len(precos), 6)
         data_ref = f"{ym}-15"
-        try:
-            conn.execute(
-                """INSERT OR IGNORE INTO preco_conab
-                   (cultura,produto_conab,nivel_comercializacao,
-                    data_referencia,valor_kg,updated_at)
-                   VALUES(?,?,?,?,?,?)""",
-                (cultura, prod_label, nivel, data_ref, avg_kg, now_str),
-            )
-            if conn.execute("SELECT changes()").fetchone()[0]:
+        existing = conn.execute(
+            "SELECT id, valor_kg FROM preco_conab "
+            "WHERE cultura=? AND produto_conab=? AND nivel_comercializacao=? "
+            "AND strftime('%Y-%m',data_referencia)=?",
+            (cultura, prod_label, nivel, ym),
+        ).fetchone()
+        if existing:
+            if abs(existing[1] - avg_kg) > 1e-6:
+                conn.execute(
+                    "UPDATE preco_conab SET valor_kg=?, updated_at=? WHERE id=?",
+                    (avg_kg, now_str, existing[0]),
+                )
+                updated += 1
+        else:
+            try:
+                conn.execute(
+                    """INSERT INTO preco_conab
+                       (cultura,produto_conab,nivel_comercializacao,
+                        data_referencia,valor_kg,updated_at)
+                       VALUES(?,?,?,?,?,?)""",
+                    (cultura, prod_label, nivel, data_ref, avg_kg, now_str),
+                )
                 inserted += 1
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     conn.commit()
-    log.info(f"  [CONAB] Preço: {inserted} novos registros mensais inseridos")
-    return inserted
+    log.info(f"  [CONAB] Preço: {inserted} novos | {updated} atualizados | "
+             f"{len(records)} meses processados")
+    return inserted + updated
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -821,6 +837,18 @@ def parse_shift(raw, shift=0):
 
 
 def safra_label_monthly(conn, cultura, ym):
+    """
+    Determina o label de safra para um mês mensal.
+
+    Regras por prioridade:
+      1. SOJA 2022 → fonte sempre interna, shift=0 (header já correto).
+      2. Portal (indicador_id IS NOT NULL) → shift=-1 para SOJA (portal
+         armazena 1 safra à frente), shift=0 para MILHO/ALGODÃO.
+      3. Interno (safra_tipo='mensal') → aplica o MESMO shift do portal.
+         Isso evita o bug onde meses com custo interno isolado (sem portal)
+         ficavam rotulados com a safra futura (ex: 2024-04 SOJA → 2024/25
+         em vez de 2023/24).
+    """
     cfg   = CULTURAS[cultura]
     shift = cfg["portal_shift"]
     if cultura == "SOJA" and ym[:4] == "2022":
@@ -834,11 +862,13 @@ def safra_label_monthly(conn, cultura, ym):
         "AND strftime('%Y-%m',data_referencia)=? AND safra IS NOT NULL "
         "AND indicador_id IS NOT NULL LIMIT 1", (cultura, ym)).fetchone()
     if r and r[0]: return parse_shift(r[0], shift)
+    # Fallback interno: aplica o mesmo shift do portal (corrige bug onde meses
+    # com custo interno isolado ficavam rotulados com safra futura).
     r = conn.execute(
         "SELECT safra FROM historico WHERE cultura=? AND grupo='CUSTO' "
         "AND strftime('%Y-%m',data_referencia)=? AND safra IS NOT NULL "
         "AND indicador_id IS NULL AND safra_tipo='mensal' LIMIT 1", (cultura, ym)).fetchone()
-    return parse_shift(r[0], 0) if r and r[0] else None
+    return parse_shift(r[0], shift) if r and r[0] else None
 
 
 def safra_inicio(conn, cultura, ym, safra_lbl=None):
@@ -1097,6 +1127,63 @@ def update_dashboard(data):
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# MIGRATION — idempotent, run once per startup
+# ════════════════════════════════════════════════════════════════════════════════
+def migrate_preco_conab(conn):
+    """
+    Limpeza única e idempotente da tabela preco_conab:
+
+    1. Remove combinações produto_conab/nivel_comercializacao que o dashboard
+       nunca consome (atacado, varejo, sementes etc.) — evita que o LIMIT 1
+       em get_price_spot pague uma linha errada.
+    2. Consolida duplicatas antigas (por mês/cultura) em uma única linha com
+       o valor médio, caso existam remanescentes de versões anteriores do script
+       que usavam INSERT OR IGNORE sem constraint eficaz.
+
+    Seguro para rodar a cada inicialização: não altera dados válidos.
+    """
+    KEEP = [
+        ("SOJA",    "SOJA EM GRÃOS   (60 kg)",                                       "PRODUTOR"),
+        ("MILHO",   "MILHO EM GRÃOS   (60 kg)",                                      "PRODUTOR"),
+        ("ALGODAO", "ALGODÃO EM PLUMA TIPO BÁSICO - SLM 41-4 BRANCO  (15 kg)",       "PRODUTOR"),
+    ]
+    placeholders = " OR ".join(
+        ["(cultura=? AND produto_conab=? AND nivel_comercializacao=?)"] * len(KEEP)
+    )
+    params = [v for t in KEEP for v in t]
+    deleted = conn.execute(
+        f"DELETE FROM preco_conab WHERE NOT ({placeholders})", params
+    ).rowcount
+    if deleted:
+        log.info(f"[migrate] preco_conab: {deleted} linhas com produto/nível fora do escopo removidas")
+
+    # Consolidar duplicatas remanescentes (mesmo cultura+produto+nivel+mês)
+    dups = conn.execute("""
+        SELECT cultura, produto_conab, nivel_comercializacao,
+               strftime('%Y-%m', data_referencia) AS ym,
+               COUNT(*) AS n, AVG(valor_kg) AS avg_kg, MAX(updated_at) AS upd
+        FROM preco_conab
+        GROUP BY cultura, produto_conab, nivel_comercializacao, ym
+        HAVING n > 1
+    """).fetchall()
+    if dups:
+        for row in dups:
+            conn.execute(
+                "DELETE FROM preco_conab WHERE cultura=? AND produto_conab=? "
+                "AND nivel_comercializacao=? AND strftime('%Y-%m',data_referencia)=?",
+                (row[0], row[1], row[2], row[3]),
+            )
+            conn.execute(
+                "INSERT INTO preco_conab (cultura,produto_conab,nivel_comercializacao,"
+                "data_referencia,valor_kg,updated_at) VALUES (?,?,?,?,?,?)",
+                (row[0], row[1], row[2], row[3] + "-15", round(row[5], 6), row[6]),
+            )
+        log.info(f"[migrate] preco_conab: {len(dups)} meses com duplicatas consolidados")
+
+    conn.commit()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════════
 def main():
@@ -1107,6 +1194,7 @@ def main():
 
     conn = get_conn()
     ensure_schema(conn)
+    migrate_preco_conab(conn)  # idempotent cleanup: remove stale product/nivel combos
 
     # ── 1. Autenticar IMEA ────────────────────────────────────────────────────
     log.info("Autenticando no portal IMEA...")
