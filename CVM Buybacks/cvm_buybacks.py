@@ -1822,7 +1822,43 @@ def main() -> None:
                 # ABEV3: parser antigo perdia entregas de ações restritas
                 # em PDFs com Diretoria de múltiplas páginas
                 "07526557000100": [
-                    "2025-12-01", "2026-01-01", "2026-02-01", "2026-03-01",
+                    "2023-12-01",
+                    "2024-12-01",
+                    "2025-03-01", "2025-12-01",
+                    "2026-01-01", "2026-02-01", "2026-03-01",
+                ],
+                # MBRF3: cancelamentos/entregas de ações não capturados em vários meses
+                # Delta SI→SF > 20MM indica operação de saída perdida no parse
+                "03853896000140": [
+                    "2022-08-01",
+                    "2023-11-01",
+                    "2024-08-01", "2024-11-01",
+                    "2025-02-01", "2025-09-01",
+                    "2026-02-01",
+                ],
+                # SMTO3: saídas/entregas não capturadas
+                "51466860000156": [
+                    "2024-03-01", "2024-09-01",
+                ],
+                # CAML3: transferências não capturadas
+                "64904295000103": [
+                    "2022-04-01", "2023-01-01",
+                ],
+                # VITT3: entregas de plano de remuneração não capturadas
+                "45365558000109": [
+                    "2024-10-01", "2025-11-01",
+                ],
+                # SLCE3
+                "89096457000155": [
+                    "2023-05-01", "2023-11-01",
+                ],
+                # JBSS3: série com SF=0 em vários meses
+                "02916265000160": [
+                    "2022-03-01", "2022-05-01",
+                ],
+                # BEEF3
+                "67620377000114": [
+                    "2025-07-01", "2026-01-01",
                 ],
             }
             to_delete: set[tuple[str, str]] = set()
@@ -1843,17 +1879,24 @@ def main() -> None:
             if to_delete:
                 log.info("Bootstrap: limpando %d meses para re-parse...", len(to_delete))
                 for cnpj_d, mes_d in sorted(to_delete):
-                    n = conn.execute(
+                    ticker = conn.execute(
+                        "SELECT ticker FROM companies WHERE cnpj_digits=?", (cnpj_d,)
+                    ).fetchone()
+                    t_label = ticker[0] if ticker else cnpj_d
+                    # Limpar ipe_entries E consolidated_positions para re-parse completo
+                    n_ipe = conn.execute(
+                        "DELETE FROM ipe_entries "
+                        "WHERE cnpj_digits=? AND data_referencia=?",
+                        (cnpj_d, mes_d),
+                    ).rowcount
+                    n_con = conn.execute(
                         "DELETE FROM consolidated_positions "
                         "WHERE cnpj_digits=? AND data_referencia=?",
                         (cnpj_d, mes_d),
                     ).rowcount
-                    if n:
-                        ticker = conn.execute(
-                            "SELECT ticker FROM companies WHERE cnpj_digits=?", (cnpj_d,)
-                        ).fetchone()
-                        log.info("  Deletado %s %s: %d linhas",
-                                 ticker[0] if ticker else cnpj_d, mes_d, n)
+                    if n_ipe or n_con:
+                        log.info("  Deletado %s %s: %d ipe + %d consolidated",
+                                 t_label, mes_d, n_ipe, n_con)
                 conn.commit()
             # ─────────────────────────────────────────────────────────────
         else:
