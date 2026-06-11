@@ -71,7 +71,7 @@ async function verifyJWT(token) {
 
 export default async function middleware(request) {
   const cookieHeader = request.headers.get('cookie') || ''
-  const match = cookieHeader.match(/(?:^|;\s*)ibba_auth=([^;]+)/)
+  const match = cookieHeader.match(/(?:^|;\s*)agri_auth=([^;]+)/)
   const token = match ? decodeURIComponent(match[1]) : null
 
   if (!token || !token.startsWith('eyJ')) {

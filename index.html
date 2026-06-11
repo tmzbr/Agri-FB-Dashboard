@@ -333,10 +333,10 @@ const sb = createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__');
 function setAuthCookie(session) {
   if (!session?.access_token) return;
   const exp = session.expires_at || Math.floor(Date.now() / 1000) + 3600;
-  document.cookie = `ibba_auth=${encodeURIComponent(session.access_token)}; path=/; Secure; SameSite=Strict; expires=${new Date(exp * 1000).toUTCString()}`;
+  document.cookie = `agri_auth=${encodeURIComponent(session.access_token)}; path=/; Secure; SameSite=Strict; expires=${new Date(exp * 1000).toUTCString()}`;
 }
 function clearAuthCookie() {
-  document.cookie = 'ibba_auth=; path=/; Max-Age=0; Secure; SameSite=Strict';
+  document.cookie = 'agri_auth=; path=/; Max-Age=0; Secure; SameSite=Strict';
 }
 
 /* ══ STATE ══ */
@@ -1243,11 +1243,11 @@ async function dbSaveAccount(){
   setLoading(false); renderTopNav(); renderContent(); showToast('Account updated ✓');
 }
 
-/* ══ IBBA EXCEL DOWNLOAD HELPER ══
+/* ══ EXCEL DOWNLOAD HELPER ══
    Usage from any dashboard module:
-   downloadIBBA(rows, columns, sheetName, baseName)
+   downloadExcel(rows, columns, sheetName, baseName)
    rows: array of objects  columns: array of {key, label}
-   e.g. downloadIBBA(data, [{key:'date',label:'Date'},{key:'price',label:'Price (R$/bag)'}], 'Prices', 'Grains Price Monitor')
+   e.g. downloadExcel(data, [{key:'date',label:'Date'},{key:'price',label:'Price (R$/bag)'}], 'Prices', 'Grains Price Monitor')
 */
 function exportUsersExcel(){
   if(!window.XLSX){ showToast('Excel library not loaded yet.'); return; }
@@ -1266,9 +1266,9 @@ function exportUsersExcel(){
     {key:'Status',       label:'Status'},
     {key:'Created At',   label:'Created At'},
   ];
-  downloadIBBA(rows, cols, 'Users', 'Portal Users');
+  downloadExcel(rows, cols, 'Users', 'Portal Users');
 }
-function downloadIBBA(rows, columns, sheetName, baseName){
+function downloadExcel(rows, columns, sheetName, baseName){
   if(!window.XLSX){ showToast('Excel library not loaded yet.'); return; }
   const XLSX = window.XLSX;
   const wb = XLSX.utils.book_new();
@@ -1288,7 +1288,7 @@ function downloadIBBA(rows, columns, sheetName, baseName){
     return { wch: Math.min(Math.max(maxLen+2, 10), 40) };
   });
 
-  // Apply IBBA header style to row 0
+  // Apply header style to row 0
   columns.forEach((_,ci)=>{
     const cellRef = XLSX.utils.encode_cell({r:0, c:ci});
     if(!ws[cellRef]) return;
@@ -1303,7 +1303,7 @@ function downloadIBBA(rows, columns, sheetName, baseName){
     };
   });
 
-  // Apply IBBA data row style (Arial 8, black, thin gray borders)
+  // Apply data row style (Arial 8, black, thin gray borders)
   rows.forEach((_,ri)=>{
     columns.forEach((_,ci)=>{
       const cellRef = XLSX.utils.encode_cell({r:ri+1, c:ci});
@@ -1537,7 +1537,7 @@ async function exportAnalyticsExcel(days){
     {key:'Email',label:'Email'},{key:'Event',label:'Event'},
     {key:'Dashboard',label:'Dashboard'},{key:'Sector',label:'Sector'},{key:'Subsector',label:'Subsector'},
   ];
-  downloadIBBA(rows,cols,'Activity Log',`Portal Analytics — Last ${days}d`);
+  downloadExcel(rows,cols,'Activity Log',`Portal Analytics — Last ${days}d`);
 }
 
 /* ══ START ══ */

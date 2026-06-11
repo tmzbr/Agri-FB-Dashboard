@@ -691,7 +691,7 @@ def fetch_corn() -> list[dict]:
 # ─── Fallback: read from existing Excel files ─────────────────────────────────
 def load_from_excel(base_dir: str) -> dict:
     """
-    Fallback loader: reads from the IBBA Excel files if they exist.
+    Fallback loader: reads from the reference Excel files if they exist.
     Returns dict of quarterly data keyed by label.
     """
     try:
@@ -702,7 +702,7 @@ def load_from_excel(base_dir: str) -> dict:
     data = {}  # keyed by (yr, q)
 
     # ─ Parts + Costs ─
-    parts_path = os.path.join(base_dir, "US_Chicken_Weekly_Prices_IBBA.xlsx")
+    parts_path = os.path.join(base_dir, "US_Chicken_Weekly_Prices.xlsx")
     if os.path.exists(parts_path):
         wb2 = load_workbook(parts_path, data_only=True)
         # Parts Weekly
@@ -819,7 +819,7 @@ def _upsert_weekly_dict(weekly: dict, label: str = ""):
 
 def backfill_weekly_from_excel(base_dir: str):
     """
-    One-time / incremental backfill: read US_Chicken_Weekly_Prices_IBBA.xlsx
+    One-time / incremental backfill: read US_Chicken_Weekly_Prices.xlsx
     and upsert ALL historical rows into the weekly table.
     Safe to call on every local run — only fills NULL gaps, never overwrites.
     """
@@ -829,7 +829,7 @@ def backfill_weekly_from_excel(base_dir: str):
         print("  ⚠ openpyxl not installed — skipping Excel backfill")
         return
 
-    parts_path = os.path.join(base_dir, "US_Chicken_Weekly_Prices_IBBA.xlsx")
+    parts_path = os.path.join(base_dir, "US_Chicken_Weekly_Prices.xlsx")
     if not os.path.exists(parts_path):
         print(f"  ⚠ {parts_path} not found — skipping backfill")
         return
@@ -1115,7 +1115,7 @@ def build_db(data: dict, baseline: dict = None):
 # ─── One-time historical backfill (run manually, never called by main()) ──────
 def run_excel_backfill():
     """
-    Utility: populate the weekly table from US_Chicken_Weekly_Prices_IBBA.xlsx.
+    Utility: populate the weekly table from US_Chicken_Weekly_Prices.xlsx.
     Call ONCE after cloning/setting up, then never again.
     The DB already contains this history after the initial setup — the regular
     update loop (main) only uses USDA PDFs from that point on.
@@ -1132,7 +1132,7 @@ def run_excel_backfill():
     ]
     excel_base = next((p for p in candidates if os.path.isdir(p)), None)
     if not excel_base:
-        print("ERROR: US_Chicken_Weekly_Prices_IBBA.xlsx folder not found.")
+        print("ERROR: US_Chicken_Weekly_Prices.xlsx folder not found.")
         print("Searched:", candidates)
         sys.exit(1)
     print(f"Backfilling from: {excel_base}")

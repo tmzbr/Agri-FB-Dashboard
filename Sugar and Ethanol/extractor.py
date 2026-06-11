@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-extractor.py — IBBA Agri Monitor · Unified Daily Extractor
+extractor.py — Agri Monitor · Unified Daily Extractor
 ===========================================================
 Runs daily via GitHub Actions. Each section has its own schedule logic:
 
@@ -964,9 +964,9 @@ def main():
 
     log.info("=" * 60)
     if dashboard_only:
-        log.info(f"IBBA Extractor | DASHBOARD-ONLY MODE | {NOW_STR}")
+        log.info(f"Agri Extractor | DASHBOARD-ONLY MODE | {NOW_STR}")
     else:
-        log.info(f"IBBA Extractor | {TODAY} ({TODAY.strftime('%A')}) | {NOW_STR}")
+        log.info(f"Agri Extractor | {TODAY} ({TODAY.strftime('%A')}) | {NOW_STR}")
         log.info(f"  Weekday: {is_weekday()} | Thursday: {is_thursday()} | 5th: {is_month_5th()} | Force: {FORCE_ALL}")
     log.info("=" * 60)
 

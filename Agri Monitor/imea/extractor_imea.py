@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-extractor_imea.py — IBBA Agri Monitor
+extractor_imea.py — Agri Monitor
 ======================================
 Execução mensal via GitHub Actions.
 
@@ -18,8 +18,8 @@ FONTES POR TIPO DE DADO
 
   CUSTOS    → Portal IMEA (API autenticada)
               grupo CUSTO, indicador_id IS NOT NULL → portal mensal
-              indicador_id IS NULL, safra_tipo='mensal' → IBBA projeção
-              indicador_id IS NULL, safra_tipo='anual'  → IBBA histórico
+              indicador_id IS NULL, safra_tipo='mensal' → projeção interna
+              indicador_id IS NULL, safra_tipo='anual'  → histórico interno
 
   PREÇO     → API CONAB portaldeinformacoes.conab.gov.br
               Soja:    "SOJA EM GRÃOS (60 kg)"           ao produtor MT
@@ -44,15 +44,15 @@ UNIDADES (tudo em R$/ha no dashboard):
   Toggle bag/ha: val ÷ spot(R$/bag) → bag/ha ou @/ha conforme cmdty
 
 SAFRA LABEL (mensal):
-  SOJA 2022 IBBA    : sem shift (header correto)
+  SOJA 2022 interno : sem shift (header correto)
   SOJA portal       : shift -1  (portal guarda 1 ano à frente)
   MILHO/ALGODÃO     : sem shift
-  IBBA mensal       : sem shift
+  mensal interno    : sem shift
 
 SEEDS = Sementes + Semente de Cobertura (todas as culturas)
 
 ANNUAL SNAPS (hardcoded — melhor data de custo e preço/yield por safra):
-  IBBA histórico: custo publicado 1 ano após fechamento
+  histórico interno: custo publicado 1 ano após fechamento
     SOJA y1/y2    → preço/yield em Set/y2
     MILHO y1/y2   → preço/yield em Dez/y1
     ALGODÃO y1/y2 → preço/yield em Dez/y1
@@ -125,8 +125,8 @@ CULTURAS = {
 CURRENT_YEAR = date.today().year
 
 # ── Annual snaps (custo_date, label, tipo) ────────────────────────────────────
-# tipo='anual' → IBBA histórico: preço/yield buscado em data real fechamento safra
-# tipo=None    → portal/IBBA mensal
+# tipo='anual' → histórico interno: preço/yield buscado em data real fechamento safra
+# tipo=None    → portal/mensal interno
 ANNUAL_SNAPS = {
     "SOJA": [
         ("2020-09", "2019/20",  "anual"),
@@ -853,7 +853,7 @@ def safra_inicio(conn, cultura, ym, safra_lbl=None):
 
 
 def get_price_ym(safra_lbl, cultura, cost_ym):
-    """Para IBBA anuais históricos: data real de fechamento da safra."""
+    """Para anuais históricos internos: data real de fechamento da safra."""
     if not safra_lbl: return cost_ym
     try:
         y1 = int(safra_lbl.replace("e","").split("/")[0])
@@ -918,7 +918,7 @@ def get_price_avg(conn, cultura, ym, inicio):
 # QUERIES DE CUSTO
 # ════════════════════════════════════════════════════════════════════════════════
 def qm(conn, c, ind, ym):
-    """Mensal: portal > IBBA mensal > qualquer."""
+    """Mensal: portal > mensal interno > qualquer."""
     for sql in [
         "SELECT valor FROM historico WHERE cultura=? AND indicador_nome=? AND strftime('%Y-%m',data_referencia)=? AND grupo='CUSTO' AND indicador_id IS NOT NULL LIMIT 1",
         "SELECT valor FROM historico WHERE cultura=? AND indicador_nome=? AND strftime('%Y-%m',data_referencia)=? AND grupo='CUSTO' AND safra_tipo='mensal' LIMIT 1",
@@ -987,7 +987,7 @@ def get_other(conn, c, ym, anual=False):
 def build_rec(conn, cultura, ym, s_label, anual=False):
     """
     Constrói registro P&L completo.
-    anual=True → custos de cost_ym (IBBA), preço/yield de price_ym (fechamento real).
+    anual=True → custos de cost_ym (histórico interno), preço/yield de price_ym (fechamento real).
     """
     price_ym = get_price_ym(s_label, cultura, ym) if anual else ym
     inicio   = safra_inicio(conn, cultura, price_ym, s_label)

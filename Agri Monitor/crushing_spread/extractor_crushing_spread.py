@@ -1133,7 +1133,7 @@ html,body{{font-family:var(--font);background:var(--gray-light);color:var(--gray
       <div class="chart-wrap"><canvas id="chartSojaSeas"></canvas></div>
     </div>
   </div>
-  <p class="source-note">Sources: CONAB/Siagro (soy prices) &middot; SECEX/MDIC NCM 23040090 (meal FOB) &middot; ANP B100 producers (biodiesel) &middot; BCB PTAX (FX) &middot; Agri Monitor / IBBA</p>
+  <p class="source-note">Sources: CONAB/Siagro (soy prices) &middot; SECEX/MDIC NCM 23040090 (meal FOB) &middot; ANP B100 producers (biodiesel) &middot; BCB PTAX (FX) &middot; Agri Monitor</p>
 </div>
 <script>
 const RAW = {data_json};
