@@ -1593,7 +1593,7 @@ def build_dashboard(conn: sqlite3.Connection) -> None:
         WHERE e.tipo_ativo='Ações'
           AND e.qualificacao='treasury'
           AND e.tipo_movimentacao IN ('Compra à vista','Compra à termo','Compra')
-          AND (e.preco_unitario IS NULL OR e.preco_unitario > 0)
+          AND e.preco_unitario > 0
         ORDER BY c.ticker, e.data_movimentacao
     """):
         t = r["ticker"]
