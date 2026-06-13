@@ -991,29 +991,66 @@ function updateSelectedCount() {
 // ── Fetch News ────────────────────────────────────────────────────────────────
 async function fetchNews() {
   const btn = document.getElementById("btn-refresh-bar");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:2px"></span> Buscando...';
-  showToast("Buscando notícias... isso pode levar alguns minutos.", "info");
-  try {
-    const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST" });
-    const data = await res.json();
-    if (data.success) {
-      const saved = data.saved ?? data.new ?? data.added ?? "–";
-      const fetched = data.fetched ?? data.found ?? data.total ?? "–";
-      showToast(`${saved} novas notícias adicionadas (${fetched} encontradas)`, "success");
-      document.getElementById("last-refresh").textContent =
-        "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-      document.getElementById("last-refresh").classList.remove("d-none");
-      await loadNews();
-    } else {
-      showToast("Error: " + (data.error || "unknown"), "danger");
-    }
-  } catch (e) {
-    showToast("Connection error", "danger");
-  } finally {
+  const restoreBtn = () => {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Refresh';
+  };
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:2px"></span> Buscando...';
+
+  // /api/news/fetch is asynchronous: it only *starts* a background job (Render's
+  // proxy would time out on the multi-minute fetch) and returns immediately with
+  // {success, status}. We then poll /api/news/fetch/status until it finishes and
+  // report the real saved/fetched counts from last_result.
+  let data;
+  try {
+    const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST" });
+    data = await res.json();
+  } catch (e) {
+    showToast("Connection error", "danger");
+    restoreBtn();
+    return;
   }
+  if (!data.success) {
+    showToast("Error: " + (data.error || "unknown"), "danger");
+    restoreBtn();
+    return;
+  }
+
+  showToast("Busca iniciada — isso pode levar alguns minutos. Aguarde…", "info");
+
+  // Poll status. Cold start + full fetch can take a few minutes; cap the wait.
+  const POLL_MS = 5000, MAX_POLLS = 72; // ~6 min
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, POLL_MS));
+    let status;
+    try {
+      const sres = await fetch(API_BASE + "/api/news/fetch/status");
+      status = await sres.json();
+    } catch (e) { continue; } // transient — keep polling
+    if (status.running) { await loadNews(); continue; } // surface partial progress
+
+    // Job finished.
+    const r = status.last_result;
+    if (r && r.error) {
+      showToast("Erro na busca: " + r.error, "danger");
+    } else if (r) {
+      showToast(`${r.saved ?? "–"} novas notícias adicionadas (${r.fetched ?? "–"} encontradas)`, "success");
+    } else {
+      showToast("Busca concluída.", "success");
+    }
+    document.getElementById("last-refresh").textContent =
+      "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("last-refresh").classList.remove("d-none");
+    await loadNews();
+    restoreBtn();
+    return;
+  }
+
+  // Timed out waiting — the job may still be running server-side.
+  showToast("A busca está demorando mais que o normal. As notícias vão aparecer em instantes — clique em Refresh novamente em alguns minutos.", "info");
+  await loadNews();
+  restoreBtn();
 }
 
 // ── News Actions ──────────────────────────────────────────────────────────────
