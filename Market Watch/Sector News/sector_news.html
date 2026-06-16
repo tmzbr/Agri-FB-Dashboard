@@ -557,57 +557,28 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
 
 <!-- ═══ MODALS ═══ -->
 
-<!-- Clipping Export Modal -->
-<div class="modal fade" id="clippingExportModal" tabindex="-1">
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title fw-bold">
-          <i class="bi bi-scissors me-2" style="color:var(--orange)"></i>Clipping — Preview &amp; Exportar
-        </h5>
+        <h5 class="modal-title fw-bold"><i class="bi bi-envelope me-2"></i>Export — Daily News Clipping</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-3">
         <p class="small text-muted mb-2">
-          Revise o clipping gerado abaixo. Os textos foram extraídos automaticamente de cada fonte.
-          Use <strong>Abrir no Outlook</strong> para baixar o rascunho ou <strong>Copiar</strong> para colar.
-        </p>
-        <div id="clipping-export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
-        <button class="btn btn-outline-secondary" onclick="copyClippingExport()">
-          <i class="bi bi-clipboard-check me-1"></i>Copiar (formatado)
-        </button>
-        <button class="btn" onclick="openClippingInOutlook()" style="background:var(--orange);color:white;border:none">
-          <i class="bi bi-envelope-open me-1"></i>Abrir no Outlook
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Export Modal -->
-<div class="modal fade" id="exportModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title fw-bold"><i class="bi bi-envelope me-2"></i>Export to Email</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-3">
-        <p class="small text-muted mb-2">
-          Click <strong>Open in Outlook</strong> to download a ready-to-send draft (.eml file) — colors and layout preserved.
-          Or use <strong>Copy (formatted)</strong> to paste elsewhere.
+          Aguarde a extração do corpo das notícias. Depois clique em
+          <strong>Open in Outlook</strong> para baixar o rascunho (.eml) ou
+          <strong>Copy</strong> para colar diretamente.
         </p>
         <div id="export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        <button class="btn btn-outline-secondary" onclick="copyExport()">
+        <button id="btn-export-copy" class="btn btn-outline-secondary" onclick="copyExport()" disabled>
           <i class="bi bi-clipboard-check me-1"></i>Copy (formatted)
         </button>
-        <button class="btn" onclick="openInOutlook()" style="background:var(--orange);color:white;border:none">
+        <button id="btn-export-outlook" class="btn" onclick="openInOutlook()" style="background:var(--orange);color:white;border:none" disabled>
           <i class="bi bi-envelope-open me-1"></i>Open in Outlook
         </button>
       </div>
@@ -1435,25 +1406,65 @@ function sourceFromUrl(url) {
 function openExportModal() {
   if (selectedItems.size === 0) { showToast("Select at least one item", "warning"); return; }
 
-  // Source: selectedItems (Map persistente, sobrevive a tab-switch).
-  const selected = Array.from(selectedItems.values());
+  // Feed selectedItems into the clipping pipeline so the same
+  // scraping + layout logic (buildClippingFullExport) powers the export.
+  const items = Array.from(selectedItems.values());
+
+  // Pre-populate buckets so the modal opens immediately with a preview skeleton
   const buckets = { "Agribusiness": [], "Food & Beverage": [], "Other": [] };
-  selected.forEach(item => buckets[exportSupergroup(item)].push(item));
-  // Ordenação inicial por data desc; user pode reordenar manualmente depois.
+  items.forEach(item => {
+    item._scrapeResult = null; // will be filled after scraping
+    buckets[exportSupergroup(item)].push(item);
+  });
   Object.values(buckets).forEach(arr =>
     arr.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""))
   );
-
   const today = new Date();
-  const dateLong = today.toLocaleDateString("en-GB",
-    { day: "numeric", month: "long", year: "numeric" });
-  const subject = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
-
+  const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const subject  = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
   const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
-
   exportState = { sections, buckets, subject, dateLong };
-  renderExportPreview();
+
+  // Show modal immediately with a loading state
+  document.getElementById("export-preview").innerHTML =
+    `<div class="text-center py-5" style="color:var(--text-muted);">
+       <div class="spinner-border mb-3" style="color:var(--orange);width:2rem;height:2rem;" role="status"></div>
+       <p style="font-size:13px;">Extraindo corpo das notícias…</p>
+       <div id="export-scrape-pills" style="margin-top:8px;">
+         ${items.map(item => `<span class="scrape-pill wait" id="expill-${item.id}" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;margin:2px;background:#FEF3C7;color:#B45309;">${escHtml(sourceFromUrl(item.url))}</span>`).join("")}
+       </div>
+     </div>`;
+  document.getElementById("btn-export-outlook").disabled = true;
+  document.getElementById("btn-export-copy").disabled = true;
   new bootstrap.Modal(document.getElementById("exportModal")).show();
+
+  // Run scraping in background, update preview when done
+  _runExportScraping(items, sections, buckets);
+}
+
+async function _runExportScraping(items, sections, buckets) {
+  // Scrape in parallel batches of 3
+  const chunks = [];
+  for (let i = 0; i < items.length; i += 3) chunks.push(items.slice(i, i + 3));
+
+  for (const chunk of chunks) {
+    await Promise.all(chunk.map(async item => {
+      const r = await scrapeArticleBody(item);
+      item._scrapeResult = r;
+      const pill = document.getElementById(`expill-${item.id}`);
+      if (pill) {
+        const label = r.source === "rss" ? "RSS ✓" : r.source === "wayback" ? "Wayback ✓" : r.source === "scrape" ? "Web ✓" : "snippet";
+        pill.style.background = r.ok ? "#DCFCE7" : "#FEE2E2";
+        pill.style.color      = r.ok ? "#15803D" : "#B91C1C";
+        pill.textContent = sourceFromUrl(item.url) + " — " + label;
+      }
+    }));
+  }
+
+  // All done — render the full preview and enable buttons
+  renderClippingExportPreview();
+  document.getElementById("btn-export-outlook").disabled = false;
+  document.getElementById("btn-export-copy").disabled = false;
 }
 
 function buildExportHtmlPlain() {
@@ -2538,8 +2549,9 @@ function renderClippingExportPreview() {
   // ── Build the canonical HTML (used both for preview and for export) ──────
   const { html, plain, fullHtml } = buildClippingFullExport(sections, buckets);
 
-  // ── Preview: wrap in a light shell so it looks like the real email ────────
-  document.getElementById("clipping-export-preview").innerHTML =
+  // ── Preview: write into the Export modal's preview div ───────────────────
+  const previewEl = document.getElementById("export-preview");
+  if (previewEl) previewEl.innerHTML =
     `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;max-width:700px;">${html}</div>`;
 
   window._exportHtml      = fullHtml;
