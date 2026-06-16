@@ -514,16 +514,28 @@ def api_purge_blocked():
 
 @app.route("/api/scrape", methods=["POST"])
 def api_scrape():
+    import traceback
     data = request.get_json(force=True) or {}
     items = data.get("items", [])
     if not items:
         return jsonify({"error": "items é obrigatório"}), 400
     try:
+        print(f"[scrape] Starting batch of {len(items)} items", flush=True)
         from scraper import scrape_batch
         results = scrape_batch(items)
+        ok_count = sum(1 for r in results if r.get("ok"))
+        print(f"[scrape] Done: {ok_count}/{len(results)} ok", flush=True)
+        for r in results:
+            tier = r.get("tier", "none")
+            ok   = r.get("ok", False)
+            err  = r.get("error", "")
+            url  = r.get("url", "")[:60]
+            print(f"[scrape]  {'✓' if ok else '✗'} tier={tier} {url} {err}", flush=True)
         return jsonify({"results": results})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        tb = traceback.format_exc()
+        print(f"[scrape] ERROR: {e}\n{tb}", flush=True)
+        return jsonify({"error": str(e), "traceback": tb}), 500
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
