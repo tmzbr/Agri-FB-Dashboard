@@ -228,8 +228,12 @@ def tier3_cffi(url: str) -> Optional[str]:
             impersonate="chrome124",
             timeout=TIMEOUT_TIER3,
         )
-        if resp.status_code == 200 and len(resp.text) > 300:
-            return resp.text
+        if resp.status_code == 200 and len(resp.content) > 300:
+            # Force UTF-8 decoding to avoid encoding corruption
+            try:
+                return resp.content.decode("utf-8")
+            except UnicodeDecodeError:
+                return resp.content.decode("latin-1")
     except ImportError:
         pass  # curl-cffi not installed
     except Exception:
@@ -300,26 +304,38 @@ def wayback_fetch(url: str) -> Optional[str]:
 
 def rss_fetch(url: str, feed_url: str) -> Optional[str]:
     """Fetch article body from RSS feed by matching URL.
-    Tries exact path match first, then partial slug match."""
+    Uses requests with browser headers to avoid blocks, then feedparser to parse."""
     try:
         import feedparser
-        feed = feedparser.parse(feed_url)
+        from io import BytesIO
+
+        # Fetch RSS with browser headers to avoid blocks
+        rss_resp = requests.get(
+            feed_url,
+            headers=BROWSER_HEADERS,
+            timeout=12,
+            allow_redirects=True,
+        )
+        if not rss_resp.ok:
+            return None
+
+        # Force UTF-8 encoding
+        rss_resp.encoding = "utf-8"
+        feed = feedparser.parse(rss_resp.text)
+
         if not feed.entries:
             return None
 
         target_path = urllib.parse.urlparse(url).path.rstrip("/")
-        # Extract slug (last path segment) for fuzzy matching
         target_slug = target_path.split("/")[-1] if target_path else ""
 
         best_entry = None
         for entry in feed.entries:
             entry_link = entry.get("link", "")
             entry_path = urllib.parse.urlparse(entry_link).path.rstrip("/")
-            # Exact path match
             if entry_path == target_path:
                 best_entry = entry
                 break
-            # Slug match (handles trailing slash differences, www vs non-www)
             if target_slug and entry_path.endswith(target_slug):
                 best_entry = entry
                 break
@@ -327,19 +343,21 @@ def rss_fetch(url: str, feed_url: str) -> Optional[str]:
         if not best_entry:
             return None
 
-        # Extract content: prefer content:encoded > summary
         def _parse_content(raw_html):
-            soup = BeautifulSoup(raw_html, "html.parser")
-            paras = [p.get_text(separator=" ", strip=True)
-                     for p in soup.find_all("p")
-                     if len(p.get_text(strip=True)) > 60]
+            import html as html_mod
+            soup = BeautifulSoup(raw_html, "lxml")
+            paras = []
+            for p in soup.find_all("p"):
+                t = html_mod.unescape(p.get_text(separator=" ", strip=True))
+                t = re.sub(r"\s+", " ", t).strip()
+                if len(t) > 60 and not NOISE_PATTERN.search(t):
+                    paras.append(t)
             if paras:
                 return "\n\n".join(paras)
             text = re.sub(r"<[^>]+>", " ", raw_html)
             text = re.sub(r"\s+", " ", text).strip()
             return text if len(text) > 60 else None
 
-        # feedparser maps content:encoded to entry.content[0]
         if hasattr(best_entry, "content") and best_entry.content:
             result = _parse_content(best_entry.content[0].get("value", ""))
             if result:
