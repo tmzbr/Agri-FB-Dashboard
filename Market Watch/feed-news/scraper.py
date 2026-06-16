@@ -65,9 +65,11 @@ RSS_FEEDS = {
 SOURCE_SELECTORS = {
     "feedfood.com.br":           ".elementor-widget-theme-post-content .elementor-widget-container, .entry-content, .post-content",
     "canalrural.com.br":         ".article-body, .content-materia, .materia-texto, main",
-    "globorural.globo.com":      ".article-body, .mb-article__body, .content-text, article",
-    "valor.globo.com":           ".article-body, .mb-article__body, .content-text, article",
-    "valoreconomico.com":        ".article-body, .mb-article__body, .content-text, article",
+    "globorural.globo.com":      "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .article-body, .content-text, article",
+    "valor.globo.com":           "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
+    "valoreconomico.com":        "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
+    "g1.globo.com":              "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .content-text, article",
+    "globo.com":                 "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, .content-text, article",
     "agfeed.com.br":             ".post-content, .entry-content, .td-post-content, .main-content",
     "bloomberglinea.com.br":     "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
     "bloomberglinea.com":        "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
@@ -307,7 +309,6 @@ def rss_fetch(url: str, feed_url: str) -> Optional[str]:
     Uses requests with browser headers to avoid blocks, then feedparser to parse."""
     try:
         import feedparser
-        from io import BytesIO
 
         # Fetch RSS with browser headers to avoid blocks
         rss_resp = requests.get(
@@ -319,9 +320,9 @@ def rss_fetch(url: str, feed_url: str) -> Optional[str]:
         if not rss_resp.ok:
             return None
 
-        # Force UTF-8 encoding
-        rss_resp.encoding = "utf-8"
-        feed = feedparser.parse(rss_resp.text)
+        # Parse from raw bytes so feedparser handles encoding itself
+        # Avoids double-decoding that corrupts UTF-8 characters
+        feed = feedparser.parse(rss_resp.content)
 
         if not feed.entries:
             return None
@@ -392,14 +393,13 @@ def scrape_one(item: dict) -> dict:
                 return {"id": item_id, "url": url, "body": body, "tier": "rss", "ok": True}
             break  # RSS failed, continue to tiers
 
-    # Globo Rural and Beef Point — Cloudflare protected, skip straight to cffi
-    if "globorural.globo.com" in host or "beefpoint.com.br" in host:
+    # Beef Point — JS-rendered, skip straight to cffi
+    if "beefpoint.com.br" in host:
         html = tier3_cffi(url)
         if html:
             body = extract_text(html, url)
             if body:
                 return {"id": item_id, "url": url, "body": body, "tier": 3, "ok": True}
-        # Wayback as last resort
         html = wayback_fetch(url)
         if html:
             body = extract_text(html, url)
