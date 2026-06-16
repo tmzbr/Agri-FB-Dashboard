@@ -553,7 +553,7 @@ async function doLogin(){
   errEl.textContent='';
   if(!raw||!pass){ errEl.textContent='Please enter your email and password.'; return; }
   btn.disabled=true; btn.textContent='Signing in...';
-  // Resolve alias from portal_users (e.g. 'ibba' → real email)
+  // Resolve alias from portal_users (e.g. an alias → real email)
   let email = raw;
   const { data: aliasRows } = await sb.from('portal_users').select('email').eq('alias', raw).maybeSingle();
   if(aliasRows?.email) email = aliasRows.email;

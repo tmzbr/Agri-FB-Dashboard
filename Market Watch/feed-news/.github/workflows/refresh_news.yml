@@ -1,0 +1,29 @@
+name: Refresh Sector News
+
+# Keeps the Sector News feed fresh. The backend runs on Render's free tier,
+# which sleeps after ~15 min idle — so its in-process scheduler never fires.
+# This cron wakes the service and triggers a fetch.
+#
+# Fire-and-forget: /api/news/fetch is async (returns 202 immediately, runs the
+# fetch in a background thread, commits in batches). A single request resets
+# Render's ~15 min idle timer, which covers the whole ~5 min fetch, so the job
+# finishes server-side after this Action exits. No polling = minimal Actions
+# minutes (~30s/run instead of several minutes).
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours (UTC) — matches backend interval
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger fetch
+        run: |
+          BASE="https://ibba-agri-fb-feed-news.onrender.com"
+          # --max-time 120 absorbs Render's cold start (~60s when asleep).
+          echo "Triggering fetch (cold start can take ~60s)..."
+          curl -s --max-time 120 -X POST "$BASE/api/news/fetch"
+          echo
+          echo "Fetch triggered — it runs in the background on the server."

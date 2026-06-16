@@ -1,0 +1,239 @@
+{
+  "groups": [
+    {
+      "id": 1,
+      "name": "Agribusiness - Companies",
+      "color": "#2e7d32",
+      "companies": ["SLC Agrícola", "BrasilAgro", "3tentos", "Boa Safra Sementes", "Vittia", "São Martinho", "Adecoagro", "Jalles Machado"],
+      "tickers": ["SLCE3", "AGRO3", "TTEN3", "SOJA3", "VITT3", "SMTO3", "JALL3"],
+      "keywords": ["SLC Agricola", "BrasilAgro", "3tentos", "Boa Safra", "Vittia", "São Martinho", "Adecoagro", "Jalles Machado"],
+      "search_queries_pt": [
+        "SLC Agricola resultado receita produção safra",
+        "BrasilAgro fazenda venda aquisição resultado",
+        "3tentos resultado receita insumos sementes fertilizante",
+        "Boa Safra Sementes resultado inoculante biológico",
+        "Vittia resultado defensivos nutrição vegetal",
+        "São Martinho resultado etanol açúcar cana moagem",
+        "Adecoagro resultado produção leite açúcar",
+        "Jalles Machado resultado etanol açúcar"
+      ],
+      "search_queries_en": [
+        "SLC Agricola Brazil crop production results",
+        "BrasilAgro farm acquisition divestiture",
+        "Adecoagro earnings sugarcane ethanol",
+        "São Martinho sugar ethanol results"
+      ],
+      "negative_keywords": []
+    },
+    {
+      "id": 2,
+      "name": "Agribusiness - Sector",
+      "color": "#558b2f",
+      "companies": [],
+      "tickers": [],
+      "keywords": ["soja", "algodão", "milho", "cana de açúcar", "etanol", "açúcar", "produtor rural", "defensivos", "fertilizantes"],
+      "search_queries_pt": [
+        "site:globorural.globo.com soja",
+        "site:globorural.globo.com milho",
+        "site:globorural.globo.com trigo",
+        "site:globorural.globo.com arroz",
+        "site:globorural.globo.com algodao",
+        "site:globorural.globo.com fertilizantes",
+        "site:globorural.globo.com clima",
+        "site:globorural.globo.com safra",
+        "site:cnnbrasil.com.br/agro",
+        "site:bloomberglinea.com.br/agro",
+        "site:canalrural.com.br",
+        "site:summitagro.estadao.com.br",
+        "site:g1.globo.com/economia/agronegocios",
+        "\"preço da soja\" OR \"preços da soja\" OR \"cotação da soja\" Brasil",
+        "\"preço do milho\" OR \"preços do milho\" OR \"cotação do milho\" Brasil",
+        "\"preço do trigo\" OR \"preço do arroz\" OR \"preço do algodão\" Brasil",
+        "\"preço do açúcar\" OR \"preço do etanol\" OR \"preço do café\" Brasil",
+        "\"potencial produtivo\" OR \"rendimento da lavoura\" OR \"quebra de safra\"",
+        "\"tempo seco\" OR \"falta de chuva\" OR \"chuvas irregulares\" lavoura OR safra",
+        "\"estresse hídrico\" OR \"déficit hídrico\" OR \"veranico\" lavoura",
+        "\"excesso de chuvas\" OR \"chuvas intensas\" OR \"geada\" lavoura OR safra",
+        "\"estoques de soja\" OR \"estoques de milho\" USDA OR Conab",
+        "\"paridade de exportação\" OR \"fob santos\" OR \"fob paranaguá\"",
+        "\"endividamento do produtor\" OR \"inadimplência rural\" OR \"renegociação de dívida\"",
+        "Conab estimativa safra grãos Brasil",
+        "área plantada soja milho safra Brasil",
+        "colheita soja milho andamento Brasil",
+        "trigo Argentina área produção safra",
+        "milho safrinha área colheita Brasil",
+        "algodão safra área colheita Brasil",
+        "arroz Rio Grande do Sul área safra",
+        "fertilizantes preço custo produtor",
+        "ureia DAP MAP fosfato preço mercado",
+        "defensivos agrícolas preço mercado",
+        "El Niño La Niña seca geada lavoura",
+        "exportação soja milho Brasil China",
+        "biodiesel blend mistura ANP CNPE",
+        "CONSECANA preço cana açúcar"
+      ],
+      "search_queries_en": [
+        "USDA crop report supply demand grains oilseeds",
+        "USDA world agricultural supply demand estimates",
+        "Brazil soybean corn crop estimate production",
+        "Argentina wheat soybean crop area production",
+        "China soybean corn pork import demand",
+        "global fertilizer price supply disruption",
+        "ethanol sugar Brazil export trade",
+        "El Nino La Nina crop risk South America",
+        "crop protection pesticide market Brazil",
+        "Brazil cotton harvest area crop"
+      ],
+      "negative_keywords": []
+    },
+    {
+      "id": 3,
+      "name": "Food & Beverage - Companies",
+      "color": "#1565c0",
+      "companies": ["Ambev", "M. Dias Branco", "Camil Alimentos", "Minerva Foods", "JBS", "Marfrig", "Tyson Foods", "Pilgrim's Pride", "Heineken"],
+      "tickers": ["ABEV3", "MDIA3", "CAML3", "BEEF3", "JBSS3", "MRFG3", "TSN", "PPC"],
+      "keywords": ["Ambev", "M Dias Branco", "Camil", "Minerva", "JBS", "Marfrig", "Tyson Foods", "Pilgrim's Pride", "Heineken"],
+      "search_queries_pt": [
+        "Ambev resultado volume cerveja receita margem",
+        "M Dias Branco resultado trigo farinha receita",
+        "Camil Alimentos resultado arroz feijão receita",
+        "Minerva Foods resultado exportação bovina receita",
+        "JBS resultado exportação frigorífico receita",
+        "Marfrig resultado hamburguer receita",
+        "Heineken Brasil resultado receita volume"
+      ],
+      "search_queries_en": [
+        "JBS earnings results acquisition divestiture",
+        "Tyson Foods quarterly results earnings",
+        "Pilgrim's Pride PPC earnings results",
+        "Ambev quarterly results Brazil",
+        "Minerva Foods beef export results",
+        "Marfrig results acquisition",
+        "Heineken NV quarterly results revenue volume"
+      ],
+      "negative_keywords": []
+    },
+    {
+      "id": 4,
+      "name": "Food & Beverage - Sector",
+      "color": "#7b1fa2",
+      "companies": [],
+      "tickers": [],
+      "keywords": ["exportação carne", "frango exportação", "suíno", "beef export", "poultry", "pork", "arroba"],
+      "search_queries_pt": [
+        "site:beefpoint.com.br",
+        "site:farmnews.com.br",
+        "site:abpa-br.org",
+        "site:abiec.com.br",
+        "\"preço do frango\" OR \"preço da carne de frango\" OR \"preços do frango\" OR \"preços da carne de frango\"",
+        "\"preço do suíno\" OR \"preço do porco\" OR \"preço da carne suína\" OR \"carne suína\"",
+        "\"preço dos ovos\" OR \"preço do ovo\" OR \"mercado de ovos\" OR \"poedeira\"",
+        "\"preço do boi\" OR \"preço da arroba\" OR \"cotação do boi gordo\" OR \"arroba do boi\"",
+        "\"carne bovina\" OR \"carne suína\" OR \"carne de frango\" preço OR margem OR cotação",
+        "\"custo da ração\" OR \"ração avicultura\" OR \"ração suinocultura\" OR \"custo de produção\"",
+        "\"margem do frigorífico\" OR \"margem frigorífico\" OR \"spread boi\"",
+        "\"habilitação de planta\" OR \"descredenciamento\" frigorífico OR frango OR suíno",
+        "abate bovino OR suíno OR frango Brasil dados trimestre",
+        "\"gripe aviária\" OR \"influenza aviária\" OR \"peste suína\" Brasil",
+        "exportação carne bovina OR frango OR suíno Brasil",
+        "leite laticínios cooperativa captação preço Brasil",
+        "ciclo pecuário oferta gado confinamento abate",
+        "tarifa antidumping carne Brasil China EUA",
+        "abertura mercado habilitação importação carne Brasil",
+        "fusão aquisição frigorífico alimentícia Brasil"
+      ],
+      "search_queries_en": [
+        "Brazil beef chicken pork export data volume",
+        "beef export trade Brazil China tariff restriction",
+        "poultry export ban embargo Brazil",
+        "pork swine trade China US Brazil",
+        "cattle cycle supply slaughter feedlot",
+        "corn soybean meal feed cost poultry hog",
+        "food industry M&A acquisition merger",
+        "USDA cattle hogs poultry outlook supply",
+        "China beef pork chicken import demand"
+      ],
+      "negative_keywords": []
+    }
+  ],
+  "direct_feeds": [
+    {
+      "url": "https://braziljournal.com/feed/",
+      "group_id": 3,
+      "source_name": "Brazil Journal",
+      "topical_filter": ["slc", "brasilagro", "3tentos", "boa safra", "vittia", "são martinho", "adecoagro", "jalles", "ambev", "dias branco", "camil", "minerva", "jbs", "marfrig", "tyson", "heineken", "soja", "milho", "algodão", "cana", "etanol", "açúcar", "trigo", "arroz", "boi", "arroba", "frango", "suíno", "pork", "beef", "agro", "fertilizante", "defensivo", "safra", "colheita", "frigorífico", "abate", "usina", "pecuária", "grãos", "soybean", "corn", "sugar", "ethanol", "cattle", "poultry"]
+    },
+    {
+      "url": "https://www.theagribiz.com/feed/",
+      "group_id": 2,
+      "source_name": "The AgriBiz"
+    },
+    {
+      "url": "https://www.beefpoint.com.br/feed/",
+      "group_id": 4,
+      "source_name": "BeefPoint"
+    },
+    {
+      "url": "https://g1.globo.com/rss/g1/economia/agronegocios/",
+      "group_id": 2,
+      "source_name": "G1 Agro"
+    },
+    {
+      "url": "https://www.cnnbrasil.com.br/feed/",
+      "group_id": 2,
+      "source_name": "CNN Brasil",
+      "topical_filter": ["soja", "milho", "algodão", "cana", "etanol", "açúcar", "trigo", "arroz", "boi", "arroba", "frango", "suíno", "agro", "fertilizante", "defensivo", "safra", "colheita", "frigorífico", "pecuária", "grãos", "biodiesel", "russia", "exportação de carne", "abate", "usina"]
+    },
+    {
+      "url": "https://agfeed.com.br/feed/",
+      "group_id": 2,
+      "source_name": "AgFeed"
+    },
+    {
+      "url": "https://einvestidor.estadao.com.br/feed/",
+      "group_id": 3,
+      "source_name": "Estadão E-Investidor",
+      "topical_filter": ["slc", "brasilagro", "3tentos", "boa safra", "vittia", "são martinho", "adecoagro", "jalles", "ambev", "dias branco", "camil", "minerva", "jbs", "marfrig", "tyson", "heineken", "soja", "milho", "algodão", "cana", "etanol", "açúcar", "trigo", "arroz", "boi", "arroba", "frango", "suíno", "agro", "fertilizante", "defensivo", "safra", "frigorífico", "pecuária"]
+    },
+    {
+      "url": "https://www.canalrural.com.br/feed/",
+      "group_id": 2,
+      "source_name": "Canal Rural"
+    },
+    {
+      "url": "https://summitagro.estadao.com.br/feed/",
+      "group_id": 2,
+      "source_name": "Summit Agro Estadão"
+    },
+    {
+      "url": "https://www.farmnews.com.br/feed/",
+      "group_id": 4,
+      "source_name": "FarmNews"
+    },
+    {
+      "url": "https://www.abpa-br.org/feed/",
+      "group_id": 4,
+      "source_name": "ABPA"
+    },
+    {
+      "url": "https://www.abiec.com.br/feed/",
+      "group_id": 4,
+      "source_name": "ABIEC"
+    }
+  ],
+  "relevance": {
+    "score_threshold": 0.4,
+    "high_relevance_keywords": [
+      "resultado", "ebitda", "lucro", "prejuízo", "receita", "guidance",
+      "aquisição", "fusão", "venda de ativos", "desinvestimento", "ipo",
+      "dividendo extraordinário", "buyback", "investigação", "embargo",
+      "seca", "geada", "praga", "ferrugem", "la niña", "el niño",
+      "quebra de safra", "safra recorde", "recall", "fraude",
+      "earnings", "acquisition", "merger", "drought", "frost",
+      "crop estimate", "usda report", "export ban", "tariff",
+      "capex", "expansão", "nova planta", "rescinde", "recuperação judicial"
+    ]
+  },
+  "refresh_interval_hours": 6,
+  "max_news_age_days": 30
+}

@@ -1,0 +1,3 @@
+# Backend Python (feed-news) — roda em serviço próprio (Render), não é estático.
+# Mantém o código do backend fora do deploy público do Vercel.
+Market Watch/feed-news/
