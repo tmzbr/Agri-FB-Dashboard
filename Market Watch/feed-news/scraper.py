@@ -8,52 +8,13 @@ Recebe:  POST /api/scrape
 
 Retorna: { "results": [ { "id": 1, "url": "...", "body": "...", "tier": 1, "ok": true }, ... ] }
 
-Tiers (em cascata, do mais barato ao mais pesado):
-  Tier 1 — requests simples com headers de browser
-  Tier 2 — curl com headers completos (Sec-Fetch-*, Accept-Language, etc.)
-  Tier 3 — curl-impersonate Chrome 124 (TLS fingerprint real — resolve Cloudflare)
-  Tier 4 — Playwright headless + stealth (JS rendering — resolve SPAs e JS challenges)
-  Fallback — Wayback Machine (último recurso, pode ter defasagem)
-
-RSS especial:
-  Canal Rural — usa feed RSS direto (evita scraping completamente)
-
-Instalação das dependências:
-  pip install requests beautifulsoup4 playwright
-  playwright install chromium
-  # curl-impersonate: https://github.com/lwthiker/curl-impersonate
+Dependências (já no requirements.txt):
+  beautifulsoup4, lxml, requests, feedparser
 
 Para integrar com Flask:
-  from scraper import scrape_router
-  app.register_blueprint(scrape_router)
-
-Para integrar com FastAPI:
-  from scraper import scrape_router
-  app.include_router(scrape_router)
+  from scraper import scrape_batch
+  # registrado em app.py via @app.route("/api/scrape")
 """
-
-# ── Auto-install dependencies ─────────────────────────────────────────────────
-import subprocess
-import sys
-
-def _ensure(package: str, import_name: str = None):
-    """Install package if not already available."""
-    name = import_name or package
-    try:
-        __import__(name)
-    except ImportError:
-        print(f"[scraper] Installing {package}...")
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", package, "--quiet"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-_ensure("requests")
-_ensure("beautifulsoup4", "bs4")
-_ensure("feedparser")
-_ensure("lxml")
-
 
 # ── Imports ───────────────────────────────────────────────────────────────────
 import asyncio
@@ -385,8 +346,6 @@ def scrape_one(item: dict) -> dict:
     item_id = item.get("id")
     host = get_hostname(url)
 
-    # RSS shortcut
-    for domain, feed_url in RSS_FEEDS.items():
     # RSS shortcut (Canal Rural)
     for domain, feed_url in RSS_FEEDS.items():
         if domain in host and feed_url:
@@ -467,78 +426,20 @@ def scrape_batch(items: list) -> list:
     return results
 
 
-# ── Flask integration ─────────────────────────────────────────────────────────
-# Se você usa Flask, descomente e importe este blueprint no seu app.py:
-#
-#   from scraper import scrape_router
-#   app.register_blueprint(scrape_router)
-
-try:
-    from flask import Blueprint, request, jsonify
-
-    scrape_router = Blueprint("scrape", __name__)
-
-    @scrape_router.route("/api/scrape", methods=["POST"])
-    def scrape_endpoint():
-        data = request.get_json(force=True)
-        items = data.get("items", [])
-        if not items:
-            return jsonify({"error": "no items"}), 400
-        results = scrape_batch(items)
-        return jsonify({"results": results})
-
-except ImportError:
-    pass  # Flask not installed — use FastAPI integration below
-
-
-# ── FastAPI integration ───────────────────────────────────────────────────────
-# Se você usa FastAPI, descomente e inclua no seu main.py:
-#
-#   from scraper import scrape_router
-#   app.include_router(scrape_router)
-
-try:
-    from fastapi import APIRouter
-    from pydantic import BaseModel
-
-    class ScrapeItem(BaseModel):
-        id: int
-        url: str
-        source: str = ""
-
-    class ScrapeRequest(BaseModel):
-        items: list[ScrapeItem]
-
-    scrape_router = APIRouter()
-
-    @scrape_router.post("/api/scrape")
-    async def scrape_endpoint(body: ScrapeRequest):
-        items = [i.dict() for i in body.items]
-        results = await asyncio.to_thread(scrape_batch, items)
-        return {"results": results}
-
-except ImportError:
-    pass  # FastAPI not installed
-
-
 # ── Standalone test ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     test_items = [
-        {"id": 1,  "url": "https://feedfood.com.br/exportacoes-avancam-e-saldo-externo-chega-a-us-47-bi-em-junho/", "source": "Feed & Food"},
-        {"id": 2,  "url": "https://www.canalrural.com.br/agricultura/projeto-soja-brasil/colheita-de-soja-e-concluida-no-brasil-aponta-relatorio-da-conab/", "source": "Canal Rural"},
-        {"id": 3,  "url": "https://agfeed.com.br/campo-das-ideias/artigo-por-que-o-centro-oeste-se-tornou-estrategico-para-a-aviacao-executiva-compartilhada/", "source": "AGFeed"},
-        {"id": 4,  "url": "https://www.noticiasagricolas.com.br/noticias/milho/422913-conab-indica-colheita-do-milho-em-6-7-e-produtividades-acima-do-esperado-no-mato-grosso.html", "source": "Notícias Agrícolas"},
-        {"id": 5,  "url": "https://www.agrolink.com.br/noticias/especie-e-cepa-definem-eficiencia-dos-bioinsumos_515669.html", "source": "AgroLink"},
-        {"id": 6,  "url": "https://neofeed.com.br/negocios/yum-brands-fatia-pizza-hut-em-venda-de-us-27-bilhoes/", "source": "NeoFeed"},
-        {"id": 7,  "url": "https://www.moneytimes.com.br/brasil-ve-alivio-de-custos-com-adubos-e-diesel-apos-acordo-entre-eua-e-ira-sobre-guerra-diz-ministro-pads/", "source": "Money Times"},
-        {"id": 8,  "url": "https://braziljournal.com/no-biometano-plano-bilionario-da-gasmig-atrai-bp-mitsui-gestoras-e-a-jf/", "source": "Brazil Journal"},
-        {"id": 9,  "url": "https://globorural.globo.com/pecuaria/noticia/2026/06/abate-de-bovinos-aumentou-33percent-e-foi-recorde-no-primeiro-trimestre-de-2026.ghtml", "source": "Globo Rural"},
-        {"id": 10, "url": "https://www.beefmagazine.com/market-news/consumers-really-like-beef-and-theyre-willing-to-pay-for-it", "source": "Beef Magazine"},
-        {"id": 11, "url": "https://www.bloomberglinea.com.br/agro/com-jbs-como-socia-mantiqueira-preve-10-mi-de-galinhas-nos-eua-e-mira-top-5-global/", "source": "Bloomberg Línea"},
-        {"id": 12, "url": "https://www.theagribiz.com/empresas/bioenergia/fs-inicia-construcao-de-usina-de-r-2-bi-em-querencia/", "source": "The Agribiz"},
+        {"id": 1, "url": "https://feedfood.com.br/exportacoes-avancam-e-saldo-externo-chega-a-us-47-bi-em-junho/", "source": "Feed & Food"},
+        {"id": 2, "url": "https://www.canalrural.com.br/agricultura/projeto-soja-brasil/colheita-de-soja-e-concluida-no-brasil-aponta-relatorio-da-conab/", "source": "Canal Rural"},
+        {"id": 3, "url": "https://www.noticiasagricolas.com.br/noticias/milho/422913-conab-indica-colheita-do-milho-em-6-7-e-produtividades-acima-do-esperado-no-mato-grosso.html", "source": "Notícias Agrícolas"},
+        {"id": 4, "url": "https://www.agrolink.com.br/noticias/especie-e-cepa-definem-eficiencia-dos-bioinsumos_515669.html", "source": "AgroLink"},
+        {"id": 5, "url": "https://neofeed.com.br/negocios/yum-brands-fatia-pizza-hut-em-venda-de-us-27-bilhoes/", "source": "NeoFeed"},
+        {"id": 6, "url": "https://www.moneytimes.com.br/brasil-ve-alivio-de-custos-com-adubos-e-diesel-apos-acordo-entre-eua-e-ira-sobre-guerra-diz-ministro-pads/", "source": "Money Times"},
+        {"id": 7, "url": "https://braziljournal.com/no-biometano-plano-bilionario-da-gasmig-atrai-bp-mitsui-gestoras-e-a-jf/", "source": "Brazil Journal"},
+        {"id": 8, "url": "https://www.bloomberglinea.com.br/agro/com-jbs-como-socia-mantiqueira-preve-10-mi-de-galinhas-nos-eua-e-mira-top-5-global/", "source": "Bloomberg Línea"},
+        {"id": 9, "url": "https://www.beefmagazine.com/market-news/consumers-really-like-beef-and-theyre-willing-to-pay-for-it", "source": "Beef Magazine"},
     ]
-
-    print("Testing scraper with all 12 sources...\n")
+    print("Testing scraper...\n")
     results = scrape_batch(test_items)
     for r in sorted(results, key=lambda x: x["id"]):
         status = f"✅ tier={r['tier']}" if r["ok"] else f"❌ {r.get('error','')}"
