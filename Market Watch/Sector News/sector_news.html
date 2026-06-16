@@ -2425,79 +2425,89 @@ async function scrapeArticleBody(item) {
   const cfg = getScraperConfig(item.url);
   const hostname = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
 
-  // ── Strategy 1: RSS (Canal Rural) ──────────────────────────────────────────
+  // ── Strategy 1: RSS (Canal Rural — handled server-side too, but try here first) ──
   const rssFeed = Object.entries(RSS_FEEDS).find(([domain]) => hostname.includes(domain));
   if (rssFeed) {
     const rssResult = await fetchBodyFromRSS(item, rssFeed[1]);
     if (rssResult.ok) return rssResult;
-    // RSS failed → fall through to direct scrape
   }
 
-  // ── Strategy 2: Direct scrape via proxy ────────────────────────────────────
-  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(item.url)}`;
+  // ── Strategy 2: Backend scrape endpoint (/api/scrape) ────────────────────
+  // The backend runs the full 4-tier cascade (requests → curl → curl-impersonate
+  // → Playwright) server-side, without CORS or proxy issues.
   try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(14000) });
-    if (!res.ok) throw new Error("proxy " + res.status);
-    const data = await res.json();
-    const rawHtml = data.contents || "";
-    if (!rawHtml || rawHtml.length < 500) throw new Error("empty response");
+    const res = await fetch(API_BASE + "/api/scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ id: item.id, url: item.url, source: item.source || "" }] }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const result = (data.results || [])[0];
+      if (result && result.ok && result.body && result.body.length > 80) {
+        return { ok: true, body: result.body, source: `tier${result.tier}` };
+      }
+    }
+  } catch (e) {
+    // Backend unavailable — fall through to browser fallbacks
+    console.warn("Backend scrape failed:", e.message);
+  }
 
+  // ── Strategy 3: Browser-side proxy cascade (fallback when backend is down) ──
+  // Less reliable than backend but better than nothing.
+  const PROXY_CHAIN = [
+    u => ({ url: `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, json: true,  key: "contents" }),
+    u => ({ url: `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,  json: false, key: null }),
+    u => ({ url: `https://corsproxy.io/?${encodeURIComponent(u)}`,               json: false, key: null }),
+    u => ({ url: `https://thingproxy.freeboard.io/fetch/${u}`,                   json: false, key: null }),
+  ];
+
+  const extractTextFromHtml = (rawHtml) => {
+    if (!rawHtml || rawHtml.length < 300) return "";
     const parser = new DOMParser();
     const doc = parser.parseFromString(rawHtml, "text/html");
-
     ["script","style","nav","header","footer","aside","figure","figcaption",
      "[class*='ad-']","[class*='banner']","[class*='related']","[class*='share']",
      "[class*='social']","[class*='comment']","[class*='newsletter']",
      "[class*='publicidade']","[class*='paywall-widget']","noscript"
     ].forEach(s => { try { doc.querySelectorAll(s).forEach(n => n.remove()); } catch {} });
-
     const selectors = cfg.sel.split(",").map(s => s.trim()).filter(Boolean);
-    const mode = cfg.mode || "p";
-    let text = "";
-
-    if (mode === "css") {
-      for (const s of selectors) {
-        try {
-          const el = doc.querySelector(s);
-          if (!el) continue;
-          const t = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-          if (t.length > 120) { text = t; break; }
-        } catch {}
-      }
+    let container = null;
+    for (const s of selectors) {
+      try { const el = doc.querySelector(s); if (el) { container = el; break; } } catch {}
     }
+    const scope = container || doc.body;
+    const paras = Array.from(scope.querySelectorAll("p"))
+      .map(p => (p.innerText || p.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(t => t.length > 60 &&
+        !/(login|cadastr|newsletter|publicidade|cookie|compartilh|related|leia mais|assine|clique aqui|publicado em|leia também|tags:|palavras.chave)/i.test(t));
+    return paras.join("\n\n");
+  };
 
-    if (mode === "p" || !text) {
-      let container = null;
-      for (const s of selectors) {
-        try { const el = doc.querySelector(s); if (el) { container = el; break; } } catch {}
-      }
-      const scope = container || doc.body;
-      const paras = Array.from(scope.querySelectorAll("p"))
-        .map(p => (p.innerText || p.textContent || "").replace(/\s+/g, " ").trim())
-        .filter(t =>
-          t.length > 60 &&
-          !/(login|cadastr|newsletter|publicidade|cookie|compartilh|related|leia mais|assine|clique aqui|publicado em|leia também|tags:|palavras.chave)/i.test(t)
-        );
-      // Join paragraphs with double newline so buildClippingFullExport can split them back
-      text = paras.join("\n\n");
-    }
-
-    if (text && text.length > 80) return { ok: true, body: text, source: "scrape" };
-    throw new Error("no content after extraction");
-
-  } catch (scrapeErr) {
-    // ── Strategy 3: Wayback Machine (last resort for JS-blocked sites) ────────
-    // Trigger for known JS-blocked domains
-    const jsBlocked = ["globorural.globo.com", "canalrural.com.br"].some(d => hostname.includes(d));
-    if (jsBlocked) {
-      const wb = await fetchBodyFromWayback(item);
-      if (wb.ok) return wb;
-    }
-
-    // ── Strategy 4: DB snippet fallback ───────────────────────────────────────
-    const fallback = item.summary || item.snippet || "";
-    return { ok: false, body: fallback, error: scrapeErr.message };
+  let lastErr = "all proxies failed";
+  for (const proxyFn of PROXY_CHAIN) {
+    try {
+      const { url: proxyUrl, json: isJson, key } = proxyFn(item.url);
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+      if (!res.ok) { lastErr = "proxy " + res.status; continue; }
+      const rawHtml = isJson ? ((await res.json())[key] || "") : await res.text();
+      const text = extractTextFromHtml(rawHtml);
+      if (text && text.length > 80) return { ok: true, body: text, source: "proxy" };
+      lastErr = "no content";
+    } catch (e) { lastErr = e.message; }
   }
+
+  // ── Strategy 4: Wayback Machine ──────────────────────────────────────────
+  const jsBlocked = ["globorural.globo.com", "canalrural.com.br"].some(d => hostname.includes(d));
+  if (jsBlocked) {
+    const wb = await fetchBodyFromWayback(item);
+    if (wb.ok) return wb;
+  }
+
+  // ── Strategy 5: DB snippet fallback ─────────────────────────────────────
+  const fallback = item.summary || item.snippet || "";
+  return { ok: false, body: fallback, error: lastErr };
 }
 
 // ── Generate Clipping ─────────────────────────────────────────────────────────
@@ -2586,45 +2596,45 @@ function buildClippingFullExport(sections, buckets) {
   const today    = new Date();
   const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
-  // Short solid line — ~300px, 1.5px solid, matches email photo
+  // Short solid line — ~280px, 1px solid dark, no extra spacing
   const divider =
-    `<p style="margin:5px 0;padding:0;line-height:1px;font-size:1px;">` +
-    `<span style="display:block;width:300px;border-top:1.5px solid #444;">&nbsp;</span></p>`;
+    `<p style="margin:2px 0;padding:0;line-height:0;font-size:0;">` +
+    `<span style="display:block;width:280px;border-top:1px solid #333;font-size:0;">&nbsp;</span></p>`;
 
   const orangeSection = txt =>
-    `<p style="margin:6px 0 1px 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};text-align:left;">` +
+    `<p style="margin:4px 0 0 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};text-align:left;">` +
     `<font color="${orange}"><b>${txt}</b></font></p>`;
 
   const topLink =
-    `<p style="margin:5px 0 3px 0;font-size:10pt;text-align:left;font-family:Calibri,Arial,sans-serif;">` +
+    `<p style="margin:2px 0 1px 0;font-size:10pt;text-align:left;font-family:Calibri,Arial,sans-serif;">` +
     `<a href="#top" style="color:${linkBlue};text-decoration:underline;">Top of the Agri, F&amp;B Daily News</a></p>`;
 
   let html = `<a name="top"></a>`;
 
   // 1. Header — centrado
-  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 8px 0;font-family:Calibri,Arial,sans-serif;">` +
+  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 4px 0;font-family:Calibri,Arial,sans-serif;">` +
           `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage \u2013 Daily News ***</b></p>`;
 
   // 2. TOC — bullets em negrito
   sections.forEach(sec => {
     html += orangeSection(escHtml(sec));
-    html += `<ul style="margin:2px 0 4px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;text-align:left;">`;
+    html += `<ul style="margin:0 0 2px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;text-align:left;">`;
     buckets[sec].forEach(item => {
-      html += `<li style="margin-bottom:2px;font-weight:bold;"><b>${escHtml(item.title)}</b></li>`;
+      html += `<li style="margin-bottom:1px;font-weight:bold;"><b>${escHtml(item.title)}</b></li>`;
     });
     html += `</ul>`;
   });
 
   // 3. What to Watch
   html += orangeSection("What to Watch | IBBA Agribusiness, Food &amp; Beverage Latest Reports");
-  html += `<ul style="margin:2px 0 4px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;text-align:left;">` +
+  html += `<ul style="margin:0 0 2px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;text-align:left;">` +
           `<li style="color:#9CA3AF;font-style:italic;">[Adicione os relatórios manualmente]</li>` +
           `</ul>`;
 
   // 4. Team
   html += `<p style="margin:6px 0 1px 0;font-size:10pt;font-weight:bold;color:${orange};font-family:Calibri,Arial,sans-serif;text-align:left;">` +
           `<b><font color="${orange}">AGRIBUSINESS, FOOD &amp; BEVERAGE TEAM</font></b></p>`;
-  html += `<p style="margin:0 0 8px 0;font-size:10pt;color:#000;font-family:Calibri,Arial,sans-serif;text-align:left;line-height:1.5;">` +
+  html += `<p style="margin:0 0 4px 0;font-size:10pt;color:#000;font-family:Calibri,Arial,sans-serif;text-align:left;line-height:1.5;">` +
           `Gustavo Troyano, CNPI<br>+55-11-3073-3269<br>` +
           `<a href="mailto:gustavo.troyano@itaubba.com" style="color:${linkBlue};">gustavo.troyano@itaubba.com</a><br><br>` +
           `Bruno Tomazetto, CNPI<br>+55-11-3073-3035<br>` +
@@ -2644,13 +2654,13 @@ function buildClippingFullExport(sections, buckets) {
       const rawBody = (item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || "");
       const paras   = rawBody.split(/\n\n+|\n/).map(p => p.trim()).filter(p => p.length > 40);
 
-      html += `<p style="margin:8px 0 1px 0;font-weight:bold;font-size:11pt;font-family:Calibri,Arial,sans-serif;text-align:left;"><b>${escHtml(item.title)}</b></p>`;
-      html += `<p style="margin:0 0 5px 0;font-size:10pt;font-family:Calibri,Arial,sans-serif;text-align:left;">` +
+      html += `<p style="margin:4px 0 0 0;font-weight:bold;font-size:11pt;font-family:Calibri,Arial,sans-serif;text-align:left;"><b>${escHtml(item.title)}</b></p>`;
+      html += `<p style="margin:0 0 3px 0;font-size:10pt;font-family:Calibri,Arial,sans-serif;text-align:left;">` +
               `Source: <a href="${escHtml(item.url)}" target="_blank" style="color:${linkBlue};text-decoration:underline;">${escHtml(srcName)}</a></p>`;
 
       if (paras.length) {
         paras.forEach(para => {
-          html += `<p style="margin:0 0 4px 0;font-size:11pt;line-height:1.5;font-family:Calibri,Arial,sans-serif;text-align:left;">${escHtml(para)}</p>`;
+          html += `<p style="margin:0 0 2px 0;font-size:11pt;line-height:1.4;font-family:Calibri,Arial,sans-serif;text-align:left;">${escHtml(para)}</p>`;
         });
       } else {
         html += `<p style="margin:0 0 4px 0;font-size:10pt;color:#9CA3AF;font-style:italic;font-family:Calibri,Arial,sans-serif;">[Corpo não extraído — adicione manualmente]</p>`;
