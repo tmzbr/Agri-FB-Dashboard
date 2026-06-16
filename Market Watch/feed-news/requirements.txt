@@ -7,3 +7,4 @@ pg8000==1.31.2
 gunicorn==22.0.0
 beautifulsoup4==4.12.3
 lxml==5.2.2
+tzlocal==5.2
