@@ -95,7 +95,8 @@ BROWSER_HEADERS = {
 # ── RSS sources (skip scraping entirely) ──────────────────────────────────────
 
 RSS_FEEDS = {
-    "canalrural.com.br": "https://www.canalrural.com.br/feed/",
+    "canalrural.com.br":    "https://www.canalrural.com.br/feed/",
+    "globorural.globo.com": None,  # Feedburner desatualizado — usa Wayback como fallback
 }
 
 # ── CSS selectors per source (same as frontend SOURCE_SELECTORS) ──────────────
@@ -109,30 +110,31 @@ SOURCE_SELECTORS = {
     "agfeed.com.br":             ".post-content, .entry-content, .td-post-content, .main-content",
     "bloomberglinea.com.br":     "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
     "bloomberglinea.com":        "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
-    "theagribiz.com":            ".entry-content, .post-content, .container-post",
+    "theagribiz.com":            ".feed-body, .post-hat-content, .entry-content, .post-content, .container-post",
     "noticiasagricolas.com.br":  ".materia, .content.sem-video, .noticia-texto, .article-content",
     "agrolink.com.br":           ".section-description, .conteudo-noticia, .texto-noticia, .section-content",
     "neofeed.com.br":            ".first-content, .content-short, .article-master",
     "beefmagazine.com":          "[class*='ArticleBase-Body'], [class*='ArticleBody'], .article-body, .field-name-body, .entry-content",
     "moneytimes.com.br":         ".single, .mt-article__body, .article-body",
     "braziljournal.com":         ".post-content, .entry-content, .boxarticle-infos-text, article",
+    "beefpoint.com.br":          ".td-post-content, .entry-content, .post-content, article .content, .single-content",
     "_default":                  ".entry-content, .post-content, .article-body, .article__body, .story-body, .content-body, #article-body, article, main",
 }
 
 NOISE_PATTERN = re.compile(
-    r"login|cadastr|newsletter|publicidade|cookie|compartilh|related|"
-    r"leia mais|assine|clique aqui|publicado em|leia também|tags:|palavras.chave|"
+    r"newsletter|publicidade|cookie|compartilh|"
+    r"leia mais|assine aqui|clique aqui|publicado em|leia também|tags:|palavras.chave|"
     r"indique a um amigo|preencha o formulário|remeter a página|"
-    r"<!--\s*-->|^\s*//\s*$",
+    r"pular para o conteúdo|barra de ferramentas|sobre o wordpress",
     re.IGNORECASE,
 )
 
-# Extra noise: very short nav-like fragments that pass the length filter
+# Nav-like fragments — must match the whole string
 NAV_PATTERN = re.compile(
     r"^(negócios|economia|agtech|finanças|esg|vídeos|sobre nós|anuncie|"
     r"agrolinkfito|culturas|aviação|fertilizantes|carbono|biológicos|"
     r"home|quem somos|revista|aquicultura|avicultura|bovinocultura|eventos|"
-    r"selecione o país|login|idioma|español|português)\b",
+    r"selecione o país|login|idioma|español|português)\s*$",
     re.IGNORECASE,
 )
 
@@ -385,11 +387,23 @@ def scrape_one(item: dict) -> dict:
 
     # RSS shortcut
     for domain, feed_url in RSS_FEEDS.items():
-        if domain in host:
+    # RSS shortcut (Canal Rural)
+    for domain, feed_url in RSS_FEEDS.items():
+        if domain in host and feed_url:
             body = rss_fetch(url, feed_url)
             if body:
                 return {"id": item_id, "url": url, "body": body, "tier": "rss", "ok": True}
             break  # RSS failed, continue to tiers
+
+    # Globo Rural — blocked everywhere, go straight to Wayback
+    if "globorural.globo.com" in host:
+        html = wayback_fetch(url)
+        if html:
+            body = extract_text(html, url)
+            if body:
+                return {"id": item_id, "url": url, "body": body, "tier": "wayback", "ok": True}
+        return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False,
+                "error": "globo rural blocked — no wayback snapshot available"}
 
     # Tier 1
     html = tier1_fetch(url)
@@ -419,7 +433,7 @@ def scrape_one(item: dict) -> dict:
         if body:
             return {"id": item_id, "url": url, "body": body, "tier": 4, "ok": True}
 
-    # Wayback fallback
+    # Wayback fallback (for all other blocked sites)
     html = wayback_fetch(url)
     if html:
         body = extract_text(html, url)
