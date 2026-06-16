@@ -65,11 +65,12 @@ RSS_FEEDS = {
 SOURCE_SELECTORS = {
     "feedfood.com.br":           ".elementor-widget-theme-post-content .elementor-widget-container, .entry-content, .post-content",
     "canalrural.com.br":         ".article-body, .content-materia, .materia-texto, main",
-    "globorural.globo.com":      "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .article-body, .content-text, article",
+    "globorural.globo.com":      "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .article-body, .content-text, .mc-body, article",
     "valor.globo.com":           "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
     "valoreconomico.com":        "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
     "g1.globo.com":              "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .content-text, article",
     "globo.com":                 "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, .content-text, article",
+    "theagribiz.com":            "body",
     "agfeed.com.br":             ".post-content, .entry-content, .td-post-content, .main-content",
     "bloomberglinea.com.br":     "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
     "bloomberglinea.com":        "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
@@ -318,11 +319,16 @@ def rss_fetch(url: str, feed_url: str) -> Optional[str]:
             allow_redirects=True,
         )
         if not rss_resp.ok:
-            return None
-
-        # Parse from raw bytes so feedparser handles encoding itself
-        # Avoids double-decoding that corrupts UTF-8 characters
-        feed = feedparser.parse(rss_resp.content)
+            # Fall back to direct feedparser (no browser headers)
+            feed = feedparser.parse(feed_url)
+            if not feed or not feed.entries:
+                return None
+        else:
+            # Parse from raw bytes — prepend XML encoding declaration to force UTF-8
+            content = rss_resp.content
+            if not content.startswith(b'<?xml'):
+                content = b'<?xml version="1.0" encoding="UTF-8"?>\n' + content
+            feed = feedparser.parse(content)
 
         if not feed.entries:
             return None
