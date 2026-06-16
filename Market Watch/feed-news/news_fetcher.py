@@ -17,6 +17,44 @@ if platform.system() == "Windows":
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsReader/1.0"}
 
 
+def _resolve_google_news_url(url: str) -> str:
+    """
+    Google News RSS entries have URLs like:
+      https://news.google.com/rss/articles/CBMixwFBVV95...
+    These redirect to the real article. Follow the redirect to get the real URL.
+    Falls back to the original URL if resolution fails.
+    """
+    if "news.google.com" not in url:
+        return url
+    try:
+        import requests as _req
+        resp = _req.head(
+            url,
+            headers={"User-Agent": HEADERS["User-Agent"]},
+            allow_redirects=True,
+            timeout=6,
+        )
+        final = resp.url
+        # Sanity check: must be a different domain
+        if "news.google.com" not in final and final.startswith("http"):
+            return final
+        # HEAD didn't redirect — try GET with stream
+        resp2 = _req.get(
+            url,
+            headers={"User-Agent": HEADERS["User-Agent"]},
+            allow_redirects=True,
+            timeout=8,
+            stream=True,
+        )
+        resp2.close()
+        final2 = resp2.url
+        if "news.google.com" not in final2 and final2.startswith("http"):
+            return final2
+    except Exception:
+        pass
+    return url
+
+
 class NewsFetcher:
     GOOGLE_PT = "https://news.google.com/rss/search?q={query}&hl=pt-BR&gl=BR&ceid=BR:pt"
     GOOGLE_EN = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
@@ -63,6 +101,8 @@ class NewsFetcher:
                 url_item = getattr(entry, "link", "").strip()
                 if not title or not url_item:
                     continue
+                # Resolve Google News redirect URLs to the real source URL
+                url_item = _resolve_google_news_url(url_item)
                 summary = ""
                 if hasattr(entry, "summary") and entry.summary:
                     # Strip HTML tags from summary
