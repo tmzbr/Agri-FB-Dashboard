@@ -253,6 +253,162 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
   background: #F9FAFB; border: 1px solid var(--border); border-radius: 6px;
   padding: 20px; max-height: 500px; overflow-y: auto; font-size: 13px;
 }
+
+/* ── Clipping Panel ── */
+#clipping-panel {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 380px;
+  background: #fff; border-left: 1px solid var(--border);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.1); z-index: 1050;
+  display: flex; flex-direction: column; transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+#clipping-panel.open { transform: translateX(0); }
+#clip-mode-browse, #clip-mode-urls { flex: 1; min-height: 0; overflow: hidden; }
+
+#clipping-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 1049;
+  display: none; opacity: 0; transition: opacity 0.3s;
+}
+#clipping-overlay.open { display: block; opacity: 1; }
+
+.clipping-header {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.clipping-title { font-size: 14px; font-weight: 700; color: var(--text-primary); flex: 1; }
+.clipping-close {
+  border: none; background: none; color: var(--text-muted); font-size: 20px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+}
+.clipping-close:hover { color: var(--text-primary); }
+
+.clipping-search-wrap {
+  padding: 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.clipping-search {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 12px; font-size: 13px; outline: none; color: var(--text-primary);
+}
+.clipping-search:focus { border-color: var(--orange); box-shadow: 0 0 0 2px rgba(232,69,10,0.12); }
+
+.clipping-filters {
+  padding: 8px 16px; border-bottom: 1px solid var(--border);
+  display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0;
+}
+.clipping-filter-btn {
+  font-size: 11px; padding: 3px 10px; border-radius: 20px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--body-bg); color: var(--text-muted);
+  font-weight: 500; transition: all 0.15s;
+}
+.clipping-filter-btn:hover { border-color: var(--orange); color: var(--orange); }
+.clipping-filter-btn.active { background: var(--orange); border-color: var(--orange); color: #fff; }
+
+.clipping-results {
+  flex: 1; overflow-y: auto; padding: 8px 0;
+}
+.clipping-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; transition: background 0.1s;
+}
+.clipping-item:hover { background: #FAFAFA; }
+.clipping-item.selected { background: #FFFAF8; }
+.clipping-item-check { margin-top: 2px; flex-shrink: 0; }
+.clipping-item-body { flex: 1; min-width: 0; }
+.clipping-item-title {
+  font-size: 12.5px; font-weight: 500; color: var(--text-primary);
+  line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.clipping-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.clipping-item-cat {
+  display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 3px; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+
+.clipping-footer {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  background: #FAFAFA; flex-shrink: 0;
+}
+.clipping-count { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.clipping-count strong { color: var(--orange); }
+
+.btn-clipping-generate {
+  width: 100%; background: var(--orange); color: white; border: none;
+  padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.15s;
+}
+.btn-clipping-generate:hover { background: #D13D08; }
+.btn-clipping-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.clipping-scrape-status {
+  font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;
+  min-height: 16px;
+}
+.scrape-pill {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10px;
+  font-weight: 600; padding: 2px 7px; border-radius: 10px; margin: 2px;
+}
+.scrape-pill.ok    { background: #DCFCE7; color: #15803D; }
+.scrape-pill.fail  { background: #FEE2E2; color: #B91C1C; }
+.scrape-pill.wait  { background: #FEF3C7; color: #B45309; }
+
+/* Clipping trigger button (in filter bar) */
+.btn-clipping-open {
+  background: var(--orange) !important; color: white !important;
+  border: none !important; font-size: 12px !important; border-radius: 6px !important;
+  font-weight: 600 !important; display: flex; align-items: center; gap: 5px;
+}
+.btn-clipping-open:hover { background: #D13D08 !important; }
+
+/* Clipping mode tabs */
+.clipping-mode-tabs {
+  display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.clipping-mode-tab {
+  flex: 1; padding: 9px 0; font-size: 12.5px; font-weight: 500;
+  color: var(--text-muted); border: none; background: none; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.clipping-mode-tab:hover { color: var(--text-primary); }
+.clipping-mode-tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+
+/* URL paste area */
+.clipping-url-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.clipping-url-label { font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px; }
+.clipping-url-textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; resize: none; outline: none;
+  color: var(--text-primary); line-height: 1.5; height: 100px;
+  font-family: inherit;
+}
+.clipping-url-textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 2px rgba(232,69,10,0.12); }
+.clipping-url-textarea::placeholder { color: #9CA3AF; }
+.btn-url-search {
+  width: 100%; margin-top: 8px; background: var(--orange-light); color: var(--orange);
+  border: 1px solid rgba(232,69,10,0.25); border-radius: 7px; padding: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.btn-url-search:hover { background: var(--orange); color: white; }
+
+/* URL match result */
+.url-match-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid #F3F4F6; cursor: pointer; transition: background 0.1s;
+}
+.url-match-item:hover { background: #FAFAFA; }
+.url-match-item.selected { background: #FFFAF8; }
+.url-match-notfound {
+  padding: 10px 16px; font-size: 12px; color: var(--text-muted);
+  border-bottom: 1px solid #F3F4F6; display: flex; align-items: center; gap: 8px;
+}
+.url-match-notfound .url-text {
+  font-size: 11px; color: #9CA3AF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+.url-match-badge-ok   { font-size: 10px; font-weight: 700; color: #15803D; background: #DCFCE7; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
+.url-match-badge-miss { font-size: 10px; font-weight: 700; color: #B45309; background: #FEF3C7; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
+.url-match-badge-new  { font-size: 10px; font-weight: 700; color: #1D4ED8; background: #DBEAFE; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
 .export-group-title {
   font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
   color: var(--orange); margin-top: 16px; margin-bottom: 4px;
@@ -348,7 +504,19 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
     <button class="cat-tab" data-gid="1" onclick="selectGroupTab(1)">Agri Cos</button>
     <button class="cat-tab" data-gid="4" onclick="selectGroupTab(4)">F&amp;B Sector</button>
     <button class="cat-tab" data-gid="3" onclick="selectGroupTab(3)">F&amp;B Cos</button>
+
+    <!-- Search box -->
     <div class="ms-auto d-flex align-items-center gap-2">
+      <div style="position:relative;">
+        <i class="bi bi-search" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:12px;pointer-events:none"></i>
+        <input type="text" id="feed-search" placeholder="Buscar título ou URL…"
+          style="padding:4px 10px 4px 26px;height:28px;font-size:12px;border:1px solid var(--border);border-radius:6px;outline:none;width:210px;color:var(--text-primary);"
+          oninput="applyFeedSearch()"
+          onfocus="this.style.borderColor='var(--orange)';this.style.boxShadow='0 0 0 2px rgba(232,69,10,0.12)'"
+          onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+      </div>
+      <button id="btn-clear-search" onclick="clearFeedSearch()" title="Limpar busca"
+        style="display:none;border:none;background:none;color:#9CA3AF;font-size:14px;cursor:pointer;padding:2px 4px;line-height:1">×</button>
       <div class="form-check mb-0" data-admin-only title="Select all items currently visible">
         <input class="form-check-input" type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)">
         <label class="form-check-label filter-label" for="select-all-cb">All view</label>
@@ -388,6 +556,36 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
 </div>
 
 <!-- ═══ MODALS ═══ -->
+
+<!-- Clipping Export Modal -->
+<div class="modal fade" id="clippingExportModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-scissors me-2" style="color:var(--orange)"></i>Clipping — Preview &amp; Exportar
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <p class="small text-muted mb-2">
+          Revise o clipping gerado abaixo. Os textos foram extraídos automaticamente de cada fonte.
+          Use <strong>Abrir no Outlook</strong> para baixar o rascunho ou <strong>Copiar</strong> para colar.
+        </p>
+        <div id="clipping-export-preview" class="export-preview" style="background:#fff;padding:18px;border:1px solid var(--border);border-radius:6px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button class="btn btn-outline-secondary" onclick="copyClippingExport()">
+          <i class="bi bi-clipboard-check me-1"></i>Copiar (formatado)
+        </button>
+        <button class="btn" onclick="openClippingInOutlook()" style="background:var(--orange);color:white;border:none">
+          <i class="bi bi-envelope-open me-1"></i>Abrir no Outlook
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Export Modal -->
 <div class="modal fade" id="exportModal" tabindex="-1">
@@ -540,6 +738,79 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
   </div>
 </div>
 
+<!-- Clipping Overlay -->
+<div id="clipping-overlay" onclick="closeClippingPanel()"></div>
+
+<!-- ── Clipping Panel ── -->
+<div id="clipping-panel">
+  <div class="clipping-header">
+    <i class="bi bi-scissors" style="color:var(--orange);font-size:16px"></i>
+    <span class="clipping-title">Clipping do Dia</span>
+    <button class="clipping-close" onclick="closeClippingPanel()">×</button>
+  </div>
+
+  <!-- Mode tabs -->
+  <div class="clipping-mode-tabs">
+    <button class="clipping-mode-tab active" id="tab-browse" onclick="switchClippingMode('browse')">
+      <i class="bi bi-list-ul me-1"></i>Navegar feed
+    </button>
+    <button class="clipping-mode-tab" id="tab-urls" onclick="switchClippingMode('urls')">
+      <i class="bi bi-link-45deg me-1"></i>Colar URLs
+    </button>
+  </div>
+
+  <!-- Browse mode -->
+  <div id="clip-mode-browse" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div class="clipping-search-wrap">
+      <input type="text" class="clipping-search" id="clipping-search"
+             placeholder="Buscar por título ou fonte..." oninput="renderClippingList()">
+    </div>
+    <div class="clipping-filters">
+      <button class="clipping-filter-btn active" data-filter="all" onclick="setClippingFilter('all',this)">Todas</button>
+      <button class="clipping-filter-btn" data-filter="1" onclick="setClippingFilter('1',this)">Agri Cos</button>
+      <button class="clipping-filter-btn" data-filter="2" onclick="setClippingFilter('2',this)">Agri Sector</button>
+      <button class="clipping-filter-btn" data-filter="3" onclick="setClippingFilter('3',this)">F&amp;B Cos</button>
+      <button class="clipping-filter-btn" data-filter="4" onclick="setClippingFilter('4',this)">F&amp;B Sector</button>
+    </div>
+    <div class="clipping-results" id="clipping-results">
+      <div class="text-center py-5 text-muted" style="font-size:13px">
+        <i class="bi bi-newspaper" style="font-size:32px;color:#D1D5DB;display:block;margin-bottom:8px"></i>
+        Abra o painel para ver as notícias do dia
+      </div>
+    </div>
+  </div>
+
+  <!-- URL paste mode -->
+  <div id="clip-mode-urls" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <div class="clipping-url-wrap">
+      <div class="clipping-url-label">Cole uma ou mais URLs (uma por linha):</div>
+      <textarea class="clipping-url-textarea" id="clipping-url-input"
+        placeholder="https://valor.com.br/...&#10;https://infomoney.com.br/...&#10;https://reuters.com/..."></textarea>
+      <button class="btn-url-search" onclick="searchByUrls()">
+        <i class="bi bi-search me-1"></i>Buscar no feed
+      </button>
+    </div>
+    <div class="clipping-results" id="clipping-url-results">
+      <div class="text-center py-4 text-muted" style="font-size:12.5px;padding:24px 16px;">
+        <i class="bi bi-link-45deg" style="font-size:28px;color:#D1D5DB;display:block;margin-bottom:8px"></i>
+        Cole as URLs acima e clique em <strong>Buscar no feed</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="clipping-footer">
+    <div class="clipping-count" id="clipping-count">
+      <strong id="clipping-selected-count">0</strong> notícias selecionadas
+    </div>
+    <div id="clipping-scrape-status" class="clipping-scrape-status"></div>
+    <button class="btn-clipping-generate" id="btn-generate-clipping"
+            onclick="generateClipping()" disabled>
+      <i class="bi bi-envelope-paper"></i>
+      Gerar template do clipping
+    </button>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
   <div id="main-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
@@ -557,17 +828,14 @@ const API_BASE = '__NEWS_API_URL__';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let allNews = [];
-// Map id -> item. Guarda o objeto inteiro para que a seleção sobreviva a
-// mudanças de tab (quando allNews é re-filtrado por categoria, não perdemos
-// os itens selecionados em outras tabs).
 let selectedItems = new Map();
 let groupsConfig = [];
 let categories = {};
 let activeCategory = null;
 let activeSubGroup = null;
-let activeGroupId = null;  // filtro da barra de tabs
-let sortMode = "date";    // "date" | "score"
-let exportState = null;   // { sections: [...], buckets: {sec: [items]}, subject, dateLong }
+let activeGroupId = null;
+let sortMode = "date";
+let exportState = null;
 
 // ── Admin visibility ──────────────────────────────────────────────────────────
 function isAdminUser() {
@@ -810,6 +1078,23 @@ function getGroupColor(gid) {
   return g ? g.color : "#6B7280";
 }
 
+// ── Feed search (title + URL, inline) ────────────────────────────────────────
+let feedSearchQuery = "";
+
+function applyFeedSearch() {
+  const val = (document.getElementById("feed-search").value || "").trim();
+  feedSearchQuery = val.toLowerCase();
+  document.getElementById("btn-clear-search").style.display = val ? "inline-block" : "none";
+  renderNews(allNews);
+}
+
+function clearFeedSearch() {
+  document.getElementById("feed-search").value = "";
+  feedSearchQuery = "";
+  document.getElementById("btn-clear-search").style.display = "none";
+  renderNews(allNews);
+}
+
 // ── Load & Render News ────────────────────────────────────────────────────────
 async function loadNews() {
   showLoading(true);
@@ -867,17 +1152,38 @@ function sortItems(arr) {
 function renderNews(items) {
   const container = document.getElementById("news-list");
   const empty = document.getElementById("empty-state");
-  if (!items.length) {
+
+  // Apply inline search filter
+  let filtered = items;
+  if (feedSearchQuery) {
+    filtered = items.filter(n =>
+      (n.title  || "").toLowerCase().includes(feedSearchQuery) ||
+      (n.url    || "").toLowerCase().includes(feedSearchQuery) ||
+      (n.source || "").toLowerCase().includes(feedSearchQuery)
+    );
+  }
+
+  if (!filtered.length) {
     container.innerHTML = "";
     empty.classList.remove("d-none");
+    // Custom empty message when search active
+    if (feedSearchQuery) {
+      empty.innerHTML = `<i class="bi bi-search display-3"></i>
+        <p class="mt-3 text-muted">Nenhuma notícia encontrada para <strong>"${escHtml(feedSearchQuery)}"</strong></p>
+        <button class="btn btn-sm btn-outline-secondary mt-1" onclick="clearFeedSearch()">Limpar busca</button>`;
+    }
     return;
   }
+  // Restore default empty state HTML if it was replaced
+  if (!empty.querySelector('.spinner-border') && feedSearchQuery === "") {
+    empty.innerHTML = `<i class="bi bi-inbox display-3"></i>
+      <p class="mt-3 text-muted">No news to display.</p>
+      <p class="text-muted small">Click <strong>Refresh</strong> to fetch today's news.</p>
+      <button class="btn btn-orange mt-2" onclick="fetchNews()"><i class="bi bi-arrow-clockwise me-1"></i>Fetch News Now</button>`;
+  }
   empty.classList.add("d-none");
-  // Always flat: a single list sorted by sortMode globally. The card carries
-  // a category tag + color so the user still sees which bucket each item is
-  // in — but "All" view doesn't break the sort into category blocks anymore.
   let html = "";
-  sortItems(items).forEach(item => { html += newsCardHtml(item); });
+  sortItems(filtered).forEach(item => { html += newsCardHtml(item); });
   container.innerHTML = html;
   selectedItems.forEach((item, id) => {
     const cb = document.getElementById(`cb-${id}`);
@@ -1577,6 +1883,780 @@ function showToast(msg, type = "info") {
   toast.className = `toast align-items-center text-bg-${type} border-0`;
   bootstrap.Toast.getOrCreateInstance(toast, { delay: 4000 }).show();
 }
+// ── Clipping Panel ───────────────────────────────────────────────────────────
+
+let clippingSelected = new Map(); // id -> item
+let clippingFilter = "all";
+
+function openClippingPanel() {
+  const overlay = document.getElementById("clipping-overlay");
+  const panel   = document.getElementById("clipping-panel");
+  overlay.classList.add("open");
+  panel.classList.add("open");
+  // Load today's news into the panel
+  renderClippingList();
+}
+
+function closeClippingPanel() {
+  document.getElementById("clipping-overlay").classList.remove("open");
+  document.getElementById("clipping-panel").classList.remove("open");
+}
+
+function setClippingFilter(filter, btn) {
+  clippingFilter = filter;
+  document.querySelectorAll(".clipping-filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderClippingList();
+}
+
+function clippingCatName(item) {
+  const cid = item._category_id || item.group_id;
+  if (cid === 1) return "Agri Cos";
+  if (cid === 2) return "Agri Sector";
+  if (cid === 3) return "F&B Cos";
+  if (cid === 4) return "F&B Sector";
+  return "Other";
+}
+function clippingCatColor(item) {
+  const cid = item._category_id || item.group_id;
+  return getGroupColor(cid) || "#6B7280";
+}
+
+function renderClippingList() {
+  const query  = (document.getElementById("clipping-search").value || "").toLowerCase().trim();
+  const container = document.getElementById("clipping-results");
+
+  let items = allNews.filter(n => !n.is_excluded);
+
+  // Category filter
+  if (clippingFilter !== "all") {
+    const filterId = parseInt(clippingFilter);
+    items = items.filter(n => (n._category_id || n.group_id) === filterId);
+  }
+
+  // Text search
+  if (query) {
+    items = items.filter(n =>
+      (n.title || "").toLowerCase().includes(query) ||
+      (n.summary || "").toLowerCase().includes(query) ||
+      (n.source || "").toLowerCase().includes(query)
+    );
+  }
+
+  if (!items.length) {
+    container.innerHTML = `<div class="text-center py-5 text-muted" style="font-size:13px">
+      <i class="bi bi-search" style="font-size:24px;color:#D1D5DB;display:block;margin-bottom:8px"></i>
+      Nenhuma notícia encontrada
+    </div>`;
+    return;
+  }
+
+  // Sort by date desc
+  items = items.slice().sort((a,b) => (b.published_at||"").localeCompare(a.published_at||""));
+
+  const catColor = (item) => clippingCatColor(item);
+  const catName  = (item) => clippingCatName(item);
+
+  container.innerHTML = items.map(item => {
+    const checked = clippingSelected.has(item.id);
+    const selClass = checked ? "selected" : "";
+    const color = catColor(item);
+    const iconBg = hexToRgba(color, 0.12);
+    const d = formatDate(item.published_at);
+    const src = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+    return `
+    <div class="clipping-item ${selClass}" id="clip-row-${item.id}"
+         onclick="toggleClippingItem(${item.id})">
+      <input class="form-check-input clipping-item-check" type="checkbox"
+             id="clip-cb-${item.id}" ${checked ? "checked" : ""}
+             onclick="event.stopPropagation();toggleClippingItem(${item.id})">
+      <div class="clipping-item-body">
+        <div class="clipping-item-title">${escHtml(item.title)}</div>
+        <div class="clipping-item-meta">
+          ${escHtml(src)}${d ? " · " + escHtml(d) : ""}
+          <span class="clipping-item-cat"
+                style="background:${iconBg};color:${color}">${escHtml(catName(item))}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function toggleClippingItem(id) {
+  const item = allNews.find(n => n.id === id);
+  if (!item) return;
+  if (clippingSelected.has(id)) {
+    clippingSelected.delete(id);
+  } else {
+    clippingSelected.set(id, item);
+  }
+  // Update row visuals
+  const row = document.getElementById(`clip-row-${id}`);
+  const cb  = document.getElementById(`clip-cb-${id}`);
+  if (row) row.classList.toggle("selected", clippingSelected.has(id));
+  if (cb)  cb.checked = clippingSelected.has(id);
+  updateClippingCount();
+}
+
+function updateClippingCount() {
+  const n = clippingSelected.size;
+  document.getElementById("clipping-selected-count").textContent = n;
+  document.getElementById("btn-generate-clipping").disabled = n === 0;
+}
+
+// ── Clipping mode switch ──────────────────────────────────────────────────────
+let clippingMode = "browse";
+
+function switchClippingMode(mode) {
+  clippingMode = mode;
+  document.getElementById("clip-mode-browse").style.display = mode === "browse" ? "flex" : "none";
+  document.getElementById("clip-mode-urls").style.display   = mode === "urls"   ? "flex" : "none";
+  document.getElementById("tab-browse").classList.toggle("active", mode === "browse");
+  document.getElementById("tab-urls").classList.toggle("active", mode === "urls");
+  if (mode === "browse") renderClippingList();
+}
+
+// ── URL paste & match ─────────────────────────────────────────────────────────
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url.trim());
+    // Strip tracking params commonly appended by Google News / newsletters
+    ["utm_source","utm_medium","utm_campaign","utm_content","utm_term",
+     "ref","referrer","fbclid","gclid","mc_cid","mc_eid"].forEach(p => u.searchParams.delete(p));
+    // Remove trailing slash for comparison
+    return u.origin + u.pathname.replace(/\/$/, "") + (u.search || "");
+  } catch { return url.trim().replace(/\/$/, ""); }
+}
+
+function urlsMatch(a, b) {
+  // Exact normalised match
+  if (normalizeUrl(a) === normalizeUrl(b)) return true;
+  // Fallback: same hostname + same pathname (ignore query completely)
+  try {
+    const ua = new URL(a), ub = new URL(b);
+    return ua.hostname.replace(/^www\./,"") === ub.hostname.replace(/^www\./,"")
+        && ua.pathname.replace(/\/$/,"") === ub.pathname.replace(/\/$/,"");
+  } catch { return false; }
+}
+
+function searchByUrls() {
+  const raw = (document.getElementById("clipping-url-input").value || "").trim();
+  if (!raw) return;
+
+  // Extract URLs — one per line, skip blank lines
+  const lines = raw.split(/\n/).map(l => l.trim()).filter(l => l.length > 4);
+
+  const container = document.getElementById("clipping-url-results");
+  if (!lines.length) {
+    container.innerHTML = `<div class="text-center py-4 text-muted" style="font-size:12.5px;padding:24px">Cole ao menos uma URL</div>`;
+    return;
+  }
+
+  // Match each URL against allNews
+  const results = lines.map(url => {
+    const match = allNews.find(n => urlsMatch(n.url, url));
+    return { url, match };
+  });
+
+  const found    = results.filter(r => r.match);
+  const notFound = results.filter(r => !r.match);
+
+  // Auto-select matched items
+  found.forEach(r => {
+    if (!clippingSelected.has(r.match.id)) {
+      clippingSelected.set(r.match.id, r.match);
+    }
+  });
+  updateClippingCount();
+
+  // Render results
+  let html = "";
+
+  if (found.length) {
+    html += `<div style="padding:8px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-muted)">Encontradas no feed (${found.length})</div>`;
+    found.forEach(({ url, match }) => {
+      const checked = clippingSelected.has(match.id);
+      const color = clippingCatColor(match);
+      const iconBg = hexToRgba(color, 0.12);
+      const src = match.source && match.source.trim() ? match.source : sourceFromUrl(match.url);
+      html += `
+      <div class="url-match-item ${checked ? "selected" : ""}" id="urlrow-${match.id}"
+           onclick="toggleClippingItem(${match.id}); rerenderUrlRow(${match.id})">
+        <input class="form-check-input clipping-item-check" type="checkbox"
+               id="urlcb-${match.id}" ${checked ? "checked" : ""}
+               onclick="event.stopPropagation();toggleClippingItem(${match.id});rerenderUrlRow(${match.id})">
+        <div class="clipping-item-body">
+          <div class="clipping-item-title">${escHtml(match.title)}</div>
+          <div class="clipping-item-meta">
+            ${escHtml(src)} · ${escHtml(formatDate(match.published_at))}
+            <span class="clipping-item-cat" style="background:${iconBg};color:${color}">${escHtml(clippingCatName(match))}</span>
+            <span class="url-match-badge-ok ms-1">✓ no feed</span>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
+  if (notFound.length) {
+    html += `<div style="padding:8px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-muted);margin-top:4px">Não encontradas no feed (${notFound.length})</div>`;
+    notFound.forEach(({ url }) => {
+      const domain = sourceFromUrl(url);
+      html += `
+      <div class="url-match-notfound">
+        <span class="url-match-badge-miss">⚠ não encontrada</span>
+        <span class="url-text" title="${escHtml(url)}">${escHtml(domain)} — ${escHtml(url)}</span>
+        <button style="flex-shrink:0;border:1px solid var(--border);background:#fff;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--orange);white-space:nowrap"
+                title="Adicionar mesmo assim ao clipping"
+                onclick="addUrlDirectly('${escJs(url)}','${escJs(domain)}')">
+          + Adicionar
+        </button>
+      </div>`;
+    });
+    html += `<p style="font-size:11px;color:#9CA3AF;padding:6px 16px 12px;margin:0">
+      Estas URLs não estão no feed de hoje. Clique <strong>+ Adicionar</strong> para incluí-las no clipping na mesma.
+    </p>`;
+  }
+
+  container.innerHTML = html || `<div class="text-center py-4 text-muted" style="font-size:12.5px">Nenhum resultado</div>`;
+}
+
+function rerenderUrlRow(id) {
+  const row = document.getElementById(`urlrow-${id}`);
+  const cb  = document.getElementById(`urlcb-${id}`);
+  if (!row || !cb) return;
+  const sel = clippingSelected.has(id);
+  row.classList.toggle("selected", sel);
+  cb.checked = sel;
+}
+
+// Add a URL that wasn't found in the feed as a bare-bones item
+let _urlDirectId = 90000;
+function addUrlDirectly(url, domain) {
+  const id = _urlDirectId++;
+  const item = {
+    id, title: domain + " — " + url, url, source: domain,
+    published_at: new Date().toISOString(), group_id: 0,
+    is_excluded: 0, is_manually_added: 1, relevance_score: 0,
+    summary: "", _category_id: 0,
+  };
+  clippingSelected.set(id, item);
+  updateClippingCount();
+  // Replace the "not found" row with a confirmation
+  const rows = document.querySelectorAll(".url-match-notfound");
+  rows.forEach(row => {
+    if (row.querySelector(`[title="${escHtml(url)}"]`)) {
+      row.innerHTML = `<span class="url-match-badge-new">✓ adicionada</span>
+        <span class="url-text" title="${escHtml(url)}">${escHtml(domain)} — ${escHtml(url)}</span>`;
+    }
+  });
+  showToast("URL adicionada ao clipping", "success");
+}
+
+// ── Per-source scraper ────────────────────────────────────────────────────────
+// Validated against real article pages. Each source has:
+//   sel   → CSS selector(s) tried in order; first match with content wins
+//   mode  → "css" = use selector | "p" = fall back to <p> tag extraction
+//
+// To add a new source: inspect an article page, find the main content div,
+// add an entry. Multiple selectors separated by comma = cascade.
+const SOURCE_SELECTORS = {
+
+  // Feed & Food (feedfood.com.br) — Elementor. Body is rendered in standard <p>
+  // tags but Elementor doesn't give a stable class. Best selector:
+  // .elementor-widget-theme-post-content → but content is in nested <p> tags.
+  // Fallback to p-extraction works perfectly (7+ content paras confirmed).
+  "feedfood.com.br": {
+    sel: ".elementor-widget-theme-post-content .elementor-widget-container, .entry-content, .post-content",
+    mode: "p"
+  },
+
+  // Canal Rural (canalrural.com.br) — Requires JS (Cloudflare). Static HTML
+  // returns only 6KB shell. Use p-tag extraction on whatever comes through proxy.
+  "canalrural.com.br": {
+    sel: ".article-body, .content-materia, .materia-texto, main",
+    mode: "p"
+  },
+
+  // Globo Rural (globorural.globo.com) — Globo CDN redirects to edge with 24B.
+  // JS-rendered. p-tag extraction via proxy as best effort.
+  "globorural.globo.com": {
+    sel: ".article-body, .mb-article__body, .content-text, article",
+    mode: "p"
+  },
+
+  // Valor Econômico (valor.globo.com / valoreconomico.com) — Globo CMS.
+  "valor.globo.com": {
+    sel: ".article-body, .mb-article__body, .content-text, article",
+    mode: "p"
+  },
+  "valoreconomico.com": {
+    sel: ".article-body, .mb-article__body, .content-text, article",
+    mode: "p"
+  },
+
+  // AGFeed (agfeed.com.br) — WordPress. Confirmed: .post-content has 14 clean paras.
+  "agfeed.com.br": {
+    sel: ".post-content, .entry-content, .td-post-content, .main-content",
+    mode: "css"
+  },
+
+  // Bloomberg Línea (bloomberglinea.com.br) — Next.js. Confirmed:
+  // class "article-body-wrapper-bl" and "body-paragraph" carry the content.
+  "bloomberglinea.com.br": {
+    sel: "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
+    mode: "p"
+  },
+  "bloomberglinea.com": {
+    sel: "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
+    mode: "p"
+  },
+
+  // The Agribiz (theagribiz.com) — WordPress + Seox theme + paywall.
+  // Confirmed: .entry-content exists in static HTML and contains article text
+  // (HTML entities encoded). p-extraction gives 23+ paras.
+  "theagribiz.com": {
+    sel: ".entry-content, .post-content, .container-post",
+    mode: "p"
+  },
+
+  // Notícias Agrícolas (noticiasagricolas.com.br) — Proprietary CMS.
+  // Confirmed: class="materia" is the article wrapper. 7 clean paras.
+  "noticiasagricolas.com.br": {
+    sel: ".materia, .content.sem-video, .noticia-texto, .article-content",
+    mode: "css"
+  },
+
+  // AgroLink (agrolink.com.br) — Proprietary CMS.
+  // Confirmed: class="section-description section-description-noticias mt-3"
+  // Use partial class match .section-description. 6 clean paras.
+  "agrolink.com.br": {
+    sel: ".section-description, .conteudo-noticia, .texto-noticia, .section-content",
+    mode: "css"
+  },
+
+  // NeoFeed (neofeed.com.br) — Proprietary CMS.
+  // Confirmed: class="content-short" has the lead, "first-content" has body.
+  "neofeed.com.br": {
+    sel: ".first-content, .content-short, .article-master",
+    mode: "p"
+  },
+
+  // Beef Magazine (beefmagazine.com) — Informa CMS.
+  // Confirmed: class="ArticleBase-Body" / "ArticleBody" carry content. 18 clean paras.
+  "beefmagazine.com": {
+    sel: "[class*='ArticleBase-Body'], [class*='ArticleBody'], .article-body, .field-name-body, .entry-content",
+    mode: "p"
+  },
+
+  // Money Times (moneytimes.com.br) — Proprietary CMS.
+  // Confirmed: class="single" wraps the whole article. 11 clean paras.
+  "moneytimes.com.br": {
+    sel: ".single, .mt-article__body, .article-body",
+    mode: "css"
+  },
+
+  // Brazil Journal (braziljournal.com) — Proprietary CMS.
+  // boxarticle-infos-text exists but content is in sibling <p> tags not nested inside.
+  // p-tag extraction gives 23 paras (after filtering noise). Best approach.
+  "braziljournal.com": {
+    sel: ".post-content, .entry-content, .boxarticle-infos-text, article",
+    mode: "p"
+  },
+
+  // Fallback for any unrecognised source
+  "_default": {
+    sel: ".entry-content, .post-content, .article-body, .article__body, .story-body, .content-body, #article-body, article, main",
+    mode: "p"
+  },
+};
+
+function getScraperConfig(url) {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    for (const [pattern, cfg] of Object.entries(SOURCE_SELECTORS)) {
+      if (pattern === "_default") continue;
+      if (hostname.includes(pattern)) return { hostname, ...cfg };
+    }
+    return { hostname, ...SOURCE_SELECTORS["_default"] };
+  } catch {
+    return { hostname: url, ...SOURCE_SELECTORS["_default"] };
+  }
+}
+
+// ── RSS fetch (for sources that block direct scraping) ───────────────────────
+// Returns the article body from the source's RSS feed by matching the URL.
+// Canal Rural publishes full article text in <content:encoded>.
+const RSS_FEEDS = {
+  "canalrural.com.br": "https://www.canalrural.com.br/feed/",
+};
+
+async function fetchBodyFromRSS(item, feedUrl) {
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error("rss proxy " + res.status);
+    const data = await res.json();
+    const rss = data.contents || "";
+    if (!rss) throw new Error("empty rss");
+
+    // Parse all <item> blocks
+    const itemBlocks = [...rss.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => m[1]);
+
+    // Find the item whose <link> matches our article URL (hostname+path)
+    let best = null;
+    const targetPath = (() => { try { const u = new URL(item.url); return u.hostname + u.pathname; } catch { return item.url; } })();
+
+    for (const block of itemBlocks) {
+      const linkMatch = block.match(/<link>(.*?)<\/link>/);
+      const feedLink = linkMatch ? linkMatch[1].trim() : "";
+      const feedPath = (() => { try { const u = new URL(feedLink); return u.hostname + u.pathname; } catch { return feedLink; } })();
+      if (feedPath === targetPath || feedLink === item.url) { best = block; break; }
+    }
+
+    // If no exact match, take the first item as best effort
+    if (!best && itemBlocks.length) best = itemBlocks[0];
+    if (!best) throw new Error("no matching rss item");
+
+    // Extract content:encoded > description > fallback
+    const contentMatch = best.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]>/);
+    const descMatch    = best.match(/<description><!\[CDATA\[([\s\S]*?)\]\]>|<description>([\s\S]*?)<\/description>/);
+    const raw = contentMatch ? contentMatch[1] : (descMatch ? (descMatch[1] || descMatch[2]) : "");
+
+    if (!raw) throw new Error("no content in rss item");
+
+    // Strip HTML tags and clean up
+    const text = raw
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n))
+      .replace(/\s+/g, " ").trim();
+
+    if (text.length < 80) throw new Error("rss content too short");
+    return { ok: true, body: text, source: "rss" };
+  } catch (e) {
+    return { ok: false, body: "", error: e.message };
+  }
+}
+
+// ── Wayback Machine fallback ──────────────────────────────────────────────────
+// Used for sources where both direct scrape and RSS fail (e.g. Globo Rural).
+// Finds the most recent archived snapshot and extracts its content.
+async function fetchBodyFromWayback(item) {
+  try {
+    // Step 1: ask Wayback for the most recent snapshot URL
+    const apiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(item.url)}`;
+    const proxyApi = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+    const metaRes = await fetch(proxyApi, { signal: AbortSignal.timeout(10000) });
+    if (!metaRes.ok) throw new Error("wayback api " + metaRes.status);
+    const metaData = await metaRes.json();
+    const meta = JSON.parse(metaData.contents || "{}");
+    const snapshotUrl = meta?.archived_snapshots?.closest?.url;
+    if (!snapshotUrl) throw new Error("no wayback snapshot found");
+
+    // Step 2: fetch the archived page via proxy
+    const snapProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(snapshotUrl)}`;
+    const snapRes = await fetch(snapProxy, { signal: AbortSignal.timeout(14000) });
+    if (!snapRes.ok) throw new Error("wayback fetch " + snapRes.status);
+    const snapData = await snapRes.json();
+    const rawHtml = snapData.contents || "";
+    if (!rawHtml || rawHtml.length < 500) throw new Error("empty wayback page");
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, "text/html");
+
+    // Remove Wayback toolbar and noise
+    ["#wm-ipp-base","#wm-ipp","script","style","nav","header","footer",
+     "aside","[class*='wb-']","noscript"].forEach(s => {
+      try { doc.querySelectorAll(s).forEach(n => n.remove()); } catch {}
+    });
+
+    // Try source-specific selector first, then fall back to p-tags
+    const cfg = getScraperConfig(item.url);
+    const selectors = cfg.sel.split(",").map(s => s.trim()).filter(Boolean);
+    let container = null;
+    for (const s of selectors) {
+      try { const el = doc.querySelector(s); if (el) { container = el; break; } } catch {}
+    }
+    const scope = container || doc.body;
+    const paras = Array.from(scope.querySelectorAll("p"))
+      .map(p => (p.innerText || p.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(t => t.length > 80 && !/(login|cadastr|newsletter|publicidade|cookie|compartilh)/i.test(t));
+
+    if (!paras.length) throw new Error("no paragraphs in wayback page");
+    return { ok: true, body: paras.join("\n\n"), source: "wayback" };
+  } catch (e) {
+    return { ok: false, body: "", error: e.message };
+  }
+}
+
+// Attempts to fetch article body via a CORS proxy + source-specific extraction.
+// mode="css"  → finds the selector, grabs its innerText directly
+// mode="p"    → finds the selector area, then extracts all <p> tags within it;
+//               if no selector matches, falls back to all <p> tags on the page.
+// Falls back to the DB snippet if everything fails.
+async function scrapeArticleBody(item) {
+  const cfg = getScraperConfig(item.url);
+  const hostname = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+
+  // ── Strategy 1: RSS (Canal Rural) ──────────────────────────────────────────
+  const rssFeed = Object.entries(RSS_FEEDS).find(([domain]) => hostname.includes(domain));
+  if (rssFeed) {
+    const rssResult = await fetchBodyFromRSS(item, rssFeed[1]);
+    if (rssResult.ok) return rssResult;
+    // RSS failed → fall through to direct scrape
+  }
+
+  // ── Strategy 2: Direct scrape via proxy ────────────────────────────────────
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(item.url)}`;
+  try {
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(14000) });
+    if (!res.ok) throw new Error("proxy " + res.status);
+    const data = await res.json();
+    const rawHtml = data.contents || "";
+    if (!rawHtml || rawHtml.length < 500) throw new Error("empty response");
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, "text/html");
+
+    ["script","style","nav","header","footer","aside","figure","figcaption",
+     "[class*='ad-']","[class*='banner']","[class*='related']","[class*='share']",
+     "[class*='social']","[class*='comment']","[class*='newsletter']",
+     "[class*='publicidade']","[class*='paywall-widget']","noscript"
+    ].forEach(s => { try { doc.querySelectorAll(s).forEach(n => n.remove()); } catch {} });
+
+    const selectors = cfg.sel.split(",").map(s => s.trim()).filter(Boolean);
+    const mode = cfg.mode || "p";
+    let text = "";
+
+    if (mode === "css") {
+      for (const s of selectors) {
+        try {
+          const el = doc.querySelector(s);
+          if (!el) continue;
+          const t = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+          if (t.length > 120) { text = t; break; }
+        } catch {}
+      }
+    }
+
+    if (mode === "p" || !text) {
+      let container = null;
+      for (const s of selectors) {
+        try { const el = doc.querySelector(s); if (el) { container = el; break; } } catch {}
+      }
+      const scope = container || doc.body;
+      const paras = Array.from(scope.querySelectorAll("p"))
+        .map(p => (p.innerText || p.textContent || "").replace(/\s+/g, " ").trim())
+        .filter(t => t.length > 80 && !/(login|cadastr|newsletter|publicidade|cookie|compartilh|related|leia mais)/i.test(t));
+      text = paras.join("\n\n");
+    }
+
+    if (text && text.length > 80) return { ok: true, body: text, source: "scrape" };
+    throw new Error("no content after extraction");
+
+  } catch (scrapeErr) {
+    // ── Strategy 3: Wayback Machine (last resort for JS-blocked sites) ────────
+    // Trigger for known JS-blocked domains
+    const jsBlocked = ["globorural.globo.com", "canalrural.com.br"].some(d => hostname.includes(d));
+    if (jsBlocked) {
+      const wb = await fetchBodyFromWayback(item);
+      if (wb.ok) return wb;
+    }
+
+    // ── Strategy 4: DB snippet fallback ───────────────────────────────────────
+    const fallback = item.summary || item.snippet || "";
+    return { ok: false, body: fallback, error: scrapeErr.message };
+  }
+}
+
+// ── Generate Clipping ─────────────────────────────────────────────────────────
+async function generateClipping() {
+  const items = Array.from(clippingSelected.values());
+  if (!items.length) return;
+
+  const btn = document.getElementById("btn-generate-clipping");
+  const statusEl = document.getElementById("clipping-scrape-status");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:14px;height:14px;border-width:2px"></span> Extraindo textos...';
+  statusEl.innerHTML = items.map(item =>
+    `<span class="scrape-pill wait" id="spill-${item.id}">${escHtml(sourceFromUrl(item.url))}</span>`
+  ).join("");
+
+  // Scrape all articles (in parallel, capped at 3)
+  const results = new Map();
+  const chunks = [];
+  for (let i = 0; i < items.length; i += 3) chunks.push(items.slice(i, i+3));
+
+  for (const chunk of chunks) {
+    await Promise.all(chunk.map(async item => {
+      const r = await scrapeArticleBody(item);
+      results.set(item.id, r);
+      const pill = document.getElementById(`spill-${item.id}`);
+      if (pill) {
+        const label = r.source === "rss" ? "RSS ✓" : r.source === "wayback" ? "Wayback ✓" : r.source === "scrape" ? "Web ✓" : "snippet";
+        pill.className = `scrape-pill ${r.ok ? "ok" : "fail"}`;
+        pill.textContent = sourceFromUrl(item.url) + " — " + label;
+        pill.title = r.ok ? `Extraído via ${r.source}` : ("Fallback: " + r.error);
+      }
+    }));
+  }
+
+  // Build the clipping export using existing export logic + article bodies
+  buildClippingExportModal(items, results);
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-envelope-paper"></i> Gerar template do clipping';
+}
+
+function buildClippingExportModal(items, scrapeResults) {
+  // Reuse the existing export state structure
+  const buckets = { "Agribusiness": [], "Food & Beverage": [], "Other": [] };
+  items.forEach(item => {
+    item._scrapeResult = scrapeResults.get(item.id);
+    buckets[exportSupergroup(item)].push(item);
+  });
+  Object.values(buckets).forEach(arr =>
+    arr.sort((a, b) => (b.published_at||"").localeCompare(a.published_at||""))
+  );
+
+  const today   = new Date();
+  const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const subject = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+  const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
+
+  exportState = { sections, buckets, subject, dateLong };
+  renderClippingExportPreview();
+  closeClippingPanel();
+  new bootstrap.Modal(document.getElementById("clippingExportModal")).show();
+}
+
+function renderClippingExportPreview() {
+  if (!exportState) return;
+  const { sections, buckets } = exportState;
+  const orange = EXPORT_ORANGE;
+
+  // ── Build the canonical HTML (used both for preview and for export) ──────
+  const { html, plain, fullHtml } = buildClippingFullExport(sections, buckets);
+
+  // ── Preview: wrap in a light shell so it looks like the real email ────────
+  document.getElementById("clipping-export-preview").innerHTML =
+    `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;max-width:700px;">${html}</div>`;
+
+  window._exportHtml      = fullHtml;
+  window._exportPlainText = plain;
+  window._exportSubject   = exportState ? exportState.subject : "Daily News Clipping";
+  window._exportHtmlInner = html;
+}
+
+function buildClippingFullExport(sections, buckets) {
+  const orange  = EXPORT_ORANGE;
+  const today   = new Date();
+  const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const dashed = `<p style="margin:14px 0 0 0;padding:0;border:none;border-top:1px dashed #888;line-height:0;font-size:1px;">&nbsp;</p>`;
+  const orangeSection = txt =>
+    `<p style="margin:14px 0 2px 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};"><font color="${orange}"><b>${txt}</b></font></p>`;
+  const topLink =
+    `<p style="margin:10px 0 0 0;font-size:10pt;"><a href="#top" style="color:${orange};text-decoration:none;font-style:italic;">Top of the Agri, F&amp;B Daily News</a></p>`;
+
+  let html = ``;
+
+  // ── 1. Header ─────────────────────────────────────────────────────────────
+  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 20px 0;font-family:Calibri,Arial,sans-serif;">` +
+          `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</b></p>`;
+
+  // ── 2. Index (TOC) — one section per category ────────────────────────────
+  sections.forEach(sec => {
+    html += orangeSection(escHtml(sec));
+    html += `<ul style="margin:4px 0 10px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;">`;
+    buckets[sec].forEach(item => {
+      html += `<li style="margin-bottom:3px;">${escHtml(item.title)}</li>`;
+    });
+    html += `</ul>`;
+  });
+
+  // ── 3. "What to Watch" placeholder (user fills manually) ─────────────────
+  html += orangeSection("What to Watch | IBBA Agribusiness, Food &amp; Beverage Latest Reports");
+  html += `<ul style="margin:4px 0 10px 18px;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;">` +
+          `<li style="color:#9CA3AF;font-style:italic;">[Adicione os relatórios manualmente]</li>` +
+          `</ul>`;
+
+  // ── 4. Team signature block ───────────────────────────────────────────────
+  html += `<p style="margin:16px 0 4px 0;font-size:10pt;font-weight:bold;color:${orange};letter-spacing:0.5px;font-family:Calibri,Arial,sans-serif;">` +
+          `<b><font color="${orange}">AGRIBUSINESS, FOOD &amp; BEVERAGE TEAM</font></b></p>`;
+  html += `<p style="margin:0 0 16px 0;font-size:10pt;color:#374151;font-family:Calibri,Arial,sans-serif;">` +
+          `Gustavo Troyano, CNPI<br>+55-11-3073-3269<br>` +
+          `<a href="mailto:gustavo.troyano@itaubba.com" style="color:${orange};">gustavo.troyano@itaubba.com</a><br><br>` +
+          `Bruno Tomazetto, CNPI<br>+55-11-3073-3035<br>` +
+          `<a href="mailto:bruno.tomazetto@itaubba.com" style="color:${orange};">bruno.tomazetto@itaubba.com</a><br><br>` +
+          `Ryu Matsuyama, CNPI<br>+55-11-3073-3047<br>` +
+          `<a href="mailto:ryu.matsuyama@itaubba.com" style="color:${orange};">ryu.matsuyama@itaubba.com</a>` +
+          `</p>`;
+
+  // ── 5. Main Headlines sections ────────────────────────────────────────────
+  sections.forEach(sec => {
+    html += dashed;
+    html += orangeSection(`Main Headlines – ${escHtml(sec)}`);
+    html += dashed;
+
+    buckets[sec].forEach((item, idx) => {
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      const body    = (item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || "");
+
+      // Title bold
+      html += `<p style="margin:14px 0 2px 0;font-weight:bold;font-size:11pt;font-family:Calibri,Arial,sans-serif;"><b>${escHtml(item.title)}</b></p>`;
+      // Source link
+      html += `<p style="margin:0 0 6px 0;font-size:10pt;font-family:Calibri,Arial,sans-serif;">` +
+              `Source: <a href="${escHtml(item.url)}" target="_blank" style="color:${orange};">${escHtml(srcName)}</a></p>`;
+      // Body paragraphs — split on newlines so each paragraph renders as its own <p>
+      if (body) {
+        const paras = body.split(/\n+/).map(p => p.trim()).filter(p => p.length > 0);
+        paras.forEach(para => {
+          html += `<p style="margin:0 0 6px 0;font-size:11pt;line-height:1.5;font-family:Calibri,Arial,sans-serif;">${escHtml(para)}</p>`;
+        });
+      }
+      // "Top of the Agri" back-link after each article
+      html += topLink;
+      // Dashed separator between articles (not after the last one)
+      html += dashed;
+    });
+  });
+
+  // ── Plain text version ────────────────────────────────────────────────────
+  let plain = `*** Itaú BBA | Agribusiness, Food & Beverage – Daily News ***\n\n`;
+  sections.forEach(sec => {
+    plain += `${sec}\n`;
+    buckets[sec].forEach(item => { plain += `  • ${item.title}\n`; });
+    plain += `\n`;
+  });
+  plain += `What to Watch | IBBA Agribusiness, Food & Beverage Latest Reports\n  [Adicione os relatórios manualmente]\n\n`;
+  plain += `AGRIBUSINESS, FOOD & BEVERAGE TEAM\n`;
+  plain += `Gustavo Troyano, CNPI — gustavo.troyano@itaubba.com\n`;
+  plain += `Bruno Tomazetto, CNPI — bruno.tomazetto@itaubba.com\n`;
+  plain += `Ryu Matsuyama, CNPI — ryu.matsuyama@itaubba.com\n\n`;
+  plain += `${"─".repeat(60)}\n\n`;
+  sections.forEach(sec => {
+    plain += `Main Headlines – ${sec}\n${"─".repeat(60)}\n\n`;
+    buckets[sec].forEach(item => {
+      const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
+      const body    = (item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || "");
+      plain += `${item.title}\nSource: ${srcName} (${item.url})\n\n${body}\n\nTop of the Agri, F&B Daily News\n${"─".repeat(60)}\n\n`;
+    });
+  });
+
+  const subject = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+  const fullHtml = `<!doctype html><html><head><meta charset="utf-8"></head><body>` +
+    `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;max-width:700px;margin:0 auto;">${html}</div>` +
+    `</body></html>`;
+
+  return { html, plain, fullHtml, subject };
+}
+
+function openClippingInOutlook() { openInOutlook(); }
+async function copyClippingExport() { await copyExport(); }
+
 </script>
+
 </body>
 </html>
