@@ -503,6 +503,29 @@ def api_purge_blocked():
         conn.close()
 
 
+# ── Clipping scrape endpoint ──────────────────────────────────────────────────
+# Recebe: POST /api/scrape
+#   { "items": [ { "id": 1, "url": "https://...", "source": "Canal Rural" } ] }
+# Retorna:
+#   { "results": [ { "id": 1, "url": "...", "body": "...", "tier": 1, "ok": true } ] }
+#
+# Delega toda a lógica para scraper.py (cascade de 4 tiers + Wayback).
+# Mantido separado do app.py para não misturar responsabilidades.
+
+@app.route("/api/scrape", methods=["POST"])
+def api_scrape():
+    data = request.get_json(force=True) or {}
+    items = data.get("items", [])
+    if not items:
+        return jsonify({"error": "items é obrigatório"}), 400
+    try:
+        from scraper import scrape_batch
+        results = scrape_batch(items)
+        return jsonify({"results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 def _start_scheduler():
