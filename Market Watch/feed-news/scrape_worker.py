@@ -120,6 +120,24 @@ NAV = re.compile(
     re.IGNORECASE,
 )
 
+def resolve_url(url: str) -> str:
+    """Resolve Google News redirect URLs to the real source URL."""
+    if "news.google.com" not in url:
+        return url
+    try:
+        r = requests.head(url, headers=BROWSER_HEADERS, allow_redirects=True, timeout=8)
+        if "news.google.com" not in r.url and r.url.startswith("http"):
+            return r.url
+        # HEAD didn't redirect — try GET
+        r2 = requests.get(url, headers=BROWSER_HEADERS, allow_redirects=True, timeout=10, stream=True)
+        r2.close()
+        if "news.google.com" not in r2.url and r2.url.startswith("http"):
+            return r2.url
+    except Exception:
+        pass
+    return url
+
+
 def hostname(url):
     try:
         return urllib.parse.urlparse(url).hostname.replace("www.", "")
@@ -282,6 +300,9 @@ def rss_fetch(url, feed_url):
 def scrape_one(item):
     url = item.get("url", "")
     item_id = item.get("id")
+
+    # Resolve Google News redirect URLs to the real source URL
+    url = resolve_url(url)
     host = hostname(url)
 
     # RSS shortcut
