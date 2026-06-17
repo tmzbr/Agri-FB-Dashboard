@@ -39,16 +39,7 @@ try:
 except ImportError:
     _pip("beautifulsoup4"); from bs4 import BeautifulSoup
 
-try:
-    import lxml
-    PARSER = "lxml"
-except ImportError:
-    _pip("lxml")
-    try:
-        import lxml
-        PARSER = "lxml"
-    except:
-        PARSER = "html.parser"
+PARSER = "html.parser"  # html.parser is built-in, no install needed
 
 try:
     import feedparser
