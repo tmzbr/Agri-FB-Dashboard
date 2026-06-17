@@ -96,7 +96,10 @@
         "El Niño La Niña seca geada lavoura",
         "exportação soja milho Brasil China",
         "biodiesel blend mistura ANP CNPE",
-        "CONSECANA preço cana açúcar"
+        "CONSECANA preço cana açúcar",
+        "site:globorural.globo.com pecuária",
+        "site:globorural.globo.com safra grãos",
+        "site:globorural.globo.com mercado preço"
       ],
       "search_queries_en": [
         "USDA crop report supply demand grains oilseeds",
@@ -390,11 +393,6 @@
       "url": "https://www.abiec.com.br/feed/",
       "group_id": 4,
       "source_name": "ABIEC"
-    },
-    {
-      "url": "https://globorural.globo.com/rss/ultimas/",
-      "group_id": 2,
-      "source_name": "Globo Rural"
     }
   ],
   "relevance": {
