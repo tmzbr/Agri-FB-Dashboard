@@ -74,7 +74,7 @@ BROWSER_HEADERS = {
 
 TIMEOUT = 20
 MAX_WORKERS = 4
-MAX_WALL_TIME = 120
+MAX_WALL_TIME = 300  # 5 min ceiling (Playwright Tier 4 can add ~60s per item)
 
 RSS_FEEDS = {
     # Only Canal Rural benefits from RSS — Cloudflare blocks Tier 1 for it
@@ -130,36 +130,57 @@ def resolve_url(url: str) -> str:
         return url
     print(f"  resolving google news: {url[:60]}")
 
-    # Google News uses a JS redirect. The real URL must be fetched via their
-    # internal batchexecute API. Extract the article ID and request the redirect.
-    try:
-        m = re.search(r'/articles/([A-Za-z0-9_\-]+)', url)
-        if not m:
-            return url
-        article_id = m.group(1)
+    m = re.search(r'/(?:articles|read)/([A-Za-z0-9_\-]+)', url)
+    if not m:
+        return url
+    article_id = m.group(1)
 
-        # Fetch the article page to get the data-n-au attribute or signature
+    # Method 1: Google News batchexecute API (the reliable modern method)
+    try:
+        # First fetch the article page to get signature + timestamp
         r = requests.get(url, headers=BROWSER_HEADERS, timeout=10)
         html = r.text
 
-        # Look for the redirect URL in the page (data-n-au or c-wiz)
-        au = re.search(r'data-n-au="(https?://[^"]+)"', html)
-        if au:
-            real = au.group(1)
-            if "google" not in real:
-                print(f"  resolved via data-n-au: {real[:70]}")
-                return real
+        # Extract the data attributes needed for the batchexecute call
+        sig = re.search(r'data-n-a-sg="([^"]+)"', html)
+        ts = re.search(r'data-n-a-ts="([^"]+)"', html)
 
-        # Try to find any external URL in the page
-        ext = re.findall(r'"(https?://(?![^"]*google)[^"]+)"', html)
-        for u in ext:
+        if sig and ts:
+            import json as _json
+            payload = [[["Fbv4je", _json.dumps([
+                "garturlreq",
+                [["X", "X", ["X", "X"], None, None, 1, 1, "US:en", None, 1, None, None, None, None, None, 0, 1],
+                "X", "X", 1, [1, 1, 1], 1, 1, None, 0, 0, None, 0],
+                article_id, int(ts.group(1)), sig.group(1)
+            ]), None, "generic"]]]
+            resp = requests.post(
+                "https://news.google.com/_/DotsSplashUi/data/batchexecute",
+                headers={**BROWSER_HEADERS, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+                data="f.req=" + requests.utils.quote(_json.dumps(payload)),
+                timeout=10)
+            mm = re.search(r'(https?://(?!news\.google)[^\\"]+)', resp.text)
+            if mm:
+                real = mm.group(1).replace('\\/', '/')
+                print(f"  resolved via batchexecute: {real[:70]}")
+                return real
+    except Exception as e:
+        print(f"  batchexecute failed: {e}")
+
+    # Method 2: scan the page for known source domains
+    try:
+        au = re.search(r'data-n-au="(https?://[^"]+)"', html)
+        if au and "google" not in au.group(1):
+            print(f"  resolved via data-n-au: {au.group(1)[:70]}")
+            return au.group(1)
+        for u in re.findall(r'"(https?://(?![^"]*google)[^"]+)"', html):
             if any(d in u for d in ["globo.com", "canalrural", "agfeed", "noticiasagricolas",
                                      "agrolink", "moneytimes", "braziljournal", "beefpoint",
-                                     "neofeed", "bloomberglinea", "theagribiz", "feedfood"]):
+                                     "neofeed", "bloomberglinea", "theagribiz", "feedfood",
+                                     "estadao", "cnnbrasil", "farmnews"]):
                 print(f"  resolved via page scan: {u[:70]}")
                 return u
-    except Exception as e:
-        print(f"  resolve error: {e}")
+    except Exception:
+        pass
 
     print(f"  could not resolve")
     return url
@@ -298,6 +319,37 @@ def tier3(url):
         pass
     return None
 
+def tier4(url):
+    """Headless Chromium via Playwright — full JS rendering.
+    Only used as last resort (Tier 1-3 failed). Chromium is pre-installed by
+    the GitHub Actions workflow, so no install step here."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("  tier4: playwright not available")
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+            ctx = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="pt-BR",
+                viewport={"width": 1366, "height": 768})
+            page = ctx.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                page.wait_for_timeout(3500)  # let JS render / Cloudflare clear
+            except Exception:
+                pass
+            html = page.content()
+            browser.close()
+            if html and len(html) > 500:
+                return html
+    except Exception as e:
+        print(f"  tier4 error: {e}")
+    return None
+
 def wayback(url):
     try:
         api = f"https://archive.org/wayback/available?url={urllib.parse.quote(url)}"
@@ -403,6 +455,13 @@ def scrape_one(item):
             if body:
                 print(f"  ✓ globo-json {url[:70]}")
                 return {"id": item_id, "url": url, "body": body, "tier": 1, "ok": True}
+        # Globo blocked all tiers — try Playwright (renders JS, passes Akamai)
+        html = tier4(url)
+        if html:
+            body = extract_globo(html, url) or extract(html, url)
+            if body:
+                print(f"  ✓ globo-playwright {url[:70]}")
+                return {"id": item_id, "url": url, "body": body, "tier": 4, "ok": True}
 
     # Tier cascade
     for tier_fn, tier_name in [(tier1, 1), (tier2, 2), (tier3, 3)]:
@@ -415,6 +474,15 @@ def scrape_one(item):
                 return {"id": item_id, "url": url, "body": body, "tier": tier_name, "ok": True}
         else:
             print(f"  tier{tier_name} no html")
+
+    # Tier 4: Playwright (headless Chromium) — last resort for JS/bot-protected sites
+    html = tier4(url)
+    if html:
+        body = extract(html, url)
+        print(f"  tier4 html={len(html)}b body={len(body)}chars")
+        if body:
+            print(f"  ✓ tier4-playwright {url[:70]}")
+            return {"id": item_id, "url": url, "body": body, "tier": 4, "ok": True}
 
     # Wayback fallback
     html = wayback(url)
@@ -436,7 +504,7 @@ def scrape_batch(items):
             if time.time() > deadline:
                 break
             try:
-                results.append(future.result(timeout=90))
+                results.append(future.result(timeout=180))
             except Exception as e:
                 item = futures[future]
                 print(f"  ✗ exception: {e} url={item.get('url','')[:60]}")
