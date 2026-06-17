@@ -2704,13 +2704,6 @@ function buildClippingFullExport(sections, buckets) {
     `<p style="margin:0;font-size:10pt;text-align:left;font-family:Calibri,Arial,sans-serif;">` +
     `<a href="#top" style="color:${linkBlue};text-decoration:underline;">Top of the Agri, F&amp;B Daily News</a></p>`;
 
-  // All three analyst names in grey (not bold), phone in grey
-  const analyst = (name, phone, mail) =>
-    `<p style="margin:0;font-size:10pt;font-family:Calibri,Arial,sans-serif;text-align:left;line-height:1.5;">` +
-    `<span style="color:${grey};">${escHtml(name)}</span><br>` +
-    `<span style="color:${grey};">${escHtml(phone)}</span><br>` +
-    `<a href="mailto:${escHtml(mail)}" style="color:${linkBlue};">${escHtml(mail)}</a></p>`;
-
   let html = `<a name="top" id="top"></a>`;
 
   // 1. Header
