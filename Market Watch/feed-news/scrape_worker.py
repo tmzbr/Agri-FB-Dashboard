@@ -86,20 +86,21 @@ RSS_FEEDS = {
 SOURCE_SELECTORS = {
     "feedfood.com.br":          ".elementor-widget-theme-post-content .elementor-widget-container, .entry-content, .post-content",
     "canalrural.com.br":        ".article-body, .content-materia, .materia-texto, main",
-    "globorural.globo.com":     "[class*='article-body'], [class*='article__body'], .mb-article__body, .mc-body, .glb-text, .content-text, article",
-    "g1.globo.com":             "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
+    "globorural.globo.com":     "[class*='article-body'], [class*='article__body'], .mb-article__body, .mc-body, .glb-text, [data-type='text'], .content-text, article",
+    "g1.globo.com":             "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .content-text, article",
     "globo.com":                "[class*='article-body'], [class*='article__body'], .mb-article__body, .content-text, article",
     "agfeed.com.br":            ".post-content, .entry-content, .td-post-content, .main-content",
     "bloomberglinea.com.br":    "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
+    "bloomberglinea.com":       "[class*='article-body-wrapper-bl'], [class*='body-paragraph'], .left-article-section, article",
     "theagribiz.com":           "body",
     "noticiasagricolas.com.br": ".materia, .content.sem-video, .noticia-texto, .article-content",
     "agrolink.com.br":          ".section-description, .conteudo-noticia, .texto-noticia, .section-content",
     "neofeed.com.br":           ".first-content, .content-short, .article-master",
-    "beefmagazine.com":         "[class*='ArticleBase-Body'], [class*='ArticleBody'], .article-body, .entry-content",
+    "beefmagazine.com":         "[class*='ArticleBase-Body'], [class*='ArticleBody'], .article-body, .field-name-body, .entry-content",
     "moneytimes.com.br":        ".single, .mt-article__body, .article-body",
     "braziljournal.com":        ".post-content, .entry-content, .boxarticle-infos-text, article",
     "beefpoint.com.br":         ".td-post-content, .entry-content, .post-content, article",
-    "_default":                 ".entry-content, .post-content, .article-body, .article__body, .story-body, article, main",
+    "_default":                 ".entry-content, .post-content, .article-body, .article__body, .story-body, .content-body, #article-body, article, main",
 }
 
 NOISE = re.compile(
@@ -116,8 +117,6 @@ NAV = re.compile(
     r"selecione o país|login|idioma|español|português)\s*$",
     re.IGNORECASE,
 )
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def hostname(url):
     try:
@@ -224,12 +223,16 @@ def rss_fetch(url, feed_url):
     try:
         r = requests.get(feed_url, headers=BROWSER_HEADERS, timeout=12)
         content = r.content
+        # Prepend XML encoding declaration to force UTF-8 — prevents double-encoding
         if not content.startswith(b'<?xml'):
             content = b'<?xml version="1.0" encoding="UTF-8"?>\n' + content
         feed = feedparser.parse(content)
 
         if not feed.entries:
             feed = feedparser.parse(feed_url)
+
+        if not feed or not feed.entries:
+            return None
 
         target_path = urllib.parse.urlparse(url).path.rstrip("/")
         target_slug = target_path.split("/")[-1] if target_path else ""
