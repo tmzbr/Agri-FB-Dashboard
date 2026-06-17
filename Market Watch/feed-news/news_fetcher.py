@@ -17,6 +17,30 @@ if platform.system() == "Windows":
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsReader/1.0"}
 
 
+def _resolve_google_news_url(url: str) -> str:
+    """Resolve Google News redirect URLs to the real source URL.
+    Falls back to the original URL if resolution fails."""
+    if "news.google.com" not in url:
+        return url
+    try:
+        import requests as _req
+        import re as _re
+        r = _req.get(url, headers={"User-Agent": HEADERS["User-Agent"]}, timeout=8)
+        html = r.text
+        au = _re.search(r'data-n-au="(https?://[^"]+)"', html)
+        if au and "google" not in au.group(1):
+            return au.group(1)
+        for u in _re.findall(r'"(https?://(?![^"]*google)[^"]+)"', html):
+            if any(d in u for d in ["globo.com", "canalrural", "agfeed", "noticiasagricolas",
+                                     "agrolink", "moneytimes", "braziljournal", "beefpoint",
+                                     "neofeed", "bloomberglinea", "theagribiz", "feedfood",
+                                     "estadao", "cnnbrasil", "farmnews", "abpa", "abiec"]):
+                return u
+    except Exception:
+        pass
+    return url
+
+
 class NewsFetcher:
     GOOGLE_PT = "https://news.google.com/rss/search?q={query}&hl=pt-BR&gl=BR&ceid=BR:pt"
     GOOGLE_EN = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
@@ -92,27 +116,29 @@ class NewsFetcher:
         pt_queries = group.get("search_queries_pt", [])
         en_queries = group.get("search_queries_en", [])
 
-        # Fallback: build from keywords/companies if no explicit queries defined
         if not pt_queries:
             all_terms = group.get("companies", []) + group.get("keywords", [])
             pt_queries = [" OR ".join(all_terms[:6])] if all_terms else []
 
-        def add_items(raw_items):
-            for item in raw_items:
-                if item["url"] not in seen:
-                    seen.add(item["url"])
-                    items.append(item)
-
-        # Batch queries: send up to 3 terms per request to avoid URL length issues
+        # Build all URLs
+        all_urls = []
         for query in pt_queries:
-            url = self._build_url([query], "pt")
-            add_items(self._fetch_feed(url, gid))
-            time.sleep(0.4)
-
+            all_urls.append((self._build_url([query], "pt"), gid))
         for query in en_queries:
-            url = self._build_url([query], "en")
-            add_items(self._fetch_feed(url, gid))
-            time.sleep(0.4)
+            all_urls.append((self._build_url([query], "en"), gid))
+
+        # Fetch in parallel (max 5 concurrent) with overall timeout
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {pool.submit(self._fetch_feed, url, gid): url for url, gid in all_urls}
+            for future in as_completed(futures, timeout=120):
+                try:
+                    for item in future.result(timeout=15):
+                        if item["url"] not in seen:
+                            seen.add(item["url"])
+                            items.append(item)
+                except Exception:
+                    pass
 
         return items
 
@@ -133,8 +159,6 @@ class NewsFetcher:
                 url_item = getattr(entry, "link", "").strip()
                 if not title or not url_item:
                     continue
-                # Resolve Google News URLs to real source URL
-                url_item = _resolve_google_news_url(url_item)
                 summary = ""
                 if hasattr(entry, "summary") and entry.summary:
                     import re
