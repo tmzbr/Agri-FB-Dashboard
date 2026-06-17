@@ -69,9 +69,7 @@
         "fertilizantes"
       ],
       "search_queries_pt": [
-        "site:cnnbrasil.com.br/agro",
         "site:bloomberglinea.com.br/agro",
-        "site:summitagro.estadao.com.br",
         "\"preço da soja\" OR \"preços da soja\" OR \"cotação da soja\" Brasil",
         "\"preço do milho\" OR \"preços do milho\" OR \"cotação do milho\" Brasil",
         "\"preço do trigo\" OR \"preço do arroz\" OR \"preço do algodão\" Brasil",
@@ -103,19 +101,15 @@
         "site:noticiasagricolas.com.br soja milho",
         "site:noticiasagricolas.com.br pecuária",
         "site:bloomberglinea.com.br agro",
-        "site:bloomberglinea.com.br soja milho cana"
+        "site:bloomberglinea.com.br soja milho cana",
+        "fertilizantes adubos preço custo Brasil safra",
+        "biodiesel etanol biocombustível ANP mistura Brasil"
       ],
       "search_queries_en": [
         "USDA crop report supply demand grains oilseeds",
-        "USDA world agricultural supply demand estimates",
         "Brazil soybean corn crop estimate production",
-        "Argentina wheat soybean crop area production",
-        "China soybean corn pork import demand",
-        "global fertilizer price supply disruption",
-        "ethanol sugar Brazil export trade",
-        "El Nino La Nina crop risk South America",
-        "crop protection pesticide market Brazil",
-        "Brazil cotton harvest area crop"
+        "China soybean corn import demand",
+        "global fertilizer price supply"
       ],
       "negative_keywords": []
     },
@@ -191,10 +185,6 @@
         "arroba"
       ],
       "search_queries_pt": [
-        "site:beefpoint.com.br",
-        "site:farmnews.com.br",
-        "site:abpa-br.org",
-        "site:abiec.com.br",
         "\"preço do frango\" OR \"preço da carne de frango\" OR \"preços do frango\" OR \"preços da carne de frango\"",
         "\"preço do suíno\" OR \"preço do porco\" OR \"preço da carne suína\" OR \"carne suína\"",
         "\"preço dos ovos\" OR \"preço do ovo\" OR \"mercado de ovos\" OR \"poedeira\"",
@@ -213,15 +203,9 @@
         "fusão aquisição frigorífico alimentícia Brasil"
       ],
       "search_queries_en": [
-        "Brazil beef chicken pork export data volume",
-        "beef export trade Brazil China tariff restriction",
-        "poultry export ban embargo Brazil",
-        "pork swine trade China US Brazil",
-        "cattle cycle supply slaughter feedlot",
-        "corn soybean meal feed cost poultry hog",
-        "food industry M&A acquisition merger",
-        "USDA cattle hogs poultry outlook supply",
-        "China beef pork chicken import demand"
+        "Brazil beef chicken pork export data",
+        "China beef pork chicken import demand",
+        "USDA cattle hogs poultry outlook"
       ],
       "negative_keywords": []
     }
@@ -437,7 +421,17 @@
         "jalles",
         "adubos",
         "diesel",
-        "exportação"
+        "exportação",
+        "adubo",
+        "combustível",
+        "custo de produção",
+        "insumos",
+        "herbicida",
+        "fungicida",
+        "inseticida",
+        "acordo",
+        "irã",
+        "guerra"
       ]
     },
     {
