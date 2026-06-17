@@ -319,9 +319,12 @@ def scrape_one(item):
         html = tier_fn(url)
         if html:
             body = extract(html, url)
+            print(f"  tier{tier_name} html={len(html)}b body={len(body)}chars")
             if body:
                 print(f"  ✓ tier{tier_name} {url[:70]}")
                 return {"id": item_id, "url": url, "body": body, "tier": tier_name, "ok": True}
+        else:
+            print(f"  tier{tier_name} no html")
 
     # Wayback fallback
     html = wayback(url)
