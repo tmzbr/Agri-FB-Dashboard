@@ -1443,22 +1443,37 @@ function openExportModal() {
 }
 
 async function _runExportScraping(items, sections, buckets) {
-  // Scrape in parallel batches of 3
-  const chunks = [];
-  for (let i = 0; i < items.length; i += 3) chunks.push(items.slice(i, i + 3));
+  try {
+    const { mode, results } = await scrapeAllViaGHA(items);
 
-  for (const chunk of chunks) {
-    await Promise.all(chunk.map(async item => {
-      const r = await scrapeArticleBody(item);
-      item._scrapeResult = r;
+    const resultMap = new Map();
+    (results || []).forEach(r => resultMap.set(r.id, r));
+
+    items.forEach(item => {
+      const r = resultMap.get(item.id) || { ok: false, error: "no result" };
+      item._scrapeResult = r.ok ? r : { ok: false, body: item.summary || "", error: r.error };
       const pill = document.getElementById(`expill-${item.id}`);
       if (pill) {
-        const label = r.source === "rss" ? "RSS ✓" : r.source === "wayback" ? "Wayback ✓" : r.source === "scrape" ? "Web ✓" : "snippet";
+        const tier = r.tier;
+        const label = tier === "rss" ? "RSS ✓"
+                    : tier === "wayback" ? "Wayback ✓"
+                    : r.ok ? `Web ✓` : "snippet";
         pill.style.background = r.ok ? "#DCFCE7" : "#FEE2E2";
         pill.style.color      = r.ok ? "#15803D" : "#B91C1C";
         pill.textContent = sourceFromUrl(item.url) + " — " + label;
       }
-    }));
+    });
+  } catch (e) {
+    console.error("_runExportScraping error:", e);
+    items.forEach(item => {
+      item._scrapeResult = { ok: false, body: item.summary || "", error: e.message };
+      const pill = document.getElementById(`expill-${item.id}`);
+      if (pill) {
+        pill.style.background = "#FEE2E2";
+        pill.style.color = "#B91C1C";
+        pill.textContent = sourceFromUrl(item.url) + " — erro";
+      }
+    });
   }
 
   // All done — render the full preview and enable buttons
