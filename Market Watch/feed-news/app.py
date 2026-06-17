@@ -503,56 +503,191 @@ def api_purge_blocked():
         conn.close()
 
 
-# ── Clipping scrape endpoint ──────────────────────────────────────────────────
-# Recebe: POST /api/scrape
-#   { "items": [ { "id": 1, "url": "https://...", "source": "Canal Rural" } ] }
-# Retorna:
-#   { "results": [ { "id": 1, "url": "...", "body": "...", "tier": 1, "ok": true } ] }
+# ── Clipping scrape — GitHub Actions architecture ─────────────────────────────
 #
-# Delega toda a lógica para scraper.py (cascade de 4 tiers + Wayback).
-# Mantido separado do app.py para não misturar responsabilidades.
+# Fluxo:
+#   1. Frontend POST /api/scrape-trigger  → dispara GitHub Actions workflow
+#   2. GitHub Actions roda scrape_worker.py com IPs limpos (sem bloqueios Globo)
+#   3. scrape_worker.py POST /api/scrape-result → salva resultado no Postgres
+#   4. Frontend faz polling GET /api/scrape-status?job_id=xxx até status=done
+#
+# Secrets necessários no Render (Environment):
+#   GH_TOKEN      — GitHub Personal Access Token com permissão workflow
+#   GH_OWNER      — seu usuário GitHub (ex: brunotomazetto)
+#   GH_REPO       — nome do repo (ex: Agri-FB-Dashboard)
+#   BACKEND_SECRET — string aleatória para autenticar callback do worker
 
-@app.route("/api/scrape", methods=["POST"])
-def api_scrape():
+import uuid as _uuid
+
+GH_TOKEN  = os.environ.get("GH_TOKEN", "")
+GH_OWNER  = os.environ.get("GH_OWNER", "")
+GH_REPO   = os.environ.get("GH_REPO", "")
+BACKEND_SECRET = os.environ.get("BACKEND_SECRET", "changeme")
+
+
+def _init_scrape_table():
+    """Create scrape_jobs table if not exists."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scrape_jobs (
+                job_id     TEXT PRIMARY KEY,
+                status     TEXT DEFAULT 'pending',
+                results    TEXT DEFAULT '',
+                created_at TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS'),
+                updated_at TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS')
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[scrape] init table error: {e}", flush=True)
+
+
+@app.route("/api/scrape-trigger", methods=["POST"])
+def api_scrape_trigger():
+    """Dispara o GitHub Actions workflow com os itens a scraper."""
     import traceback
-    data = request.get_json(force=True) or {}
+    import urllib.request as ureq
+
+    data  = request.get_json(force=True) or {}
     items = data.get("items", [])
     if not items:
         return jsonify({"error": "items é obrigatório"}), 400
+
+    if not GH_TOKEN or not GH_OWNER or not GH_REPO:
+        # Fallback: tenta scraping local se GH não configurado
+        try:
+            print(f"[scrape] GH not configured, trying local scrape", flush=True)
+            from scraper import scrape_batch
+            results = scrape_batch(items)
+            return jsonify({"mode": "local", "results": results})
+        except Exception as e:
+            return jsonify({"error": f"GH not configured and local scrape failed: {e}"}), 500
+
+    job_id = str(_uuid.uuid4())
+
+    # Save job as pending
     try:
-        print(f"[scrape] Starting batch of {len(items)} items", flush=True)
-        from scraper import scrape_batch
-        results = scrape_batch(items)
-        ok_count = sum(1 for r in results if r.get("ok"))
-        print(f"[scrape] Done: {ok_count}/{len(results)} ok", flush=True)
-        for r in results:
-            tier = r.get("tier", "none")
-            ok   = r.get("ok", False)
-            err  = r.get("error", "")
-            url  = r.get("url", "")[:60]
-            print(f"[scrape]  {'✓' if ok else '✗'} tier={tier} {url} {err}", flush=True)
-        return jsonify({"results": results})
+        _init_scrape_table()
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO scrape_jobs (job_id, status) VALUES (%s, 'pending')",
+            (job_id,)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[scrape] DB error: {e}", flush=True)
+
+    # Dispatch GitHub Actions workflow
+    try:
+        import json as _json
+        payload = _json.dumps({
+            "ref": "main",
+            "inputs": {
+                "job_id": job_id,
+                "items": _json.dumps(items),
+            }
+        }).encode("utf-8")
+
+        gh_url = f"https://api.github.com/repos/{GH_OWNER}/{GH_REPO}/actions/workflows/scrape.yml/dispatches"
+        req = ureq.Request(
+            gh_url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            method="POST",
+        )
+        with ureq.urlopen(req, timeout=15) as resp:
+            print(f"[scrape] GH dispatch status: {resp.status}, job_id={job_id}", flush=True)
+
+        return jsonify({"job_id": job_id, "status": "pending"})
+
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"[scrape] ERROR: {e}\n{tb}", flush=True)
-        return jsonify({"error": str(e), "traceback": tb}), 500
+        print(f"[scrape] dispatch error: {e}\n{tb}", flush=True)
+        return jsonify({"error": str(e)}), 500
 
 
-# ── Diagnostic endpoint — testa acesso ao Globo/G1 direto do Render ──────────
-# Acesse: GET /api/scrape-test para ver se o Render consegue acessar o Globo.
-# Remova este endpoint depois do teste.
+@app.route("/api/scrape-result", methods=["POST"])
+def api_scrape_result():
+    """Callback do scrape_worker.py — salva resultado no Postgres."""
+    data   = request.get_json(force=True) or {}
+    secret = data.get("secret", "")
+    job_id = data.get("job_id", "")
 
+    if secret != BACKEND_SECRET:
+        return jsonify({"error": "unauthorized"}), 403
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+
+    import json as _json
+    results_json = _json.dumps(data.get("results", []))
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE scrape_jobs SET status='done', results=%s, "
+            "updated_at=to_char(NOW(),'YYYY-MM-DD\"T\"HH24:MI:SS') WHERE job_id=%s",
+            (results_json, job_id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[scrape] result saved: job_id={job_id}", flush=True)
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[scrape] result save error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/scrape-status")
+def api_scrape_status():
+    """Polling endpoint — retorna status e resultados do job."""
+    import json as _json
+    job_id = request.args.get("job_id", "")
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT status, results FROM scrape_jobs WHERE job_id=%s", (job_id,))
+        row = _fetchone(cur)
+        cur.close()
+        conn.close()
+
+        if not row:
+            return jsonify({"status": "not_found"}), 404
+
+        result = {"status": row["status"]}
+        if row["status"] == "done" and row["results"]:
+            result["results"] = _json.loads(row["results"])
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Diagnostic endpoint (remover após confirmar funcionamento) ─────────────────
 @app.route("/api/scrape-test")
 def api_scrape_test():
-    import traceback
     results = {}
     test_urls = {
         "globo_rural": "https://globorural.globo.com/pecuaria/",
         "g1_agro":     "https://g1.globo.com/economia/agronegocios/",
         "canal_rural": "https://www.canalrural.com.br/",
     }
-
-    # Test 1: simple requests
     try:
         import requests as req
         for name, url in test_urls.items():
@@ -563,27 +698,17 @@ def api_scrape_test():
                 results[f"tier1_{name}"] = {"error": str(e)}
     except Exception as e:
         results["tier1_import"] = {"error": str(e)}
-
-    # Test 2: curl-cffi
     try:
         from curl_cffi import requests as cffi_req
         for name, url in test_urls.items():
             try:
                 r = cffi_req.get(url, impersonate="chrome124", timeout=10)
-                body_preview = r.content.decode("utf-8", errors="replace")[:200]
-                results[f"cffi_{name}"] = {
-                    "status": r.status_code,
-                    "size": len(r.content),
-                    "preview": body_preview,
-                }
+                preview = r.content.decode("utf-8", errors="replace")[:200]
+                results[f"cffi_{name}"] = {"status": r.status_code, "size": len(r.content), "preview": preview}
             except Exception as e:
                 results[f"cffi_{name}"] = {"error": str(e)}
     except ImportError:
         results["cffi_import"] = {"error": "curl_cffi not installed"}
-    except Exception as e:
-        results["cffi_error"] = {"error": str(e)}
-
-    print(f"[scrape-test] {results}", flush=True)
     return jsonify(results)
 
 
