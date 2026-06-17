@@ -726,6 +726,7 @@ def _start_scheduler():
 if DB_HOST:
     try:
         init_db()
+        _init_scrape_table()  # ensure scrape_jobs table exists for clipping
         _scheduler = _start_scheduler()
     except Exception as _e:
         print(f"[WARN] Startup error: {_e}")
