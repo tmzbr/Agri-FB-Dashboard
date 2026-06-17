@@ -110,6 +110,13 @@ NOISE = re.compile(
     re.IGNORECASE,
 )
 
+# Short image caption patterns — "Foto: X", "Divulgação", "Crédito:", etc.
+CAPTION = re.compile(
+    r"^(foto[:\s]|imagem[:\s]|divulgação|crédito[:\s]|reprodução|legenda[:\s]|"
+    r"ilustração|arte[:\s]|reuters|getty|afp|ap photo)",
+    re.IGNORECASE,
+)
+
 NAV = re.compile(
     r"^(negócios|economia|agtech|finanças|esg|vídeos|sobre nós|anuncie|"
     r"home|quem somos|revista|aquicultura|avicultura|bovinocultura|"
@@ -121,18 +128,63 @@ def resolve_url(url: str) -> str:
     """Resolve Google News redirect URLs to the real source URL."""
     if "news.google.com" not in url:
         return url
+    print(f"  resolving google news: {url[:80]}")
     try:
-        r = requests.head(url, headers=BROWSER_HEADERS, allow_redirects=True, timeout=8)
+        # Use GET with stream — follows redirects and gives final URL
+        r = requests.get(url, headers=BROWSER_HEADERS, allow_redirects=True, timeout=10, stream=True)
+        r.close()
         if "news.google.com" not in r.url and r.url.startswith("http"):
+            print(f"  resolved: {r.url[:80]}")
             return r.url
-        # HEAD didn't redirect — try GET
-        r2 = requests.get(url, headers=BROWSER_HEADERS, allow_redirects=True, timeout=10, stream=True)
-        r2.close()
-        if "news.google.com" not in r2.url and r2.url.startswith("http"):
-            return r2.url
+        print(f"  could not resolve google news url")
+    except Exception as e:
+        print(f"  resolve error: {e}")
+    return url
+
+
+def extract_globo(html_str, url):
+    """Extract article body from Globo/G1 pages using __NEXT_DATA__ JSON."""
+    import html as html_mod, json as json_mod
+    # Try __NEXT_DATA__ first — Globo embeds article JSON here
+    try:
+        match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html_str, re.DOTALL)
+        if match:
+            data = json_mod.loads(match.group(1))
+            # Navigate the Next.js page props to find article content
+            def find_content(obj, depth=0):
+                if depth > 10: return []
+                if isinstance(obj, str) and len(obj) > 100:
+                    return [obj]
+                if isinstance(obj, list):
+                    results = []
+                    for item in obj:
+                        results.extend(find_content(item, depth+1))
+                    return results
+                if isinstance(obj, dict):
+                    # Look for common Globo content keys
+                    for key in ["content", "text", "body", "paragraphs", "children"]:
+                        if key in obj and obj[key]:
+                            results = find_content(obj[key], depth+1)
+                            if results: return results
+                    results = []
+                    for v in obj.values():
+                        results.extend(find_content(v, depth+1))
+                    return results
+                return []
+
+            texts = find_content(data)
+            paras = []
+            for t in texts:
+                t = html_mod.unescape(re.sub(r'<[^>]+>', ' ', t))
+                t = re.sub(r'\s+', ' ', t).strip()
+                if len(t) > 80 and not NOISE.search(t) and not CAPTION.match(t):
+                    paras.append(t)
+            if paras:
+                return "\n\n".join(paras[:20])
     except Exception:
         pass
-    return url
+    # Fall back to regular extraction
+    return extract(html_str, url)
 
 
 def hostname(url):
@@ -176,7 +228,7 @@ def extract(html_str, url):
         # Double-decode HTML entities (e.g. &amp;#8230; → … )
         t = html_mod.unescape(html_mod.unescape(t))
         t = re.sub(r"\s+", " ", t).strip()
-        if len(t) < 60 or NOISE.search(t) or NAV.match(t) or t.startswith("//") or t.startswith("/*"):
+        if len(t) < 60 or NOISE.search(t) or NAV.match(t) or CAPTION.match(t) or t.startswith("//") or t.startswith("/*"):
             continue
         # Skip RSS trailer lines like "O post X apareceu primeiro em Y"
         if re.search(r"apareceu primeiro em|posted first on|the post .+ appeared first", t, re.I):
@@ -303,14 +355,29 @@ def scrape_one(item):
     host = hostname(url)
     print(f"  scrape_one: id={item_id} host={host} url={url[:80]}")
 
-    # RSS shortcut
+    # If still Google News after resolve, skip — can't extract
+    if "news.google.com" in host:
+        print(f"  ✗ unresolved google news url")
+        return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "unresolved google news url"}
+
+    # Canal Rural — RSS first (Cloudflare blocks direct access)
     for domain, feed_url in RSS_FEEDS.items():
         if domain in host and feed_url:
             body = rss_fetch(url, feed_url)
             if body:
                 print(f"  ✓ rss   {url[:70]}")
                 return {"id": item_id, "url": url, "body": body, "tier": "rss", "ok": True}
+            print(f"  rss failed for {host}, trying tiers")
             break
+
+    # G1/Globo — try to extract from __NEXT_DATA__ JSON first
+    if "globo.com" in host or "g1.globo.com" in host:
+        html = tier1(url) or tier3(url)
+        if html:
+            body = extract_globo(html, url)
+            if body:
+                print(f"  ✓ globo-json {url[:70]}")
+                return {"id": item_id, "url": url, "body": body, "tier": 1, "ok": True}
 
     # Tier cascade
     for tier_fn, tier_name in [(tier1, 1), (tier2, 2), (tier3, 3)]:
