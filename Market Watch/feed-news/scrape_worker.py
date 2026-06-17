@@ -347,9 +347,10 @@ def scrape_batch(items):
             if time.time() > deadline:
                 break
             try:
-                results.append(future.result(timeout=10))
+                results.append(future.result(timeout=90))
             except Exception as e:
                 item = futures[future]
+                print(f"  ✗ exception: {e} url={item.get('url','')[:60]}")
                 results.append({"id": item.get("id"), "url": item.get("url",""),
                                  "body": "", "tier": None, "ok": False, "error": str(e)})
     return results
