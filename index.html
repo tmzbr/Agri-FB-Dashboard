@@ -40,6 +40,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   font-size:15px;font-weight:700;cursor:pointer;transition:background .2s;font-family:var(--font);}
 .login-btn:hover{background:#e04a00;}
 .login-btn:disabled{background:#a03300;cursor:not-allowed;}
+.login-link{display:block;width:100%;margin-top:14px;padding:0;background:none;border:none;color:#777;
+  font-size:12px;font-weight:600;letter-spacing:.3px;cursor:pointer;font-family:var(--font);}
+.login-link:hover{color:var(--orange);text-decoration:underline;}
 .login-error{font-size:12px;color:#e06060;margin-top:10px;min-height:18px;}
 .login-disclaimer{margin-top:22px;padding-top:18px;border-top:1px solid #252525;font-size:11px;color:#3D3D3D;line-height:1.7;}
 .login-disclaimer strong{color:#555;}
@@ -272,9 +275,12 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <div class="login-sub">Equity Research Portal</div>
     <label class="login-label" for="inp-user">Corporate Email</label>
     <input id="inp-user" class="login-input" type="text" placeholder="your.name@corporateemail.com" autocomplete="email"/>
-    <label class="login-label" for="inp-pass">Password</label>
-    <input id="inp-pass" class="login-input" type="password" placeholder="Enter your password" autocomplete="current-password"/>
+    <div id="admin-pass-block" style="display:none;">
+      <label class="login-label" for="inp-pass">Password</label>
+      <input id="inp-pass" class="login-input" type="password" placeholder="Enter your password" autocomplete="current-password"/>
+    </div>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <button type="button" class="login-link" id="admin-toggle" onclick="toggleAdminMode()">Sign in as Admin</button>
     <div class="login-error" id="login-error"></div>
     <div class="login-disclaimer">
       <strong>Restricted Access</strong><br>
@@ -338,6 +344,15 @@ function setAuthCookie(session) {
 function clearAuthCookie() {
   document.cookie = 'agri_auth=; path=/; Max-Age=0; Secure; SameSite=Strict';
 }
+
+/* ══ LOGIN MODE — remembers whether this session was a password ("admin") or
+   an email-only ("standard") sign-in, so a reload keeps the same access level.
+   An admin who signs in email-only gets standard access until they log out and
+   sign in again with their password. ══ */
+const LOGIN_MODE_KEY = 'agri_login_mode';
+function setLoginMode(m){ try{ localStorage.setItem(LOGIN_MODE_KEY, m); }catch(e){} }
+function getLoginMode(){ try{ return localStorage.getItem(LOGIN_MODE_KEY); }catch(e){ return null; } }
+function clearLoginMode(){ try{ localStorage.removeItem(LOGIN_MODE_KEY); }catch(e){} }
 
 /* ══ STATE ══ */
 const STATE = {
@@ -403,14 +418,14 @@ async function init(){
   if(session){
     STATE.authSession = session;
     setAuthCookie(session);
-    await loadUserAndData(session.user.email);
+    await loadUserAndData(session.user.email, { forceStandard: getLoginMode()==='standard' });
     return;
   }
   setLoading(false);
   document.getElementById('screen-login').classList.add('active');
 }
 
-async function loadUserAndData(email){
+async function loadUserAndData(email, opts={}){
   setLoading(true, 'Loading data...');
   // Load portal user record
   const { data:users } = await sb.from('portal_users').select('*').eq('email', email.toLowerCase());
@@ -418,6 +433,9 @@ async function loadUserAndData(email){
   const u = users[0];
   if(!u.active){ setLoading(false); showToast('Account inactive.'); await sb.auth.signOut(); showLogin(); return; }
   STATE.currentUser = u;
+  // Email-only sessions get standard access — even for admins (they unlock the
+  // admin panel only by signing in with their password).
+  if(opts.forceStandard) STATE.currentUser.is_admin = false;
   await loadAllData();
   setLoading(false);
   document.getElementById('screen-login').style.display='none';
@@ -545,13 +563,32 @@ function showLogin(){
 }
 
 /* ══ AUTH ══ */
+// Standard sign-in is passwordless (email only). The "Sign in as Admin" link
+// reveals the password block and switches doLogin() to the password flow.
+let adminMode = false;
+function toggleAdminMode(){
+  adminMode = !adminMode;
+  document.getElementById('admin-pass-block').style.display = adminMode ? '' : 'none';
+  document.getElementById('admin-toggle').textContent = adminMode ? '← Sign in with email only' : 'Sign in as Admin';
+  document.getElementById('login-error').textContent = '';
+  if(adminMode) document.getElementById('inp-pass').focus();
+}
+
 async function doLogin(){
   const raw   = document.getElementById('inp-user').value.trim().toLowerCase();
-  const pass  = document.getElementById('inp-pass').value;
-  const btn   = document.getElementById('login-btn');
   const errEl = document.getElementById('login-error');
   errEl.textContent='';
-  if(!raw||!pass){ errEl.textContent='Please enter your email and password.'; return; }
+  if(!raw){ errEl.textContent='Please enter your email.'; return; }
+  if(adminMode) return doAdminLogin(raw);
+  return doPasswordlessLogin(raw);
+}
+
+/* Admin: email + password — full Supabase password sign-in. */
+async function doAdminLogin(raw){
+  const btn   = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  const pass  = document.getElementById('inp-pass').value;
+  if(!pass){ errEl.textContent='Please enter your password.'; return; }
   btn.disabled=true; btn.textContent='Signing in...';
   // Resolve alias from portal_users (e.g. an alias → real email)
   let email = raw;
@@ -565,20 +602,63 @@ async function doLogin(){
   }
   STATE.authSession = data.session;
   setAuthCookie(data.session);
+  setLoginMode('admin');
   btn.disabled=false; btn.textContent='Sign In';
   await loadUserAndData(email);
   // Log login event (fire and forget — don't block login)
   logEvent('login', null);
 }
 
+/* Non-admin: email only. The /api/login serverless endpoint validates the
+   email against portal_users with the service-role key and returns a magic-link
+   token, which we exchange for a real Supabase session — so the .db middleware
+   and the RLS policies keep working exactly as they do for the password flow. */
+async function doPasswordlessLogin(raw){
+  const btn   = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  btn.disabled=true; btn.textContent='Signing in...';
+  try{
+    const resp = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email: raw }),
+    });
+    const out = await resp.json().catch(()=>({}));
+    if(!resp.ok || !out.token_hash){
+      btn.disabled=false; btn.textContent='Sign In';
+      errEl.textContent = out.error || 'Email not recognized. Contact your administrator, or sign in as Admin.';
+      return;
+    }
+    const { data, error } = await sb.auth.verifyOtp({ token_hash: out.token_hash, type:'magiclink' });
+    if(error || !data?.session){
+      btn.disabled=false; btn.textContent='Sign In';
+      errEl.textContent = 'Could not start your session. Please try again.';
+      return;
+    }
+    STATE.authSession = data.session;
+    setAuthCookie(data.session);
+    setLoginMode('standard');
+    btn.disabled=false; btn.textContent='Sign In';
+    await loadUserAndData(out.email || raw, { forceStandard:true });
+    logEvent('login', null);
+  }catch(e){
+    btn.disabled=false; btn.textContent='Sign In';
+    errEl.textContent = 'Network error. Please try again.';
+  }
+}
+
 async function doLogout(){
   await sb.auth.signOut();
   clearAuthCookie();
+  clearLoginMode();
   STATE.currentUser=null; STATE.authSession=null;
   STATE.dashboards=[]; STATE.portalUsers=[]; STATE.activeDash=null;
   document.getElementById('screen-app').classList.remove('active');
   document.getElementById('inp-user').value=''; document.getElementById('inp-pass').value='';
   document.getElementById('login-error').textContent='';
+  adminMode=false;
+  document.getElementById('admin-pass-block').style.display='none';
+  document.getElementById('admin-toggle').textContent='Sign in as Admin';
   document.getElementById('avatar-menu').classList.remove('open');
   document.getElementById('screen-login').style.display='';
   document.getElementById('screen-login').classList.add('active');
@@ -1067,6 +1147,14 @@ function buildPaneContent(){
 /* PANE 3: My Account */
 function buildPaneMyAccount(){
   const u=STATE.currentUser;
+  // Only admins have a password to manage — standard users sign in with email only.
+  const passwordSection = u.is_admin ? `
+          <hr class="sep"/>
+          <div style="font-size:13px;font-weight:700;color:var(--black);margin-bottom:12px;">Change Password</div>
+          <label class="admin-label">New Password</label>
+          <input class="admin-input" id="acc-new-pass" type="password" placeholder="Enter new password (min 6 chars)"/>
+          <label class="admin-label">Confirm New Password</label>
+          <input class="admin-input" id="acc-con-pass" type="password" placeholder="Confirm new password"/>` : '';
   return `
     <div class="admin-panel">
       <div class="admin-section">
@@ -1076,12 +1164,7 @@ function buildPaneMyAccount(){
           <input class="admin-input" id="acc-name" value="${esc(u.display_name||'')}" placeholder="Your full name"/>
           <label class="admin-label">Corporate Email (login)</label>
           <input class="admin-input" id="acc-email" type="email" value="${esc(u.email||'')}" placeholder="your.name@corporateemail.com"/>
-          <hr class="sep"/>
-          <div style="font-size:13px;font-weight:700;color:var(--black);margin-bottom:12px;">Change Password</div>
-          <label class="admin-label">New Password</label>
-          <input class="admin-input" id="acc-new-pass" type="password" placeholder="Enter new password (min 6 chars)"/>
-          <label class="admin-label">Confirm New Password</label>
-          <input class="admin-input" id="acc-con-pass" type="password" placeholder="Confirm new password"/>
+          ${passwordSection}
           <button class="btn-primary" onclick="dbSaveAccount()">Save Changes</button>
         </div>
       </div>
@@ -1119,7 +1202,10 @@ async function dbAddUser(){
   const {data,error}=await sb.from('portal_users').insert({email,display_name:name,is_admin:isAdmin,active:true}).select().single();
   if(error){ showToast('Error: '+error.message); return; }
   STATE.portalUsers.push(data);
-  showToast('User added. Remember to create their Supabase Auth account.'); renderContent();
+  showToast(isAdmin
+    ? 'Admin added. Create their Supabase Auth account and set a password.'
+    : 'User added. They can sign in right away with just their email.');
+  renderContent();
 }
 
 /* Team / sidebar */
@@ -1222,8 +1308,10 @@ async function dbSaveAccount(){
   const u=STATE.currentUser;
   const name=document.getElementById('acc-name').value.trim();
   const email=document.getElementById('acc-email').value.trim().toLowerCase();
-  const nw=document.getElementById('acc-new-pass').value;
-  const cn=document.getElementById('acc-con-pass').value;
+  const nwEl=document.getElementById('acc-new-pass');
+  const cnEl=document.getElementById('acc-con-pass');
+  const nw=nwEl?nwEl.value:'';
+  const cn=cnEl?cnEl.value:'';
   if(!name||!email){ showToast('Name and email are required.'); return; }
   if(!/^[^@]+@[^@]+\.[^@]+$/.test(email)){ showToast('Invalid email.'); return; }
   if(STATE.portalUsers.find(x=>x.email===email&&x.id!==u.id)){ showToast('Email already in use.'); return; }

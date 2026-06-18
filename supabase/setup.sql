@@ -140,8 +140,11 @@ values (
 on conflict (id) do nothing;
 
 -- ── 4. PORTAL USERS (initial) ─────────────────────────────────────
--- Note: passwords are managed by Supabase Auth.
--- Create matching users in Authentication → Users first.
+-- Admins sign in with email + password: create a matching user in
+--   Authentication → Users first and set a password.
+-- Non-admins sign in with email only — the /api/login serverless function
+--   auto-provisions their Supabase Auth account on first sign-in, so you only
+--   need the portal_users row below (no manual Auth user, no password).
 
 insert into public.portal_users (email, display_name, is_admin, active) values
   ('admin@example.com',    'Admin',     true,  true),
