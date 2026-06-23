@@ -926,6 +926,7 @@ function buildPaneUsersTeam(){
       <label class="toggle" title="Admin"><input type="checkbox" ${u.is_admin?'checked':''} onchange="dbToggleUserAdmin('${u.id}',this.checked)">
         <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
       <span style="font-size:10px;color:#aaa;flex-shrink:0;">Active&nbsp;&nbsp;&nbsp;Admin</span>
+      ${u.is_admin?`<button class="btn-outline" style="flex-shrink:0;" onclick="dbResetPassword('${u.id}')">Set password</button>`:''}
       ${!u.is_admin||STATE.portalUsers.filter(x=>x.is_admin&&x.active).length>1
         ?`<button class="btn-danger" onclick="dbRemoveUser('${u.id}')">Remove</button>`
         :'<span style="font-size:11px;color:#ccc;flex-shrink:0;">Protected</span>'}
@@ -959,14 +960,18 @@ function buildPaneUsersTeam(){
             </button></div>` : ''}
           <hr class="sep"/>
           <div style="font-size:13px;font-weight:700;color:var(--black);margin-bottom:12px;">Add New User</div>
-          <div class="info-box" style="margin-bottom:12px;">New users must be created in <strong>Supabase Auth</strong> first (Authentication → Users → Add user), then they will appear here automatically on next login.</div>
+          <div class="info-box" style="margin-bottom:12px;"><strong>Regular users</strong> sign in with just their email — no password needed. <strong>Admins</strong> sign in with email + a password you set below. Everything is created here; no Supabase step required.</div>
           <div class="form-grid">
             <div><label class="admin-label">Display Name</label><input class="admin-input" id="nu-name" placeholder="Full Name"/></div>
             <div><label class="admin-label">Corporate Email</label><input class="admin-input" id="nu-email" type="email" placeholder="name@corporateemail.com"/></div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-            <label class="toggle"><input type="checkbox" id="nu-admin"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+            <label class="toggle"><input type="checkbox" id="nu-admin" onchange="document.getElementById('nu-pass-row').style.display=this.checked?'block':'none'"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
             <span style="font-size:13px;">Grant admin privileges</span>
+          </div>
+          <div id="nu-pass-row" style="display:none;margin-bottom:14px;">
+            <label class="admin-label">Admin Password</label>
+            <input class="admin-input" id="nu-pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
           </div>
           <button class="btn-primary" onclick="dbAddUser()">Add to Portal</button>
         </div>
@@ -1183,14 +1188,20 @@ async function dbToggleUserAdmin(id, val){
   const {error}=await sb.from('portal_users').update({is_admin:val}).eq('id',id);
   if(error){ showToast('Error: '+error.message); return; }
   const u=STATE.portalUsers.find(x=>x.id===id); if(u) u.is_admin=val;
-  showToast('Admin status updated.'); renderContent();
+  showToast(val ? 'Promoted to admin — click "Set password" to give them an admin password.' : 'Admin status updated.');
+  renderContent();
 }
 async function dbRemoveUser(id){
-  if(!confirm('Remove this user from the portal?')) return;
-  const {error}=await sb.from('portal_users').delete().eq('id',id);
-  if(error){ showToast('Error: '+error.message); return; }
-  STATE.portalUsers=STATE.portalUsers.filter(x=>x.id!==id);
-  showToast('User removed.'); renderContent();
+  const u=STATE.portalUsers.find(x=>x.id===id); if(!u) return;
+  if(u.is_admin && STATE.portalUsers.filter(x=>x.is_admin&&x.active).length<=1){ showToast('Cannot remove the last admin.'); return; }
+  if(!confirm('Remove this user from the portal and delete their login? This cannot be undone.')) return;
+  setLoading(true,'Removing user...');
+  try{
+    await adminApi('delete',{email:u.email});
+    STATE.portalUsers=STATE.portalUsers.filter(x=>x.id!==id);
+    showToast('User removed.'); renderContent();
+  }catch(e){ showToast('Error: '+e.message); }
+  finally{ setLoading(false); }
 }
 async function dbAddUser(){
   const name=document.getElementById('nu-name').value.trim();
@@ -1199,13 +1210,53 @@ async function dbAddUser(){
   if(!name||!email){ showToast('Fill in name and email.'); return; }
   if(!/^[^@]+@[^@]+\.[^@]+$/.test(email)){ showToast('Invalid email.'); return; }
   if(STATE.portalUsers.find(u=>u.email===email)){ showToast('Email already registered.'); return; }
-  const {data,error}=await sb.from('portal_users').insert({email,display_name:name,is_admin:isAdmin,active:true}).select().single();
-  if(error){ showToast('Error: '+error.message); return; }
-  STATE.portalUsers.push(data);
-  showToast(isAdmin
-    ? 'Admin added. Create their Supabase Auth account and set a password.'
-    : 'User added. They can sign in right away with just their email.');
-  renderContent();
+  let password='';
+  if(isAdmin){
+    password=document.getElementById('nu-pass').value;
+    if(password.length<6){ showToast('Admins need a password of at least 6 characters.'); return; }
+  }
+  setLoading(true,'Creating user...');
+  try{
+    const data=await adminApi('create',{email,display_name:name,is_admin:isAdmin,password});
+    STATE.portalUsers.push(data);
+    document.getElementById('nu-name').value='';
+    document.getElementById('nu-email').value='';
+    document.getElementById('nu-pass').value='';
+    document.getElementById('nu-admin').checked=false;
+    document.getElementById('nu-pass-row').style.display='none';
+    showToast(isAdmin
+      ? 'Admin created — they can sign in with email + password.'
+      : 'User added — they can sign in right away with just their email.');
+    renderContent();
+  }catch(e){ showToast('Error: '+e.message); }
+  finally{ setLoading(false); }
+}
+async function dbResetPassword(id){
+  const u=STATE.portalUsers.find(x=>x.id===id); if(!u) return;
+  const pass=prompt(`Set a new password for ${u.display_name} (${u.email}).\nMinimum 6 characters:`);
+  if(pass===null) return;                       // cancelled
+  if(pass.length<6){ showToast('Password must be at least 6 characters.'); return; }
+  setLoading(true,'Updating password...');
+  try{
+    await adminApi('set_password',{email:u.email,password:pass});
+    showToast('Password updated ✓');
+  }catch(e){ showToast('Error: '+e.message); }
+  finally{ setLoading(false); }
+}
+/* Call the admin-only serverless endpoint, authenticated with the current
+   Supabase session token. Throws on any non-2xx response. */
+async function adminApi(action, payload){
+  const { data:{ session } } = await sb.auth.getSession();
+  const token = session?.access_token || STATE.authSession?.access_token;
+  if(!token) throw new Error('Your session expired — please sign in again.');
+  const resp = await fetch('/api/admin-users',{
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const out = await resp.json().catch(()=>({}));
+  if(!resp.ok) throw new Error(out.error || `Request failed (${resp.status}).`);
+  return out;
 }
 
 /* Team / sidebar */
