@@ -2750,6 +2750,7 @@ function buildClippingFullExport(sections, buckets) {
     html += `<ul style="${ulStyle}">`;
     buckets[sec].forEach(item => { html += liBold(escHtml(item.title)); });
     html += `</ul>`;
+    html += br;
   });
 
   // 3. What to Watch
