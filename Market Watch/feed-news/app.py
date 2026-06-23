@@ -539,6 +539,10 @@ def _init_scrape_table():
                 updated_at TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS')
             )
         """)
+        # Enable RLS with no policies: blocks all public PostgREST (anon)
+        # access. This worker connects directly as `postgres`, which bypasses
+        # RLS, so it is unaffected. Idempotent — safe to run on every init.
+        cur.execute("ALTER TABLE scrape_jobs ENABLE ROW LEVEL SECURITY")
         conn.commit()
         cur.close()
         conn.close()
