@@ -2779,8 +2779,12 @@ function buildClippingFullExport(sections, buckets) {
 
   // 5. Main Headlines
   sections.forEach((sec, secIdx) => {
-    html += br;
-    html += divider;
+    // First section: comes after team signature (no divider) → add br + divider
+    // Subsequent sections: last article ends with divider → just add br + headline + br + divider
+    if (secIdx === 0) {
+      html += br;
+      html += divider;
+    }
     html += br;
     html += mainHeadline(`Main Headlines \u2013 ${escHtml(sec)}`);
     html += br;
@@ -2806,6 +2810,7 @@ function buildClippingFullExport(sections, buckets) {
       }
       html += br;
       html += topLink;
+      html += br;  // blank line after "Top of the Agri…" link
       html += divider;
     });
   });
