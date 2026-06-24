@@ -39,7 +39,11 @@ try:
 except ImportError:
     _pip("beautifulsoup4"); from bs4 import BeautifulSoup
 
-PARSER = "html.parser"  # html.parser is built-in, no install needed
+try:
+    import lxml
+    PARSER = "lxml"
+except ImportError:
+    PARSER = "html.parser"
 
 try:
     import feedparser
@@ -106,8 +110,15 @@ NOISE = re.compile(
     r"newsletter|publicidade|cookie|compartilh|leia mais|assine aqui|"
     r"clique aqui|publicado em|leia também|tags:|palavras.chave|"
     r"pular para o conteúdo|barra de ferramentas|sobre o wordpress|"
-    r"indique a um amigo|preencha o formulário",
+    r"indique a um amigo|preencha o formulário|acesse o conteúdo|"
+    r"cadastre.se|faça login|para continuar lendo|assine o plano|"
+    r"conteúdo exclusivo para assinantes",
     re.IGNORECASE,
+)
+
+WORDPRESS_TRAILER = re.compile(
+    r"(o post|the post)\s+.{0,120}\s+(apareceu primeiro em|appeared first on)\s+\w",
+    re.IGNORECASE | re.DOTALL,
 )
 
 # Short image caption patterns — "Foto: X", "Divulgação", "Crédito:", etc.
@@ -270,7 +281,7 @@ def extract(html_str, url):
         if len(t) < 60 or NOISE.search(t) or NAV.match(t) or CAPTION.match(t) or t.startswith("//") or t.startswith("/*"):
             continue
         # Skip RSS trailer lines like "O post X apareceu primeiro em Y"
-        if re.search(r"apareceu primeiro em|posted first on|the post .+ appeared first", t, re.I):
+        if WORDPRESS_TRAILER.search(t):
             continue
         paras.append(t)
     return "\n\n".join(paras)
@@ -493,6 +504,14 @@ def scrape_one(item):
             return {"id": item_id, "url": url, "body": body, "tier": "wayback", "ok": True}
 
     print(f"  ✗ failed  {url[:70]}")
+    # Use the summary from the database as last-resort fallback
+    summary = item.get("summary", "")
+    if summary and len(summary) > 80:
+        # Clean any RSS trailer from summary too
+        clean = re.sub(r"O post .+ apareceu primeiro em .+\.?$", "", summary, flags=re.I).strip()
+        if len(clean) > 80:
+            print(f"  ↩ using db summary as fallback ({len(clean)} chars)")
+            return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "scraping failed — summary used"}
     return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "all tiers failed"}
 
 def scrape_batch(items):
