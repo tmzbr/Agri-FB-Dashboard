@@ -199,7 +199,7 @@ tr:hover td{background:#FFF8F5;}
   <!-- CHARTS ROW -->
   <div class="charts-row">
     <!-- LEFT: QoQ Delta chart — FIX #3: R²/r/N in header (full-series) -->
-    <div class="chart-card">
+    <div class="chart-card" id="delta-card">
       <div class="chart-card-header">
         <div class="chart-title">QoQ ΔSpread vs. ΔPPC U.S. Gross Margin — by Quarter</div>
         <div class="chart-stat" id="chart1-stat">r = <strong>—</strong> &nbsp; R² = <strong>—</strong> &nbsp; N = <strong>—</strong></div>
@@ -209,7 +209,7 @@ tr:hover td{background:#FFF8F5;}
     <!-- RIGHT: Level chart — FIX #3: R²/r/N in header -->
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Spread Proxy % vs. PPC Gross Mg - U.S. Segment</div>
+        <div class="chart-title" id="level-title">Spread Proxy % vs. PPC Gross Mg - U.S. Segment</div>
         <div class="chart-stat" id="chart2-stat">Solid = Spread &nbsp;·&nbsp; Dashed = Gross Margin</div>
       </div>
       <div class="chart-wrap"><canvas id="levelChart"></canvas></div>
@@ -456,8 +456,6 @@ function setTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
-  // Show charts only for quarterly
-  document.querySelector('.charts-row').style.display = tab === 'quarterly' ? '' : 'none';
   render();
 }
 
@@ -507,6 +505,29 @@ function computeSpread(row, w) {
   const fc = fcValue(row);
   if (!rev || !fc || rev <= 0) return null;
   return (rev - fc) / rev;
+}
+
+// Spread for weekly/monthly aggregates: feed cost rebuilt from raw corn/sbm at
+// SPOT (no quarter lag — the lag concept is quarterly only).
+// FC = 2.9802×Corn($/bu) + 0.03851×SBM($/ton)  (validated == quarterly fc_spot).
+function computeSpreadSpot(row, w) {
+  const { parts } = w;
+  if (row.breast == null || row.leg_qtrs == null) return null;
+  const partsComp = parts.breast * row.breast + parts.leg  * row.leg_qtrs
+                  + parts.wings  * row.wings  + parts.tenders * row.tenders;
+  if (row.corn == null || row.sbm == null || !partsComp || partsComp <= 0) return null;
+  const fc = 2.9802 * row.corn + 0.03851 * row.sbm;
+  return (partsComp - fc) / partsComp;
+}
+
+// View-window filter for fine granularities (key = 'month' YYYY-MM | 'week' YYYY-MM-DD)
+function filterFineByView(rows, key) {
+  if (currentView === 'all' || !rows.length) return rows;
+  const toD = s => new Date((key === 'month' ? s + '-01' : s) + 'T00:00:00Z');
+  const lastD = toD(rows[rows.length - 1][key]);
+  const cutoff = new Date(lastD);
+  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - (currentView === '3y' ? 3 : 1));
+  return rows.filter(r => toD(r[key]) >= cutoff);
 }
 
 function computeSeries() {
@@ -562,16 +583,36 @@ function pearson(xs, ys) {
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render() {
+  const w         = getWeights();
+  const deltaCard = document.getElementById('delta-card');
+  const chartsRow = document.querySelector('.charts-row');
+
   if (currentTab === 'quarterly') {
+    // Quarterly: both charts (ΔSpread×ΔGM correlation + Spread vs GM level).
+    deltaCard.style.display = '';
+    chartsRow.style.gridTemplateColumns = '1fr 1fr';
     const series  = computeSeries();
     const visible = filterByView(series);
     renderDeltaChart(visible, series);
-    renderLevelChart(visible);
+    renderLevelChart(
+      visible.filter(r => r.spread != null).map(r => ({ label: r.quarter, spread: r.spread, gm: r.gm })),
+      true
+    );
     renderTableQuarterly(series);
-  } else if (currentTab === 'monthly') {
-    renderMonthlyTable();
   } else {
-    renderWeeklyTable();
+    // Monthly / Weekly: spread line only (GM is quarterly-only); delta hidden, level full-width.
+    deltaCard.style.display = 'none';
+    chartsRow.style.gridTemplateColumns = '1fr';
+    const isMonth = currentTab === 'monthly';
+    const key     = isMonth ? 'month' : 'week';
+    const agg     = (isMonth ? computeMonthly() : computeWeekly());      // newest-first
+    const asc     = [...agg].reverse().map(r => ({ ...r, spread: computeSpreadSpot(r, w) }));
+    const vis     = filterFineByView(asc, key);
+    renderLevelChart(
+      vis.filter(r => r.spread != null).map(r => ({ label: r[key], spread: r.spread, gm: null })),
+      false
+    );
+    if (isMonth) renderMonthlyTable(); else renderWeeklyTable();
   }
 }
 
@@ -634,71 +675,84 @@ function renderDeltaChart(data, allSeries) {
   });
 }
 
-// ─── CHART 2: Level comparison (dual axis) ───────────────────────────────────
-function renderLevelChart(data) {
-  // Spread: include all quarters with spread data (even without GM)
-  const valid   = data.filter(r => r.spread != null);
-  const labels  = valid.map(r => r.quarter);
-  const spreadL = valid.map(r => +(r.spread * 100).toFixed(2));
-  // GM mapped onto same labels — null where not yet reported
-  const gmL     = valid.map(r => r.gm != null ? +(r.gm * 100).toFixed(2) : null);
+// ─── CHART 2: Level chart — Spread (+ GM overlay only when showGm) ─────────────
+// series = [{ label, spread, gm }]  ·  showGm=true draws the quarterly GM line + y2 axis.
+function renderLevelChart(series, showGm) {
+  const labels  = series.map(r => r.label);
+  const spreadL = series.map(r => r.spread != null ? +(r.spread * 100).toFixed(2) : null);
+
+  const datasets = [
+    {
+      label: 'Spread Proxy %',
+      data: spreadL,
+      yAxisID: 'y',
+      borderColor: 'rgb(255,85,0)',
+      backgroundColor: 'rgba(255,85,0,0.07)',
+      tension: 0.3, borderWidth: 2.5,
+      pointRadius: showGm ? 3 : (spreadL.length > 80 ? 0 : 2),
+      pointBackgroundColor: 'rgb(255,85,0)',
+      fill: true,
+      spanGaps: true,
+    }
+  ];
+  if (showGm) {
+    datasets.push({
+      label: 'PPC Gross Mg - U.S. Segment',
+      data: series.map(r => r.gm != null ? +(r.gm * 100).toFixed(2) : null),
+      yAxisID: 'y2',
+      borderColor: 'rgb(80,80,80)',
+      backgroundColor: 'transparent',
+      tension: 0.3, borderWidth: 2, borderDash: [5,4],
+      pointRadius: 3, pointBackgroundColor: 'rgb(80,80,80)',
+      spanGaps: true,
+    });
+  }
+
+  document.getElementById('chart2-stat').innerHTML = showGm
+    ? 'Solid = Spread &nbsp;·&nbsp; Dashed = Gross Margin'
+    : `Spread Proxy % — ${currentTab === 'monthly' ? 'monthly' : 'weekly'} (spot feed cost) · GM is quarterly-only`;
+  const lvlTitle = document.getElementById('level-title');
+  if (lvlTitle) lvlTitle.textContent = showGm
+    ? 'Spread Proxy % vs. PPC Gross Mg - U.S. Segment'
+    : `Spread Proxy % — ${currentTab === 'monthly' ? 'Monthly' : 'Weekly'}`;
+
+  const scales = {
+    x: { grid:{display:false}, ticks:{font:{size:10}, color:'#888', maxRotation:45,
+         autoSkip:true, maxTicksLimit: showGm ? 16 : 14 } },
+    y: {
+      type: 'linear', position: 'left',
+      grid: { color: '#f0f0f0' },
+      ticks: { font:{size:10}, color: 'rgb(255,85,0)', callback: v => v.toFixed(0) + '%' },
+      title: { display: true, text: 'Spread %', font:{size:9.5}, color: 'rgb(255,85,0)' }
+    }
+  };
+  if (showGm) {
+    scales.y2 = {
+      type: 'linear', position: 'right',
+      grid: { drawOnChartArea: false },
+      ticks: { font:{size:10}, color:'#555', callback: v => v.toFixed(0) + '%' },
+      title: { display: true, text: 'PPC Gross Mg %', font:{size:9.5}, color:'#555' }
+    };
+  }
 
   const ctx = document.getElementById('levelChart').getContext('2d');
   if (charts.level) charts.level.destroy();
   charts.level = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Spread Proxy %',
-          data: spreadL,
-          yAxisID: 'y',
-          borderColor: 'rgb(255,85,0)',
-          backgroundColor: 'rgba(255,85,0,0.07)',
-          tension: 0.3, borderWidth: 2.5,
-          pointRadius: 3, pointBackgroundColor: 'rgb(255,85,0)',
-          fill: true,
-          spanGaps: true,
-        },
-        {
-          label: 'PPC Gross Mg - U.S. Segment',
-          data: gmL,
-          yAxisID: 'y2',
-          borderColor: 'rgb(80,80,80)',
-          backgroundColor: 'transparent',
-          tension: 0.3, borderWidth: 2, borderDash: [5,4],
-          pointRadius: 3, pointBackgroundColor: 'rgb(80,80,80)',
-          spanGaps: true,
-        }
-      ]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { position: 'top', labels: { font:{size:10.5}, boxWidth:12, padding:12, color:'#555' } },
+        legend: { position: 'top', display: showGm,
+          labels: { font:{size:10.5}, boxWidth:12, padding:12, color:'#555' } },
         tooltip: {
           callbacks: {
             label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(1) + '%' : '—'}`
           }
         }
       },
-      scales: {
-        x: { grid:{display:false}, ticks:{font:{size:10}, color:'#888', maxRotation:45} },
-        y: {
-          type: 'linear', position: 'left',
-          grid: { color: '#f0f0f0' },
-          ticks: { font:{size:10}, color: 'rgb(255,85,0)', callback: v => v.toFixed(0) + '%' },
-          title: { display: true, text: 'Spread %', font:{size:9.5}, color: 'rgb(255,85,0)' }
-        },
-        y2: {
-          type: 'linear', position: 'right',
-          grid: { drawOnChartArea: false },
-          ticks: { font:{size:10}, color:'#555', callback: v => v.toFixed(0) + '%' },
-          title: { display: true, text: 'PPC Gross Mg %', font:{size:9.5}, color:'#555' }
-        }
-      }
+      scales
     }
   });
 }
@@ -764,11 +818,14 @@ function computeMonthly() {
       tenders:  avg(rows,'tenders'),
       sbm:      avg(rows,'sbm'),
       corn:     avg(rows,'corn'),
-      n:        rows.length,
+      // Distinct ISO weeks covered (the USDA parts report can publish several
+      // times per week, so a raw row count would overstate "# weeks").
+      n:        new Set(rows.map(r => weekMonday(r.report_date))).size,
     }));
 }
 
 function renderMonthlyTable() {
+  const w     = getWeights();
   const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
   thead.innerHTML = `<tr>
@@ -779,6 +836,7 @@ function renderMonthlyTable() {
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
+    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(spot FC)</span></th>
     <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
   </tr>`;
   const rows = computeMonthly();
@@ -790,6 +848,7 @@ function renderMonthlyTable() {
     <td>${fmtN(r.tenders)}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
+    <td class="td-spread">${fmtPct(computeSpreadSpot(r, w))}</td>
     <td style="color:#aaa;">${r.n}</td>
   </tr>`).join('');
 }
@@ -829,6 +888,7 @@ function computeWeekly() {
 }
 
 function renderWeeklyTable() {
+  const w     = getWeights();
   const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
   thead.innerHTML = `<tr>
@@ -839,6 +899,7 @@ function renderWeeklyTable() {
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
+    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(spot FC)</span></th>
   </tr>`;
   const rows = computeWeekly();
   tbody.innerHTML = rows.map(r => `<tr>
@@ -849,6 +910,7 @@ function renderWeeklyTable() {
     <td>${fmtN(r.tenders)}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
+    <td class="td-spread">${fmtPct(computeSpreadSpot(r, w))}</td>
   </tr>`).join('');
 }
 

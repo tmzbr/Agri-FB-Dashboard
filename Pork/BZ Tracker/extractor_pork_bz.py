@@ -478,6 +478,9 @@ def init_db(conn):
         end_date     TEXT,
         price_usd_kg REAL,
         vol_tons     REAL,   -- MTD cumulative tons from SECEX weekly bulletin
+        rev_000usd   REAL,   -- MTD cumulative revenue (000 USD) from bulletin;
+                             -- NULL for SEED rows (their price_usd_kg is already the
+                             -- true incremental weekly price, not an MTD average)
         biz_days     INTEGER -- business days (Mon-Fri excl. BR holidays) in the period
     );
     CREATE TABLE IF NOT EXISTS monthly (
@@ -509,6 +512,7 @@ def init_db(conn):
     # ── Migrate existing DBs ───────────────────────────────────────────────────
     migrations = [
         ("_weekly_raw", "vol_tons",     "REAL"),
+        ("_weekly_raw", "rev_000usd",   "REAL"),
         ("_weekly_raw", "biz_days",     "INTEGER"),
         ("weekly",      "vol_tons",     "REAL"),
         ("weekly",      "biz_days",     "INTEGER"),
@@ -995,7 +999,7 @@ def fetch_weekly_bulletin(conn):
     #   col 7  = Toneladas (MTD prior year)       ← NOT media diaria
     #   col 8  = Ton/MédDiária (daily average)    ← used to compute biz_days
     #   col 10 = Preço US$/Tonelada               ← price (÷1000 → USD/kg)
-    bull_price_usd_kg = bull_vol_tons = bull_media_diaria = None
+    bull_price_usd_kg = bull_vol_tons = bull_media_diaria = bull_rev_000usd = None
     for ri in range(1, ws.max_row + 1):
         desc = str(ws.cell(ri, 1).value or "").lower()
         if any(kw in desc for kw in PORK_KW):
@@ -1005,6 +1009,14 @@ def fetch_weekly_bulletin(conn):
                 if vol > 0 and price > 0:
                     bull_vol_tons     = vol
                     bull_price_usd_kg = price / 1000.0
+                    # col 2 = US$ Mil (MTD cumulative revenue, thousands USD).
+                    # Fall back to price×vol — mathematically identical, since the
+                    # bulletin price IS rev_000usd / vol_tons.
+                    try:
+                        rev = float(ws.cell(ri, 2).value or 0)
+                    except Exception:
+                        rev = 0
+                    bull_rev_000usd = rev if rev > 0 else bull_price_usd_kg * bull_vol_tons
                     try:
                         m = float(ws.cell(ri, 8).value or 0)
                         if m > 0:
@@ -1093,13 +1105,13 @@ def fetch_weekly_bulletin(conn):
         print(f"  [BULLETIN] Seed conflict — adjusted week_start to {week_start}")
 
     conn.execute(
-        "INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, biz_days) "
-        "VALUES (?,?,?,?,?) "
+        "INSERT INTO _weekly_raw(start_date, end_date, price_usd_kg, vol_tons, rev_000usd, biz_days) "
+        "VALUES (?,?,?,?,?,?) "
         "ON CONFLICT(start_date) DO UPDATE SET "
         "  end_date=excluded.end_date, "
         "  price_usd_kg=COALESCE(excluded.price_usd_kg, _weekly_raw.price_usd_kg), "
-        "  vol_tons=excluded.vol_tons, biz_days=excluded.biz_days",
-        (week_start, week_end, bull_price_usd_kg, bull_vol_tons, biz),
+        "  vol_tons=excluded.vol_tons, rev_000usd=excluded.rev_000usd, biz_days=excluded.biz_days",
+        (week_start, week_end, bull_price_usd_kg, bull_vol_tons, bull_rev_000usd, biz),
     )
     conn.commit()
     print(f"  [BULLETIN] Upserted {week_start}→{week_end}: "
@@ -1255,29 +1267,48 @@ def materialise(conn):
 
     # ── WEEKLY ───────────────────────────────────────────────────────────────
     weekly_rows = conn.execute(
-        "SELECT start_date, end_date, price_usd_kg, vol_tons, biz_days"
+        "SELECT start_date, end_date, price_usd_kg, vol_tons, biz_days, rev_000usd"
         " FROM _weekly_raw ORDER BY start_date"
     ).fetchall()
 
-    # De-accumulate MTD volumes within each calendar month
+    # De-accumulate MTD values within each calendar month.
+    #
+    # Volume is ALWAYS stored MTD-cumulative, so it is always de-accumulated.
+    #
+    # Price depends on the row's origin:
+    #   • Bulletin rows carry rev_000usd (MTD cumulative revenue).  Their stored
+    #     price_usd_kg is the MONTH-TO-DATE average price, NOT the weekly value.
+    #     Recover the true incremental weekly price from revenue:
+    #         secex_usd_kg = (rev_mtd - prev_rev_mtd) / (vol_mtd - prev_vol_mtd)
+    #   • Seed rows have rev_000usd = NULL.  Their price_usd_kg is already the true
+    #     incremental weekly price (validated: weighted avg reconciles to monthly),
+    #     so it is carried through unchanged.
     prev_month = None
     prev_vol   = 0.0
+    prev_rev   = 0.0
     deacc = []
-    for start_date, end_date, price_usd_kg, vol_mtd, biz_d in weekly_rows:
+    for start_date, end_date, price_usd_kg, vol_mtd, biz_d, rev_mtd in weekly_rows:
         yr_mo = start_date[:7]
         if yr_mo != prev_month:
             prev_month = yr_mo
             prev_vol   = 0.0
+            prev_rev   = 0.0
         inc_vol = None
         if vol_mtd is not None:
             inc_vol  = max(0.0, vol_mtd - prev_vol)
             prev_vol = vol_mtd
+        inc_price = price_usd_kg
+        if rev_mtd is not None:
+            inc_rev  = rev_mtd - prev_rev
+            prev_rev = rev_mtd
+            if inc_vol and inc_vol > 0 and inc_rev > 0:
+                inc_price = inc_rev / inc_vol
         # Always recompute from actual dates (stored biz_days may be MTD cumulative)
         biz_d = _biz_days_between(
             date.fromisoformat(start_date),
             date.fromisoformat(end_date or start_date)
         )
-        deacc.append((start_date, end_date, price_usd_kg, inc_vol, biz_d))
+        deacc.append((start_date, end_date, inc_price, inc_vol, biz_d))
 
     weekly_out = []
     for start_date, end_date, price_usd_kg, inc_vol, biz_d in deacc:
