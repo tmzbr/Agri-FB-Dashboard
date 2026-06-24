@@ -39,8 +39,10 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 
 /* ── VIEW CONTROLS — FIX #1: view buttons pushed to RIGHT ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:flex-end;
+  display:flex;align-items:center;justify-content:space-between;
   padding:0 20px;height:40px;gap:16px;flex-shrink:0;}
+.ctrl-group{display:flex;align-items:center;gap:8px;}
+.controls-bar .tab-btn{border-radius:4px;padding:4px 12px;}
 .view-label{font-size:11px;font-weight:700;color:var(--gray-mid);
   text-transform:uppercase;letter-spacing:.5px;}
 .view-btns{display:flex;gap:4px;}
@@ -183,13 +185,23 @@ tr:hover td{background:#FFF8F5;}
 </div>
 <div class="orange-rule"></div>
 
-<!-- VIEW CONTROLS — FIX #1: buttons on the RIGHT -->
+<!-- CONTROLS — PERIOD (granularity, drives charts + table) on the left, VIEW on the right -->
 <div class="controls-bar">
-  <span class="view-label">VIEW:</span>
-  <div class="view-btns">
-    <button class="view-btn" data-view="all" onclick="setView('all')">All</button>
-    <button class="view-btn active" data-view="3y"  onclick="setView('3y')">Last 3 Years</button>
-    <button class="view-btn" data-view="1y"  onclick="setView('1y')">Last 12 Months</button>
+  <div class="ctrl-group">
+    <span class="view-label">Period:</span>
+    <div class="view-btns">
+      <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+      <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+      <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <span class="view-label">View:</span>
+    <div class="view-btns">
+      <button class="view-btn" data-view="all" onclick="setView('all')">All</button>
+      <button class="view-btn active" data-view="3y"  onclick="setView('3y')">Last 3 Years</button>
+      <button class="view-btn" data-view="1y"  onclick="setView('1y')">Last 12 Months</button>
+    </div>
   </div>
 </div>
 
@@ -264,10 +276,8 @@ tr:hover td{background:#FFF8F5;}
 
     <!-- TABLE PANEL -->
     <div class="table-panel">
-      <div class="table-tabs">
-        <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
-        <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
-        <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
+      <div class="table-tabs" style="font-size:11px;color:var(--gray-mid);padding-bottom:8px;">
+        Table follows the <strong style="color:var(--gray-dark);">Period</strong> selector above (Quarterly · Monthly · Weekly)
       </div>
       <div class="table-wrap">
         <table>
