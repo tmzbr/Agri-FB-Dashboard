@@ -87,7 +87,7 @@ RSS_FEEDS = {
 }
 
 SOURCE_SELECTORS = {
-    "feedfood.com.br":          ".elementor-widget-theme-post-content .elementor-widget-container, .entry-content, .post-content",
+    "feedfood.com.br":          ".elementor-widget-theme-post-content .elementor-widget-container, .elementor-post__text, .entry-content, article",
     "canalrural.com.br":        ".article-body, .content-materia, .materia-texto, main",
     "globorural.globo.com":     "[class*='article-body'], [class*='article__body'], .mb-article__body, .mc-body, .glb-text, [data-type='text'], .content-text, article",
     "g1.globo.com":             "[class*='article-body'], [class*='article__body'], .mb-article__body, .glb-text, [data-type='text'], .content-text, article",
@@ -348,14 +348,18 @@ def tier4(url):
                 locale="pt-BR",
                 viewport={"width": 1366, "height": 768})
             page = ctx.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # Wait for network idle to ensure JS-rendered content (Elementor etc) loads
             try:
-                page.wait_for_timeout(3500)  # let JS render / Cloudflare clear
+                page.goto(url, wait_until="networkidle", timeout=30000)
             except Exception:
-                pass
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                    page.wait_for_timeout(4000)
+                except Exception:
+                    pass
             html = page.content()
             browser.close()
-            if html and len(html) > 500:
+            if html and len(html) > 5000:
                 return html
     except Exception as e:
         print(f"  tier4 error: {e}")
@@ -436,12 +440,33 @@ def scrape_one(item):
     host = hostname(url)
     print(f"  scrape_one: id={item_id} host={host} url={url[:80]}")
 
+    # Video pages have no text body — return summary from DB instead
+    if re.search(r'/videos?/', url, re.I) and host in ("agfeed.com.br", "canalrural.com.br", "g1.globo.com"):
+        summary = item.get("summary", "")
+        if summary and len(summary) > 80:
+            clean = re.sub(r"O post .+ apareceu primeiro em .+\.?$", "", summary, flags=re.I).strip()
+            if len(clean) > 60:
+                print(f"  ↩ video page — using db summary ({len(clean)} chars)")
+                return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "video page"}
+        print(f"  ↩ video page — no summary available")
+        return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "video page, no text body"}
+
     # If still Google News after resolve, skip — can't extract
     if "news.google.com" in host:
         print(f"  ✗ unresolved google news url")
         return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "unresolved google news url"}
 
-    # Canal Rural — Cloudflare protected. Try cffi (tier3) first, then RSS
+    # Feed & Food — Elementor JS-rendered, tier1 always returns skeleton
+    # Go straight to Playwright (tier4) for this domain
+    if "feedfood.com.br" in host:
+        html = tier4(url)
+        if html:
+            body = extract(html, url)
+            print(f"  tier4 html={len(html)}b body={len(body)}chars")
+            if body:
+                print(f"  ✓ tier4-playwright {url[:70]}")
+                return {"id": item_id, "url": url, "body": body, "tier": 4, "ok": True}
+        print(f"  feedfood: playwright failed, trying tiers")
     if "canalrural.com.br" in host:
         html = tier3(url)
         if html:
