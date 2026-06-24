@@ -1,5 +1,13 @@
 {
   "buildCommand": "sh build.sh",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "agri-fb-dashboard.vercel.app" }],
+      "destination": "https://agri-fb-datahouse.vercel.app/:path*",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
