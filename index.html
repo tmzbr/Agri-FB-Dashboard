@@ -542,6 +542,34 @@ const STATIC_DASHBOARDS = [
     note: null,
     footer: null,
   },
+  {
+    id: 30,
+    sector: 'agri',
+    subsector: 'grains',
+    title: 'Climate Monitor — Farms',
+    description: 'Current-year temperature & rainfall vs. the historical distribution (NASA POWER, 2010–present) for SLC Agrícola and BrasilAgro farm locations. Spaghetti + envelope chart with planted-area-weighted SLC average. Live Open-Meteo 7-day forecast — no stored database.',
+    source: 'NASA POWER · Open-Meteo',
+    tags: ['Brazil', 'Weather', 'Rainfall', 'SLC', 'BrasilAgro'],
+    visible_to_all: false,
+    coming_soon: false,
+    display_order: 30,
+    note: null,
+    footer: null,
+  },
+  {
+    id: 31,
+    sector: 'fnb',
+    subsector: 'staples',
+    title: 'Climate Monitor — Capitals',
+    description: 'Current-year temperature & rainfall vs. the historical distribution (NASA POWER, 2010–present) for the 27 state capitals — a beverage demand proxy (Ambev). Spaghetti + envelope chart with population-weighted average. Live Open-Meteo 7-day forecast — no stored database.',
+    source: 'NASA POWER · Open-Meteo',
+    tags: ['Brazil', 'Weather', 'Temperature', 'Ambev', 'Beverages'],
+    visible_to_all: false,
+    coming_soon: false,
+    display_order: 31,
+    note: null,
+    footer: null,
+  },
 ];
 
 async function loadAllData(){
@@ -762,6 +790,8 @@ const DASH_MODULES = {
   11: 'Pork/BZ Tracker/pork_bz_dashboard.html',
   12: 'Pork/U.S. Tracker/pork_us_dashboard.html',
   23: 'Market Watch/Sector News/sector_news.html',
+  30: 'Weather Monitor/weather_dashboard.html?scope=agri',
+  31: 'Weather Monitor/weather_dashboard.html?scope=fnb',
 };
 
 function renderContent(){
@@ -771,7 +801,7 @@ function renderContent(){
     const moduleSrc=DASH_MODULES[d.id]||DASH_MODULES[String(d.id)]||DASH_MODULES[Number(d.id)]; console.log("dash id:", d.id, typeof d.id, "src:", moduleSrc);
     const bodyHtml=moduleSrc
       ? `<iframe
-           src="${moduleSrc}?v=${Date.now()}"
+           src="${moduleSrc}${moduleSrc.includes('?')?'&':'?'}v=${Date.now()}"
            style="width:100%;height:calc(100vh - 200px);border:none;display:block;"
            allowfullscreen
            title="${esc(d.title)}"

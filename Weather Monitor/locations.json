@@ -1,0 +1,651 @@
+{
+  "_meta": {
+    "descricao": "Registro de pontos para o painel meteorológico. SLC: coordenada GPS real da sede da fazenda (API oficial). BrasilAgro: coordenada da sede do município (proxy).",
+    "fonte_clima": "Open-Meteo (forecast + ERA5 archive)",
+    "escopo": "27 capitais (bares) + fazendas SLC e BrasilAgro no Brasil (próprias + parcerias)",
+    "fontes_fazendas": "SLC: API oficial slcagricola.com.br/api/map (coord GPS real). BrasilAgro: portfólio oficial ri.brasil-agro.com (coord = sede do município)."
+  },
+  "capitais": [
+    {
+      "nome": "Rio Branco",
+      "uf": "AC",
+      "lat": -9.975,
+      "lon": -67.825
+    },
+    {
+      "nome": "Maceió",
+      "uf": "AL",
+      "lat": -9.665,
+      "lon": -35.735
+    },
+    {
+      "nome": "Macapá",
+      "uf": "AP",
+      "lat": 0.034,
+      "lon": -51.066
+    },
+    {
+      "nome": "Manaus",
+      "uf": "AM",
+      "lat": -3.119,
+      "lon": -60.022
+    },
+    {
+      "nome": "Salvador",
+      "uf": "BA",
+      "lat": -12.971,
+      "lon": -38.511
+    },
+    {
+      "nome": "Fortaleza",
+      "uf": "CE",
+      "lat": -3.717,
+      "lon": -38.543
+    },
+    {
+      "nome": "Brasília",
+      "uf": "DF",
+      "lat": -15.794,
+      "lon": -47.882
+    },
+    {
+      "nome": "Vitória",
+      "uf": "ES",
+      "lat": -20.319,
+      "lon": -40.338
+    },
+    {
+      "nome": "Goiânia",
+      "uf": "GO",
+      "lat": -16.686,
+      "lon": -49.264
+    },
+    {
+      "nome": "São Luís",
+      "uf": "MA",
+      "lat": -2.53,
+      "lon": -44.303
+    },
+    {
+      "nome": "Cuiabá",
+      "uf": "MT",
+      "lat": -15.601,
+      "lon": -56.097
+    },
+    {
+      "nome": "Campo Grande",
+      "uf": "MS",
+      "lat": -20.469,
+      "lon": -54.62
+    },
+    {
+      "nome": "Belo Horizonte",
+      "uf": "MG",
+      "lat": -19.917,
+      "lon": -43.934
+    },
+    {
+      "nome": "Belém",
+      "uf": "PA",
+      "lat": -1.456,
+      "lon": -48.49
+    },
+    {
+      "nome": "João Pessoa",
+      "uf": "PB",
+      "lat": -7.115,
+      "lon": -34.863
+    },
+    {
+      "nome": "Curitiba",
+      "uf": "PR",
+      "lat": -25.428,
+      "lon": -49.273
+    },
+    {
+      "nome": "Recife",
+      "uf": "PE",
+      "lat": -8.047,
+      "lon": -34.877
+    },
+    {
+      "nome": "Teresina",
+      "uf": "PI",
+      "lat": -5.089,
+      "lon": -42.802
+    },
+    {
+      "nome": "Rio de Janeiro",
+      "uf": "RJ",
+      "lat": -22.907,
+      "lon": -43.173
+    },
+    {
+      "nome": "Natal",
+      "uf": "RN",
+      "lat": -5.794,
+      "lon": -35.211
+    },
+    {
+      "nome": "Porto Alegre",
+      "uf": "RS",
+      "lat": -30.033,
+      "lon": -51.23
+    },
+    {
+      "nome": "Porto Velho",
+      "uf": "RO",
+      "lat": -8.762,
+      "lon": -63.904
+    },
+    {
+      "nome": "Boa Vista",
+      "uf": "RR",
+      "lat": 2.82,
+      "lon": -60.672
+    },
+    {
+      "nome": "Florianópolis",
+      "uf": "SC",
+      "lat": -27.595,
+      "lon": -48.548
+    },
+    {
+      "nome": "São Paulo",
+      "uf": "SP",
+      "lat": -23.551,
+      "lon": -46.633
+    },
+    {
+      "nome": "Aracaju",
+      "uf": "SE",
+      "lat": -10.947,
+      "lon": -37.073
+    },
+    {
+      "nome": "Palmas",
+      "uf": "TO",
+      "lat": -10.184,
+      "lon": -48.333
+    }
+  ],
+  "fazendas": [
+    {
+      "fazenda": "Paiaguás",
+      "empresa": "SLC",
+      "municipio": "Diamantino",
+      "uf": "MT",
+      "lat": -14.08,
+      "lon": -57.4556,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 64881
+    },
+    {
+      "fazenda": "Paineira",
+      "empresa": "SLC",
+      "municipio": "Monte Alegre do Piauí",
+      "uf": "PI",
+      "lat": -9.4199,
+      "lon": -45.075,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 8903
+    },
+    {
+      "fazenda": "Paladino",
+      "empresa": "SLC",
+      "municipio": "São Desidério",
+      "uf": "BA",
+      "lat": -13.0981,
+      "lon": -45.8457,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 21779
+    },
+    {
+      "fazenda": "Palmares",
+      "empresa": "SLC",
+      "municipio": "Barreiras",
+      "uf": "BA",
+      "lat": -11.8136,
+      "lon": -45.645,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 26983
+    },
+    {
+      "fazenda": "Palmeira",
+      "empresa": "SLC",
+      "municipio": "Balsas",
+      "uf": "MA",
+      "lat": -7.7496,
+      "lon": -46.4165,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 13583
+    },
+    {
+      "fazenda": "Pampeira",
+      "empresa": "SLC",
+      "municipio": "Campo Novo do Parecis",
+      "uf": "MT",
+      "lat": -14.1432,
+      "lon": -57.7827,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 32720
+    },
+    {
+      "fazenda": "Pamplona",
+      "empresa": "SLC",
+      "municipio": "Unaí",
+      "uf": "MG",
+      "lat": -16.0954,
+      "lon": -46.6557,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 4755
+    },
+    {
+      "fazenda": "Pamplona",
+      "empresa": "SLC",
+      "municipio": "Cristalina",
+      "uf": "GO",
+      "lat": -16.2284,
+      "lon": -47.6263,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 26446
+    },
+    {
+      "fazenda": "Panorama",
+      "empresa": "SLC",
+      "municipio": "Correntina",
+      "uf": "BA",
+      "lat": -13.4078,
+      "lon": -46.0974,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 18701
+    },
+    {
+      "fazenda": "Pantanal",
+      "empresa": "SLC",
+      "municipio": "Chapadão do Sul",
+      "uf": "MS",
+      "lat": -18.7297,
+      "lon": -52.6065,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 42675
+    },
+    {
+      "fazenda": "Parceiro",
+      "empresa": "SLC",
+      "municipio": "Formosa do Rio Preto",
+      "uf": "BA",
+      "lat": -10.5619,
+      "lon": -45.4498,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 18631
+    },
+    {
+      "fazenda": "Parnaguá",
+      "empresa": "SLC",
+      "municipio": "Santa Filomena",
+      "uf": "PI",
+      "lat": -9.0995,
+      "lon": -45.6171,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 27604
+    },
+    {
+      "fazenda": "Parnaíba",
+      "empresa": "SLC",
+      "municipio": "Tasso Fragoso",
+      "uf": "MA",
+      "lat": -8.5152,
+      "lon": -46.0771,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 55049
+    },
+    {
+      "fazenda": "Paysandu",
+      "empresa": "SLC",
+      "municipio": "São Desidério",
+      "uf": "BA",
+      "lat": -13.195,
+      "lon": -45.7825,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 40821
+    },
+    {
+      "fazenda": "Perdizes",
+      "empresa": "SLC",
+      "municipio": "Porto dos Gaúchos",
+      "uf": "MT",
+      "lat": -11.6408,
+      "lon": -56.2611,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 31518
+    },
+    {
+      "fazenda": "Perpétua",
+      "empresa": "SLC",
+      "municipio": "Alto Parnaíba",
+      "uf": "MA",
+      "lat": -9.0592,
+      "lon": -46.1803,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 27962
+    },
+    {
+      "fazenda": "Pioneira",
+      "empresa": "SLC",
+      "municipio": "Querência",
+      "uf": "MT",
+      "lat": -12.1015,
+      "lon": -52.4198,
+      "coord": "fazenda",
+      "status": "joint-venture",
+      "area_ha": 65177
+    },
+    {
+      "fazenda": "Piracema",
+      "empresa": "SLC",
+      "municipio": "Nova Mutum",
+      "uf": "MT",
+      "lat": -13.9509,
+      "lon": -55.7828,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 17
+    },
+    {
+      "fazenda": "Pirapora",
+      "empresa": "SLC",
+      "municipio": "Santa Rita do Trivelato",
+      "uf": "MT",
+      "lat": -14.0549,
+      "lon": -55.3822,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 17242
+    },
+    {
+      "fazenda": "Piratini",
+      "empresa": "SLC",
+      "municipio": "Jaborandi",
+      "uf": "BA",
+      "lat": -13.8812,
+      "lon": -45.7565,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 25014
+    },
+    {
+      "fazenda": "Planalto",
+      "empresa": "SLC",
+      "municipio": "Costa Rica",
+      "uf": "MS",
+      "lat": -18.2115,
+      "lon": -53.2049,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 22511
+    },
+    {
+      "fazenda": "Planeste",
+      "empresa": "SLC",
+      "municipio": "Balsas",
+      "uf": "MA",
+      "lat": -8.5547,
+      "lon": -46.8596,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 62346
+    },
+    {
+      "fazenda": "Planorte",
+      "empresa": "SLC",
+      "municipio": "Sapezal",
+      "uf": "MT",
+      "lat": -13.937,
+      "lon": -58.8989,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 30744
+    },
+    {
+      "fazenda": "Porteira",
+      "empresa": "SLC",
+      "municipio": "Santana do Araguaia",
+      "uf": "PA",
+      "lat": -9.6781,
+      "lon": -50.3897,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 13846
+    },
+    {
+      "fazenda": "Potência",
+      "empresa": "SLC",
+      "municipio": "Balsas",
+      "uf": "MA",
+      "lat": -8.8058,
+      "lon": -46.3644,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 69673
+    },
+    {
+      "fazenda": "Preciosa",
+      "empresa": "SLC",
+      "municipio": "Querência",
+      "uf": "MT",
+      "lat": -12.0333,
+      "lon": -52.9083,
+      "coord": "fazenda",
+      "status": "joint-venture",
+      "area_ha": 23030
+    },
+    {
+      "fazenda": "Próspera",
+      "empresa": "SLC",
+      "municipio": "Tabaporã",
+      "uf": "MT",
+      "lat": -11.2254,
+      "lon": -56.3463,
+      "coord": "fazenda",
+      "status": "propria",
+      "area_ha": 30988
+    },
+    {
+      "fazenda": "Chaparral",
+      "empresa": "BrasilAgro",
+      "municipio": "Correntina",
+      "uf": "BA",
+      "lat": -13.343,
+      "lon": -44.636,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Rio do Meio",
+      "empresa": "BrasilAgro",
+      "municipio": "Correntina",
+      "uf": "BA",
+      "lat": -13.343,
+      "lon": -44.636,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Jatobá",
+      "empresa": "BrasilAgro",
+      "municipio": "Jaborandi",
+      "uf": "BA",
+      "lat": -13.612,
+      "lon": -44.519,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Arrojadinho",
+      "empresa": "BrasilAgro",
+      "municipio": "Jaborandi",
+      "uf": "BA",
+      "lat": -13.612,
+      "lon": -44.519,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "São José",
+      "empresa": "BrasilAgro",
+      "municipio": "São Raimundo das Mangabeiras",
+      "uf": "MA",
+      "lat": -7.022,
+      "lon": -45.483,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Serra Grande",
+      "empresa": "BrasilAgro",
+      "municipio": "Baixa Grande do Ribeiro",
+      "uf": "PI",
+      "lat": -7.84,
+      "lon": -45.222,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Nova Buriti",
+      "empresa": "BrasilAgro",
+      "municipio": "Bonito de Minas",
+      "uf": "MG",
+      "lat": -15.385,
+      "lon": -44.766,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Alto Taquari",
+      "empresa": "BrasilAgro",
+      "municipio": "Alto Taquari",
+      "uf": "MT",
+      "lat": -17.819,
+      "lon": -53.282,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Panamby",
+      "empresa": "BrasilAgro",
+      "municipio": "Querência",
+      "uf": "MT",
+      "lat": -12.609,
+      "lon": -52.215,
+      "coord": "municipio",
+      "status": "propria"
+    },
+    {
+      "fazenda": "Avarandado (Parceria II)",
+      "empresa": "BrasilAgro",
+      "municipio": "Ribeiro Gonçalves",
+      "uf": "PI",
+      "lat": -7.555,
+      "lon": -45.243,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "ETH (Parceria III)",
+      "empresa": "BrasilAgro",
+      "municipio": "Alto Taquari",
+      "uf": "MT",
+      "lat": -17.819,
+      "lon": -53.282,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Agro-Serra (Parceria IV)",
+      "empresa": "BrasilAgro",
+      "municipio": "São Raimundo das Mangabeiras",
+      "uf": "MA",
+      "lat": -7.022,
+      "lon": -45.483,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Xingu (Parceria V)",
+      "empresa": "BrasilAgro",
+      "municipio": "São Félix do Araguaia",
+      "uf": "MT",
+      "lat": -11.614,
+      "lon": -50.671,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Regalito (Parceria VI)",
+      "empresa": "BrasilAgro",
+      "municipio": "São Félix do Araguaia",
+      "uf": "MT",
+      "lat": -11.614,
+      "lon": -50.671,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Serra Grande II (Parceria VII)",
+      "empresa": "BrasilAgro",
+      "municipio": "Baixa Grande do Ribeiro",
+      "uf": "PI",
+      "lat": -7.84,
+      "lon": -45.222,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "São Domingos (Parceria IX)",
+      "empresa": "BrasilAgro",
+      "municipio": "Comodoro",
+      "uf": "MT",
+      "lat": -13.661,
+      "lon": -59.785,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Alto da Serra (Parceria X)",
+      "empresa": "BrasilAgro",
+      "municipio": "Brotas",
+      "uf": "SP",
+      "lat": -22.279,
+      "lon": -48.127,
+      "coord": "municipio",
+      "status": "parceria"
+    },
+    {
+      "fazenda": "Novo Horizonte (Parceria XI)",
+      "empresa": "BrasilAgro",
+      "municipio": "Primavera do Leste",
+      "uf": "MT",
+      "lat": -15.556,
+      "lon": -54.296,
+      "coord": "municipio",
+      "status": "parceria"
+    }
+  ]
+}
