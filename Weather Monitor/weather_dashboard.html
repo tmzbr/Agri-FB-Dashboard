@@ -274,7 +274,9 @@ function drawLegend(S){document.getElementById("chart-legend").innerHTML=
    <span><i class="ln" style="border-color:var(--orange);border-top-style:dotted"></i>Forecast</span>
    <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${S.yrs[0]}–${S.yrs[S.yrs.length-1]}</span>
    <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>
-   <span><i class="ln" style="border-color:rgba(120,120,120,.5)"></i>Individual years</span>`;}
+   <span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${S.yrs[S.yrs.length-1]}</span>
+   <span><i class="ln" style="border-color:rgba(165,165,165,.55)"></i>${S.yrs[S.yrs.length-2]}</span>
+   <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;}
 function drawStats(S){const i=lastObsIdx(S);const cur=i>=0?S.curObs[i]:null,mean=i>=0?S.mean[i]:null,mn=i>=0?S.bandMin[i]:null,mx=i>=0?S.bandMax[i]:null;
   const d=(cur!=null&&mean!=null)?cur-mean:null,dc=d==null?"var(--gray-mid)":(STATE.vr==="t"?(d>0?"var(--red)":"var(--blue)"):(d>0?"var(--blue)":"var(--brown)"));
   document.getElementById("stat-row").innerHTML=
@@ -286,8 +288,10 @@ function drawChart(S){
   if(STATE.chart)STATE.chart.destroy();const ds=[];const yl=S.yrs[0]+"–"+(""+S.yrs[S.yrs.length-1]).slice(2);
   ds.push({label:"Min "+yl,data:S.bandMin,borderColor:"transparent",pointRadius:0,fill:false,order:30,_to:5});
   ds.push({label:"Max "+yl,data:S.bandMax,borderColor:"transparent",pointRadius:0,backgroundColor:"rgba(120,120,120,.16)",fill:"-1",order:30,_to:4});
-  const lastYr=S.yrs[S.yrs.length-1];
-  S.yearSeries.forEach((s,i)=>ds.push({label:String(S.yrs[i]),data:s,borderColor:"rgba(120,120,120,.32)",borderWidth:1,pointRadius:0,fill:false,order:20,_to:6+(lastYr-S.yrs[i]),tension:.3,spanGaps:true}));
+  const lastYr=S.yrs[S.yrs.length-1],secYr=S.yrs[S.yrs.length-2];
+  S.yearSeries.forEach((s,i)=>{const yr=S.yrs[i];
+    const col=yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)";
+    ds.push({label:String(yr),data:s,borderColor:col,borderWidth:yr===lastYr?1.7:1,pointRadius:0,fill:false,order:yr===lastYr?18:yr===secYr?19:20,_to:6+(lastYr-yr),tension:.3,spanGaps:true});});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
   ds.push({label:"Forecast",data:S.curFc,borderColor:"#FF5500",borderWidth:2.2,borderDash:[3,3],pointRadius:0,fill:false,order:1,_to:2,tension:.25,spanGaps:true});
   ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:0,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
