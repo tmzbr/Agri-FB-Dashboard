@@ -104,6 +104,12 @@ tbody tr.grp.sel td{background:#FFE9DC;}
     <button class="view-btn active" data-model="nasa" onclick="setModel('nasa')">NASA POWER</button>
     <button class="view-btn" data-model="era5" onclick="setModel('era5')">ERA5</button>
   </div>
+  <div class="ctrl-sep"></div>
+  <div class="view-btns">
+    <button class="view-btn" id="enso-btn" onclick="toggleEnso()">🌊 ENSO</button>
+    <button class="view-btn" id="enso-nino" onclick="setEnsoPhase('nino')" style="display:none">El Niño</button>
+    <button class="view-btn" id="enso-nina" onclick="setEnsoPhase('nina')" style="display:none">La Niña</button>
+  </div>
 </div>
 
 <div class="main">
@@ -137,7 +143,35 @@ const SUBTITLE="Sugarcane mills — current year vs. historical distribution (S�
 const MES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MODELFILE={nasa:"history.json",era5:"history_era5.json"};
 const MODELLBL={nasa:"NASA POWER",era5:"ERA5"};
-const STATE={vr:"p",grp:"smto",gran:"m",yrs:15,entity:"wavg",model:"nasa",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
+const STATE={vr:"p",grp:"smto",gran:"m",yrs:15,entity:"wavg",model:"nasa",enso:"off",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
+/* ── RONI (Relative Oceanic Niño Index, NOAA CPC) — anomalia por mês-do-meio (Jan..Dez) ── */
+const RONI={
+2010:[1.45,1.11,0.64,0.05,-0.53,-0.99,-1.28,-1.51,-1.68,-1.74,-1.72,-1.63],
+2011:[-1.43,-1.19,-0.92,-0.69,-0.48,-0.34,-0.38,-0.51,-0.74,-0.94,-1.05,-0.99],
+2012:[-0.82,-0.65,-0.56,-0.47,-0.27,0.03,0.34,0.43,0.4,0.23,-0.06,-0.38],
+2013:[-0.63,-0.6,-0.5,-0.43,-0.44,-0.43,-0.38,-0.32,-0.28,-0.22,-0.22,-0.33],
+2014:[-0.49,-0.53,-0.33,-0.05,0.07,-0.01,-0.13,-0.09,0.08,0.36,0.52,0.56],
+2015:[0.45,0.38,0.45,0.61,0.82,1.03,1.33,1.64,1.93,2.18,2.34,2.37],
+2016:[2.22,1.84,1.28,0.54,-0.06,-0.56,-0.86,-1.0,-1.07,-1.11,-1.08,-0.99],
+2017:[-0.74,-0.54,-0.27,-0.09,0.05,0.05,-0.17,-0.46,-0.73,-0.99,-1.15,-1.26],
+2018:[-1.12,-1.04,-0.88,-0.67,-0.31,-0.04,0.05,0.16,0.4,0.65,0.77,0.67],
+2019:[0.62,0.62,0.6,0.52,0.34,0.21,0.03,-0.1,-0.03,0.12,0.23,0.2],
+2020:[0.11,0.08,-0.03,-0.28,-0.56,-0.76,-0.81,-0.93,-1.23,-1.47,-1.54,-1.37],
+2021:[-1.18,-1.04,-0.98,-0.79,-0.61,-0.52,-0.59,-0.72,-0.92,-1.06,-1.23,-1.24],
+2022:[-1.22,-1.22,-1.28,-1.34,-1.22,-0.99,-0.91,-1.01,-1.14,-1.12,-1.05,-0.97],
+2023:[-0.83,-0.62,-0.44,-0.21,0.07,0.37,0.62,0.85,1.1,1.35,1.49,1.45],
+2024:[1.2,0.85,0.49,0.05,-0.26,-0.46,-0.51,-0.64,-0.76,-0.82,-0.94,-1.08],
+2025:[-1.13,-0.9,-0.67,-0.52,-0.49,-0.43,-0.47,-0.63,-0.77,-0.87,-0.93,-0.97],
+2026:[-0.88,-0.71,-0.45,-0.06]};
+function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
+function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
+function ensoColor(o,phase){
+  if(o==null)return undefined;
+  const nino=o>0.5,nina=o<-0.5;
+  if(phase==="nino")return nino?ninoCol(o):undefined;
+  if(phase==="nina")return nina?ninaCol(o):undefined;
+  return nino?ninoCol(o):nina?ninaCol(o):undefined;
+}
 const TODAY=new Date();TODAY.setHours(0,0,0,0);
 const MD=(()=>{const m={},days=[31,29,31,30,31,30,31,31,30,31,30,31];let i=0;for(let mo=1;mo<=12;mo++)for(let d=1;d<=days[mo-1];d++)m[mo*100+d]=i++;return m;})();
 const IDX2MD=(()=>{const a=new Array(366);for(const k in MD)a[MD[k]]=[Math.floor(+k/100),(+k)%100];return a;})();
@@ -199,6 +233,14 @@ function setYrs(v){STATE.yrs=v;act("yrs",v);render();}
 function act(a,v){document.querySelectorAll(`[data-${a}]`).forEach(b=>b.classList.toggle("active",b.dataset[a]==String(v)));}
 function sortBy(k){if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}renderTable();}
 function selectEntity(id){STATE.entity=id;renderTable();renderChart();}
+function toggleEnso(){STATE.enso=STATE.enso==="all"?"off":"all";syncEnso();}
+function setEnsoPhase(ph){if(STATE.enso==="off")return;STATE.enso=STATE.enso===ph?"all":ph;syncEnso();}
+function syncEnso(){const on=STATE.enso!=="off";
+  document.getElementById("enso-btn").classList.toggle("active",on);
+  ["enso-nino","enso-nina"].forEach(id=>document.getElementById(id).style.display=on?"":"none");
+  document.getElementById("enso-nino").classList.toggle("active",STATE.enso==="nino");
+  document.getElementById("enso-nina").classList.toggle("active",STATE.enso==="nina");
+  renderChart();}
 
 /* ── SÉRIE (ano corrente, mensal/semanal) ── */
 function periodDays(){
@@ -238,7 +280,8 @@ function computeSeries(sel,wtd){
     curObs.push(hasObs?aggCur(obs,vr,sel,wtd):null);
     curFc.push(showFc&&fut.length?aggCur(hasObs?b.days:fut,vr,sel,wtd):null);});
   if(showFc)for(let i=1;i<curFc.length;i++)if(curFc[i]!=null&&curObs[i-1]!=null&&curFc[i-1]==null)curFc[i-1]=curObs[i-1];
-  return {labels,yearSeries,bandMin,bandMax,mean,curObs,curFc,yrs};
+  const bucketMonth=buckets.map(b=>b.m!=null?b.m:b.days[Math.floor(b.days.length/2)].m);
+  return {labels,yearSeries,bandMin,bandMax,mean,curObs,curFc,yrs,bucketMonth};
 }
 function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null)return k;return -1;}
 
@@ -284,14 +327,21 @@ function renderChart(){
   document.getElementById("chart-sub").textContent=`Year ${STATE.curYear} · ${STATE.gran==="m"?"monthly":"weekly"} · ${STATE.yrs}-year history · ${MODELLBL[STATE.model]}`+(isGroup?" · narrow band (spatial average) — click a mill":"");
   const S=computeSeries(sel,wtd);drawChart(S);drawLegend(S);drawStats(S);
 }
-function drawLegend(S){document.getElementById("chart-legend").innerHTML=
+function drawLegend(S){
+  const elnino=`<span><i class="ln" style="border-color:rgba(230,75,30,.85)"></i>El Niño</span>`;
+  const lanina=`<span><i class="ln" style="border-color:rgba(50,90,210,.85)"></i>La Niña</span>`;
+  const others=`<span><i class="ln" style="border-color:rgba(120,120,120,.4)"></i>${STATE.enso==="all"?"Neutral":"Others (gray)"}</span>`;
+  const credit=`<span style="color:var(--gray-mid)">(ENSO · NOAA RONI by mid-month)</span>`;
+  const tail=STATE.enso!=="off"
+   ?(STATE.enso==="nino"?elnino+others:STATE.enso==="nina"?lanina+others:elnino+others+lanina)+credit
+   :`<span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${S.yrs[S.yrs.length-1]}</span>
+     <span><i class="ln" style="border-color:rgba(165,165,165,.55)"></i>${S.yrs[S.yrs.length-2]}</span>
+     <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;
+  document.getElementById("chart-legend").innerHTML=
   `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>${STATE.curYear}</span>
    <span><i class="ln" style="border-color:var(--orange);border-top-style:dotted"></i>Forecast</span>
    <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${S.yrs[0]}–${S.yrs[S.yrs.length-1]}</span>
-   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>
-   <span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${S.yrs[S.yrs.length-1]}</span>
-   <span><i class="ln" style="border-color:rgba(165,165,165,.55)"></i>${S.yrs[S.yrs.length-2]}</span>
-   <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;}
+   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail;}
 function drawStats(S){const i=lastObsIdx(S);const cur=i>=0?S.curObs[i]:null,mean=i>=0?S.mean[i]:null,mn=i>=0?S.bandMin[i]:null,mx=i>=0?S.bandMax[i]:null;
   const d=(cur!=null&&mean!=null)?cur-mean:null,dc=d==null?"var(--gray-mid)":(STATE.vr==="t"?(d>0?"var(--red)":"var(--blue)"):(d>0?"var(--blue)":"var(--brown)"));
   document.getElementById("stat-row").innerHTML=
@@ -304,15 +354,23 @@ function drawChart(S){
   ds.push({label:"Min "+yl,data:S.bandMin,borderColor:"transparent",pointRadius:0,fill:false,order:30,_to:5});
   ds.push({label:"Max "+yl,data:S.bandMax,borderColor:"transparent",pointRadius:0,backgroundColor:"rgba(120,120,120,.16)",fill:"-1",order:30,_to:4});
   const lastYr=S.yrs[S.yrs.length-1],secYr=S.yrs[S.yrs.length-2];
+  const ensoOn=STATE.enso!=="off";
   S.yearSeries.forEach((s,i)=>{const yr=S.yrs[i];
-    const col=yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)";
-    ds.push({label:String(yr),data:s,borderColor:col,borderWidth:yr===lastYr?1.7:1,pointRadius:0,fill:false,order:yr===lastYr?18:yr===secYr?19:20,_to:6+(lastYr-yr),tension:.3,spanGaps:true});});
+    const col=ensoOn?"rgba(120,120,120,.28)":(yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)");
+    const d={label:String(yr),data:s,borderColor:col,borderWidth:(!ensoOn&&yr===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:ensoOn?20:(yr===lastYr?18:yr===secYr?19:20),_to:6+(lastYr-yr),tension:.3,spanGaps:true};
+    if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr];return a?ensoColor(a[S.bucketMonth[ctx.p0DataIndex]-1],STATE.enso):undefined;}};
+    ds.push(d);});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
   ds.push({label:"Forecast",data:S.curFc,borderColor:"#FF5500",borderWidth:2.2,borderDash:[3,3],pointRadius:0,fill:false,order:1,_to:2,tension:.25,spanGaps:true});
   ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:0,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
   STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:S.labels,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
-    plugins:{legend:{display:false},tooltip:{filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`}}},
+    plugins:{legend:{display:false},tooltip:{filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
+      label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
+      labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
+        if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][S.bucketMonth[c.dataIndex]-1],STATE.enso)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
+        return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
+    }}},
     scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
             y:{title:{display:true,text:STATE.vr==="t"?"°C":"mm",font:{size:10},color:"#888"},ticks:{font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
 }
