@@ -25,17 +25,17 @@ jobs:
 
       - name: Refresh NASA POWER history (Weather + Sugar)
         run: |
-          python "Weather Monitor/build_history_nasa.py"
-          python "Sugar Monitor/build_history_nasa.py"
+          python "Climate Monitor/Weather Monitor/build_history_nasa.py"
+          python "Climate Monitor/Sugar Monitor/build_history_nasa.py"
 
       - name: Refresh RONI (NOAA CPC)
-        run: python update_roni.py
+        run: python "Climate Monitor/update_roni.py"
 
       - name: Commit e push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Weather Monitor/history.json" "Sugar Monitor/history.json" roni.json
+          git add "Climate Monitor/Weather Monitor/history.json" "Climate Monitor/Sugar Monitor/history.json" "Climate Monitor/roni.json"
           git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
           git commit -m "auto: refresh climate (NASA history + RONI) $(date -u +'%Y-%m-%d')"
           git pull --rebase origin main || true

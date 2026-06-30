@@ -24,15 +24,15 @@ jobs:
 
       - name: Rebuild ERA5 history (Weather + Sugar)
         run: |
-          rm -f "Weather Monitor/_hist_era5_cache.json" "Sugar Monitor/_hist_era5_cache.json"
-          python "Weather Monitor/build_history.py"
-          python "Sugar Monitor/build_history.py"
+          rm -f "Climate Monitor/Weather Monitor/_hist_era5_cache.json" "Climate Monitor/Sugar Monitor/_hist_era5_cache.json"
+          python "Climate Monitor/Weather Monitor/build_history.py"
+          python "Climate Monitor/Sugar Monitor/build_history.py"
 
       - name: Commit e push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Weather Monitor/history_era5.json" "Sugar Monitor/history_era5.json"
+          git add "Climate Monitor/Weather Monitor/history_era5.json" "Climate Monitor/Sugar Monitor/history_era5.json"
           git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
           git commit -m "auto: refresh ERA5 climate history $(date -u +'%Y-%m-%d')"
           git pull --rebase origin main || true
