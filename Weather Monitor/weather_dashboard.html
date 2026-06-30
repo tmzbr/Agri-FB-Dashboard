@@ -107,7 +107,9 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <div class="ctrl-sep"></div>
   <span class="view-label">ENSO:</span>
   <div class="view-btns">
-    <button class="view-btn" id="enso-btn" onclick="toggleEnso()">🌊 Color years</button>
+    <button class="view-btn" id="enso-btn" onclick="toggleEnso()">🌊 ENSO</button>
+    <button class="view-btn" id="enso-nino" onclick="setEnsoPhase('nino')" style="display:none">El Niño</button>
+    <button class="view-btn" id="enso-nina" onclick="setEnsoPhase('nina')" style="display:none">La Niña</button>
   </div>
 </div>
 
@@ -146,7 +148,7 @@ const POP={"São Paulo":11451245,"Rio de Janeiro":6211423,"Brasília":2817381,"F
 const MES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MODELFILE={nasa:"history.json",era5:"history_era5.json"};
 const MODELLBL={nasa:"NASA POWER",era5:"ERA5"};
-const STATE={vr:SCOPE==="agri"?"p":"t",grp:SCOPE_GROUPS[0],gran:"m",yrs:15,entity:hasW(SCOPE_GROUPS[0])?"wavg":"group",model:"nasa",enso:false,histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
+const STATE={vr:SCOPE==="agri"?"p":"t",grp:SCOPE_GROUPS[0],gran:"m",yrs:15,entity:hasW(SCOPE_GROUPS[0])?"wavg":"group",model:"nasa",enso:"off",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
 /* ── RONI (Relative Oceanic Niño Index, NOAA CPC) — anomalia trimestral por mês-do-meio (Jan..Dez); remove a tendência de aquecimento médio do trópico ── */
 const RONI={
 2010:[1.45,1.11,0.64,0.05,-0.53,-0.99,-1.28,-1.51,-1.68,-1.74,-1.72,-1.63],
@@ -166,11 +168,14 @@ const RONI={
 2024:[1.2,0.85,0.49,0.05,-0.26,-0.46,-0.51,-0.64,-0.76,-0.82,-0.94,-1.08],
 2025:[-1.13,-0.9,-0.67,-0.52,-0.49,-0.43,-0.47,-0.63,-0.77,-0.87,-0.93,-0.97],
 2026:[-0.88,-0.71,-0.45,-0.06]};
-function ensoColor(oni){
-  if(oni==null)return undefined;
-  if(oni>0.5){const t=Math.min(1,(oni-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
-  if(oni<-0.5){const t=Math.min(1,(-oni-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
-  return undefined;
+function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
+function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
+function ensoColor(o,phase){
+  if(o==null)return undefined;
+  const nino=o>0.5,nina=o<-0.5;
+  if(phase==="nino")return nino?ninoCol(o):undefined;
+  if(phase==="nina")return nina?ninaCol(o):undefined;
+  return nino?ninoCol(o):nina?ninaCol(o):undefined;   // "all"
 }
 const TODAY=new Date();TODAY.setHours(0,0,0,0);
 const MD=(()=>{const m={},days=[31,29,31,30,31,30,31,31,30,31,30,31];let i=0;for(let mo=1;mo<=12;mo++)for(let d=1;d<=days[mo-1];d++)m[mo*100+d]=i++;return m;})();
@@ -237,7 +242,14 @@ function setYrs(v){STATE.yrs=v;act("yrs",v);render();}
 function act(a,v){document.querySelectorAll(`[data-${a}]`).forEach(b=>b.classList.toggle("active",b.dataset[a]==String(v)));}
 function sortBy(k){if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}renderTable();}
 function selectEntity(id){STATE.entity=id;renderTable();renderChart();}
-function toggleEnso(){STATE.enso=!STATE.enso;document.getElementById("enso-btn").classList.toggle("active",STATE.enso);renderChart();}
+function toggleEnso(){STATE.enso=STATE.enso==="all"?"off":"all";syncEnso();}
+function setEnsoPhase(ph){if(STATE.enso==="off")return;STATE.enso=STATE.enso===ph?"all":ph;syncEnso();}
+function syncEnso(){const on=STATE.enso!=="off";
+  document.getElementById("enso-btn").classList.toggle("active",on);
+  ["enso-nino","enso-nina"].forEach(id=>document.getElementById(id).style.display=on?"":"none");
+  document.getElementById("enso-nino").classList.toggle("active",STATE.enso==="nino");
+  document.getElementById("enso-nina").classList.toggle("active",STATE.enso==="nina");
+  renderChart();}
 
 /* ── SÉRIE (ano corrente, mensal/semanal) ── */
 function periodDays(){
@@ -325,11 +337,12 @@ function renderChart(){
   const S=computeSeries(sel,wtd);drawChart(S);drawLegend(S);drawStats(S);
 }
 function drawLegend(S){
-  const tail=STATE.enso
-   ?`<span><i class="ln" style="border-color:rgba(230,75,30,.85)"></i>El Niño</span>
-     <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Neutral</span>
-     <span><i class="ln" style="border-color:rgba(50,90,210,.85)"></i>La Niña</span>
-     <span style="color:var(--gray-mid)">(ENSO · NOAA RONI by mid-month)</span>`
+  const elnino=`<span><i class="ln" style="border-color:rgba(230,75,30,.85)"></i>El Niño</span>`;
+  const lanina=`<span><i class="ln" style="border-color:rgba(50,90,210,.85)"></i>La Niña</span>`;
+  const others=`<span><i class="ln" style="border-color:rgba(120,120,120,.4)"></i>${STATE.enso==="all"?"Neutral":"Others (gray)"}</span>`;
+  const credit=`<span style="color:var(--gray-mid)">(ENSO · NOAA RONI by mid-month)</span>`;
+  const tail=STATE.enso!=="off"
+   ?(STATE.enso==="nino"?elnino+others:STATE.enso==="nina"?lanina+others:elnino+others+lanina)+credit
    :`<span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${S.yrs[S.yrs.length-1]}</span>
      <span><i class="ln" style="border-color:rgba(165,165,165,.55)"></i>${S.yrs[S.yrs.length-2]}</span>
      <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;
@@ -350,10 +363,11 @@ function drawChart(S){
   ds.push({label:"Min "+yl,data:S.bandMin,borderColor:"transparent",pointRadius:0,fill:false,order:30,_to:5});
   ds.push({label:"Max "+yl,data:S.bandMax,borderColor:"transparent",pointRadius:0,backgroundColor:"rgba(120,120,120,.16)",fill:"-1",order:30,_to:4});
   const lastYr=S.yrs[S.yrs.length-1],secYr=S.yrs[S.yrs.length-2];
+  const ensoOn=STATE.enso!=="off";
   S.yearSeries.forEach((s,i)=>{const yr=S.yrs[i];
-    const col=STATE.enso?"rgba(120,120,120,.28)":(yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)");
-    const d={label:String(yr),data:s,borderColor:col,borderWidth:(!STATE.enso&&yr===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:STATE.enso?20:(yr===lastYr?18:yr===secYr?19:20),_to:6+(lastYr-yr),tension:.3,spanGaps:true};
-    if(STATE.enso)d.segment={borderColor:ctx=>{const a=RONI[yr];return a?ensoColor(a[S.bucketMonth[ctx.p0DataIndex]-1]):undefined;}};
+    const col=ensoOn?"rgba(120,120,120,.28)":(yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)");
+    const d={label:String(yr),data:s,borderColor:col,borderWidth:(!ensoOn&&yr===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:ensoOn?20:(yr===lastYr?18:yr===secYr?19:20),_to:6+(lastYr-yr),tension:.3,spanGaps:true};
+    if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr];return a?ensoColor(a[S.bucketMonth[ctx.p0DataIndex]-1],STATE.enso):undefined;}};
     ds.push(d);});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
   ds.push({label:"Forecast",data:S.curFc,borderColor:"#FF5500",borderWidth:2.2,borderDash:[3,3],pointRadius:0,fill:false,order:1,_to:2,tension:.25,spanGaps:true});
