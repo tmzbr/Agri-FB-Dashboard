@@ -570,6 +570,20 @@ const STATIC_DASHBOARDS = [
     note: null,
     footer: null,
   },
+  {
+    id: 32,
+    sector: 'agri',
+    subsector: 'sugar',
+    title: 'Climate Monitor — Sugar & Ethanol',
+    description: 'Current-year temperature & rainfall vs. the historical distribution (NASA POWER / ERA5, 2010–present) for the sugarcane mills of São Martinho, Jalles Machado and Adecoagro. Spaghetti + envelope chart with crushing-capacity-weighted average per company. Live Open-Meteo 7-day forecast — no stored database.',
+    source: 'NASA POWER · ERA5 · Open-Meteo',
+    tags: ['Brazil', 'Sugar', 'Ethanol', 'Weather', 'Rainfall'],
+    visible_to_all: false,
+    coming_soon: false,
+    display_order: 32,
+    note: null,
+    footer: null,
+  },
 ];
 
 async function loadAllData(){
@@ -792,6 +806,7 @@ const DASH_MODULES = {
   23: 'Market Watch/Sector News/sector_news.html',
   30: 'Weather Monitor/weather_dashboard.html?scope=agri',
   31: 'Weather Monitor/weather_dashboard.html?scope=fnb',
+  32: 'Sugar Monitor/sugar_dashboard.html',
 };
 
 function renderContent(){

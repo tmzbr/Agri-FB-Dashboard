@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "descricao": "Usinas de açúcar e etanol para o monitor climático Sugar & Ethanol. Ponto = localização da usina (centro da zona canavieira fornecedora). Peso = capacidade de moagem (Mt cana/safra).",
+    "fonte_clima": "NASA POWER (history.json) / ERA5 Open-Meteo (history_era5.json) + Open-Meteo forecast",
+    "fontes_usinas": "São Martinho: coord de planta (RI/NovaCana). Jalles e Adecoagro: sede do município (proxy). Capacidades: sites oficiais / releases (safra ~2024-25)."
+  },
+  "usinas": [
+    {"usina": "São Martinho", "empresa": "SMTO", "municipio": "Pradópolis", "uf": "SP", "lat": -21.319, "lon": -48.117, "coord": "planta", "moagem_mt": 10.0},
+    {"usina": "Santa Cruz", "empresa": "SMTO", "municipio": "Américo Brasiliense", "uf": "SP", "lat": -21.753, "lon": -48.081, "coord": "planta", "moagem_mt": 5.6},
+    {"usina": "Iracema", "empresa": "SMTO", "municipio": "Iracemápolis", "uf": "SP", "lat": -22.583, "lon": -47.528, "coord": "planta", "moagem_mt": 3.0},
+    {"usina": "Boa Vista", "empresa": "SMTO", "municipio": "Quirinópolis", "uf": "GO", "lat": -18.548, "lon": -50.433, "coord": "planta", "moagem_mt": 5.0},
+    {"usina": "Jalles Machado", "empresa": "JALL", "municipio": "Goianésia", "uf": "GO", "lat": -15.317, "lon": -49.117, "coord": "municipio", "moagem_mt": 3.3},
+    {"usina": "Otávio Lage", "empresa": "JALL", "municipio": "Goianésia", "uf": "GO", "lat": -15.317, "lon": -49.117, "coord": "municipio", "moagem_mt": 3.0},
+    {"usina": "Santa Vitória", "empresa": "JALL", "municipio": "Santa Vitória", "uf": "MG", "lat": -18.841, "lon": -50.121, "coord": "municipio", "moagem_mt": 2.7},
+    {"usina": "Angélica", "empresa": "AGRO", "municipio": "Angélica", "uf": "MS", "lat": -22.153, "lon": -53.770, "coord": "municipio", "moagem_mt": 5.6},
+    {"usina": "Ivinhema", "empresa": "AGRO", "municipio": "Ivinhema", "uf": "MS", "lat": -22.304, "lon": -53.818, "coord": "municipio", "moagem_mt": 7.4},
+    {"usina": "Monte Alegre", "empresa": "AGRO", "municipio": "Monte Belo", "uf": "MG", "lat": -21.330, "lon": -46.366, "coord": "municipio", "moagem_mt": 1.2}
+  ]
+}
