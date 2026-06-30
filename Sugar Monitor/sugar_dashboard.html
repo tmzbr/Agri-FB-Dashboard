@@ -146,6 +146,7 @@ const MODELLBL={nasa:"NASA POWER",era5:"ERA5"};
 const STATE={vr:"p",grp:"smto",gran:"m",yrs:15,entity:"wavg",model:"nasa",enso:"off",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
 /* ── RONI (Relative Oceanic Niño Index, NOAA CPC) — anomalia por mês-do-meio (Jan..Dez) ── */
 const RONI={
+2009:[-0.9,-0.85,-0.67,-0.42,-0.11,0.13,0.25,0.39,0.56,0.94,1.34,1.56],
 2010:[1.45,1.11,0.64,0.05,-0.53,-0.99,-1.28,-1.51,-1.68,-1.74,-1.72,-1.63],
 2011:[-1.43,-1.19,-0.92,-0.69,-0.48,-0.34,-0.38,-0.51,-0.74,-0.94,-1.05,-0.99],
 2012:[-0.82,-0.65,-0.56,-0.47,-0.27,0.03,0.34,0.43,0.4,0.23,-0.06,-0.38],
@@ -165,12 +166,17 @@ const RONI={
 2026:[-0.88,-0.71,-0.45,-0.06]};
 function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
 function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
-function ensoColor(o,phase){
+/* episódio ENSO: só conta se >=3 meses consecutivos cruzam o limiar (série RONI contínua, cruza anos) */
+const ENSO_CONF=(()=>{const flat=[],conf={};for(let y=2009;y<=2026;y++){const a=RONI[y];if(!a)continue;for(let m=1;m<=12;m++)if(a[m-1]!=null)flat.push([y,m,a[m-1]]);}
+  const raw=v=>v>0.5?"nino":v<-0.5?"nina":null;let i=0;
+  while(i<flat.length){const ph=raw(flat[i][2]);if(!ph){i++;continue;}let j=i;while(j<flat.length&&raw(flat[j][2])===ph)j++;if(j-i>=3)for(let k=i;k<j;k++)conf[flat[k][0]+"-"+flat[k][1]]=ph;i=j;}return conf;})();
+function ensoColor(o,phase,yr,mo){
   if(o==null)return undefined;
-  const nino=o>0.5,nina=o<-0.5;   // precisão cheia do RONI (2 casas); |o|<=0.5 = neutro
-  if(phase==="nino")return nino?ninoCol(o):undefined;
-  if(phase==="nina")return nina?ninaCol(o):undefined;
-  return nino?ninoCol(o):nina?ninaCol(o):undefined;
+  const conf=ENSO_CONF[yr+"-"+mo];   // pinta só se faz parte de episódio (run>=3 consecutivos)
+  if(!conf)return undefined;
+  if(phase==="nino")return conf==="nino"?ninoCol(o):undefined;
+  if(phase==="nina")return conf==="nina"?ninaCol(o):undefined;
+  return conf==="nino"?ninoCol(o):ninaCol(o);
 }
 const TODAY=new Date();TODAY.setHours(0,0,0,0);
 const MD=(()=>{const m={},days=[31,29,31,30,31,30,31,31,30,31,30,31];let i=0;for(let mo=1;mo<=12;mo++)for(let d=1;d<=days[mo-1];d++)m[mo*100+d]=i++;return m;})();
@@ -358,7 +364,7 @@ function drawChart(S){
   S.yearSeries.forEach((s,i)=>{const yr=S.yrs[i];
     const col=ensoOn?"rgba(120,120,120,.28)":(yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)");
     const d={label:String(yr),data:s,borderColor:col,borderWidth:(!ensoOn&&yr===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:ensoOn?20:(yr===lastYr?18:yr===secYr?19:20),_to:6+(lastYr-yr),tension:.3,spanGaps:true};
-    if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr];return a?ensoColor(a[S.bucketMonth[ctx.p0DataIndex]-1],STATE.enso):undefined;}};
+    if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr],mo=S.bucketMonth[ctx.p0DataIndex];return a?ensoColor(a[mo-1],STATE.enso,yr,mo):undefined;}};
     ds.push(d);});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
   ds.push({label:"Forecast",data:S.curFc,borderColor:"#FF5500",borderWidth:2.2,borderDash:[3,3],pointRadius:0,fill:false,order:1,_to:2,tension:.25,spanGaps:true});
@@ -368,7 +374,7 @@ function drawChart(S){
     plugins:{legend:{display:false},tooltip:{filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
       label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
       labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
-        if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][S.bucketMonth[c.dataIndex]-1],STATE.enso)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
+        if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const mo=S.bucketMonth[c.dataIndex],col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][mo-1],STATE.enso,+ds.label,mo)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
         return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
     }}},
     scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
