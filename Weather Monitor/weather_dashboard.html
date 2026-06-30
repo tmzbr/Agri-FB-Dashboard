@@ -171,6 +171,7 @@ function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(
 function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
 function ensoColor(o,phase){
   if(o==null)return undefined;
+  o=Math.round(o*10)/10;   // 1 casa decimal (igual à tabela publicada do NOAA) → |o|<=0.5 fica neutro
   const nino=o>0.5,nina=o<-0.5;
   if(phase==="nino")return nino?ninoCol(o):undefined;
   if(phase==="nina")return nina?ninaCol(o):undefined;
