@@ -1,1 +1,8 @@
 .vercel
+# Climate build caches (resumíveis, não versionar)
+_hist_cache.json
+_hist_era5_cache.json
+_clim_cache.json
+**/_hist_cache.json
+**/_hist_era5_cache.json
+**/_clim_cache.json

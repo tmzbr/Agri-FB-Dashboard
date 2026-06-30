@@ -1,0 +1,42 @@
+name: Update Climate (NASA + RONI)
+
+# Mensal: regenera o history.json (NASA POWER, sem rate limit) dos módulos de
+# clima e atualiza a tabela RONI do NOAA. A virada de ano é automática (os
+# builders usam Y1 = ano corrente). O ERA5 fica num workflow manual à parte.
+
+on:
+  schedule:
+    - cron: "0 9 2 * *"   # dia 2 de cada mês, 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Refresh NASA POWER history (Weather + Sugar)
+        run: |
+          python "Weather Monitor/build_history_nasa.py"
+          python "Sugar Monitor/build_history_nasa.py"
+
+      - name: Refresh RONI (NOAA CPC)
+        run: python update_roni.py
+
+      - name: Commit e push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Weather Monitor/history.json" "Sugar Monitor/history.json" roni.json
+          git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
+          git commit -m "auto: refresh climate (NASA history + RONI) $(date -u +'%Y-%m-%d')"
+          git pull --rebase origin main || true
+          git push
