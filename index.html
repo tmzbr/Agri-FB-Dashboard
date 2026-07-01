@@ -414,6 +414,7 @@ const SUBSECTORS = {
     { id:'chicken',   label:'Chicken'   },
     { id:'pork',      label:'Pork'      },
     { id:'staples',   label:'Staples'   },
+    { id:'weekly',    label:'Weekly'    },
   ],  // equity tab removed
 };
 
@@ -586,6 +587,20 @@ const STATIC_DASHBOARDS = [
     visible_to_all: false,
     coming_soon: false,
     display_order: 31,
+    note: null,
+    footer: null,
+  },
+  {
+    id: 99,
+    sector: 'fnb',
+    subsector: 'weekly',
+    title: 'Weekly Protein Intake — PPT Generator',
+    description: 'Generate the weekly F&B report with updated Brazilian export spreads (Beef, Chicken, Pork) and U.S. domestic protein spreads. Downloads a ready-to-send PowerPoint.',
+    source: 'MDIC · SECEX · USDA AMS · Bloomberg',
+    tags: ['Brazil', 'U.S.', 'Beef', 'Chicken', 'Pork', 'Weekly', 'PPT'],
+    visible_to_all: true,
+    coming_soon: false,
+    display_order: 99,
     note: null,
     footer: null,
   },
@@ -828,6 +843,7 @@ const DASH_MODULES = {
   30: 'Climate Monitor/Weather Monitor/weather_dashboard.html?scope=agri',
   31: 'Climate Monitor/Weather Monitor/weather_dashboard.html?scope=fnb',
   32: 'Climate Monitor/Sugar Monitor/sugar_dashboard.html',
+  99: 'Weekly Protein/weekly_ppt.html',
 };
 
 function renderContent(){
