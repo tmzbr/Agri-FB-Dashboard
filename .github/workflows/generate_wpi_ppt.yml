@@ -1,0 +1,62 @@
+name: Generate Weekly Protein Intake PPT
+
+on:
+  workflow_dispatch:
+    inputs:
+      week_number:
+        description: 'Week number (e.g. 130). Leave empty to auto-increment.'
+        required: false
+        default: ''
+      report_date:
+        description: 'Report date (e.g. "July 3, 2026"). Leave empty for today.'
+        required: false
+        default: ''
+
+jobs:
+  generate-ppt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install python-pptx matplotlib pandas scipy pdfplumber requests openpyxl lxml
+
+      - name: Generate PPT
+        run: |
+          WEEK_ARG=""
+          DATE_ARG=""
+          if [ -n "${{ github.event.inputs.week_number }}" ]; then
+            WEEK_ARG="--week ${{ github.event.inputs.week_number }}"
+          fi
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            DATE_ARG="--date \"${{ github.event.inputs.report_date }}\""
+          fi
+          python "Weekly Protein/generate_wpi.py" \
+            --template "Weekly Protein/FOOD_AND_BEVERAGE_WPI.pptx" \
+            $WEEK_ARG $DATE_ARG
+
+      - name: Move PPT to output folder
+        run: |
+          mkdir -p "Weekly Protein/output"
+          mv "Weekly Protein"/WPI_*.pptx "Weekly Protein/output/" 2>/dev/null || true
+          # Keep only the latest PPT (rename to fixed name for easy download)
+          LATEST=$(ls "Weekly Protein/output"/WPI_*.pptx | sort | tail -1)
+          cp "$LATEST" "Weekly Protein/output/WPI_latest.pptx"
+
+      - name: Commit updated DB and PPT
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Weekly Protein/output/WPI_latest.pptx"
+          git add "Weekly Protein/wpi_meta.json" 2>/dev/null || true
+          git add "Pork/U.S. Tracker/pork_us.db" 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "chore: generate WPI PPT $(date +'%Y-%m-%d')"
+          git push
