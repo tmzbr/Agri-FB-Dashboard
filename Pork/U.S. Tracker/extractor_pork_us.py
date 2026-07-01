@@ -109,7 +109,7 @@ LAST_YEAR   = _now.year
 LAST_Q      = (_now.month - 1) // 3 + 1
 
 # ── USDA PDF URLs (overwritten weekly/daily by USDA) ──────────────────────────
-URL_CARCASS  = "https://www.ams.usda.gov/mnreports/ams_2680.pdf"   # LM_PK680 weekly
+URL_CARCASS  = "https://www.ams.usda.gov/mnreports/ams_2497.pdf"   # LM_PK601 daily (FOB Omaha) = Bloomberg BOXPC185
 URL_HOG      = "https://www.ams.usda.gov/mnreports/lsddhps.pdf"    # Daily Hog & Pork Summary
 URL_CORN     = "https://www.ams.usda.gov/mnreports/AMS_3192.pdf"   # Corn Central IL
 URL_SBM      = "https://www.ams.usda.gov/mnreports/ams_3511.pdf"   # SBM Illinois
@@ -819,9 +819,15 @@ def _first_price(text: str, min_v=1.0, max_v=9999.0) -> Optional[float]:
 # ══════════════════════════════════════════════════════════════════════════════
 def fetch_carcass_from_pdf() -> list[dict]:
     """
-    Parse Pork Carcass Cutout (USD/cwt) from ams_2680.pdf.
-    Target line: '3/6/2026  99.63  92.84  116.66 ...'
-    First column is the date, second is carcass cutout value.
+    Parse Pork Carcass Cutout (USD/cwt) from ams_2497.pdf (LM_PK601 — FOB Omaha).
+    This is the Bloomberg BOXPC185 series.
+
+    The report contains a table of daily rows:
+      MM/DD/YYYY  loads  carcass  loin  butt  pic  rib  ham  belly
+    and a "Five Day Average" line with the weekly weighted average.
+
+    We extract the 5-day weighted average carcass (column 1 after the dashes)
+    and use the most recent date row as the report date.
     """
     try:
         import pdfplumber, io
@@ -840,43 +846,53 @@ def fetch_carcass_from_pdf() -> list[dict]:
         print(f"  ✗ Carcass PDF parse: {e}")
         return []
 
-    dt = _parse_report_date(text)
-    if not dt:
-        print("  ⚠ Carcass PDF: could not parse date")
-        return []
-
-    price = None
     lines = text.splitlines()
+    dt = None
+    price = None  # 5-day weighted average carcass
 
-    # Pattern: line starts with date M/D/YYYY followed by carcass value
+    # Find most recent date row (MM/DD/YYYY loads carcass ...)
     for line in lines:
-        m = re.match(r"(\d{1,2}/\d{1,2}/\d{4})\s+([\d.]+)", line.strip())
+        m = re.match(r"(\d{2}/\d{2}/\d{4})\s+([\d.]+)\s+([\d.]+)", line.strip())
         if m:
             try:
-                v = float(m.group(2))
-                if 40.0 <= v <= 250.0:
-                    price = v
-                    print(f"  [Carcass PDF date-line] {line.strip()[:60]}")
-                    # Use the date from the data line, not the header
-                    dt = datetime.strptime(m.group(1), "%m/%d/%Y")
-                    break
+                candidate = datetime.strptime(m.group(1), "%m/%d/%Y")
+                carcass_v = float(m.group(3))
+                if 40.0 <= carcass_v <= 200.0:
+                    if dt is None or candidate > dt:
+                        dt = candidate
             except ValueError:
                 continue
 
-    # Fallback: look for "Carcass" keyword line
-    if price is None:
-        for line in lines:
-            if re.search(r"[Cc]arcass", line):
-                p = _first_price(line, 40.0, 250.0)
-                if p:
-                    price = p
-                    print(f"  [Carcass PDF fallback] {line.strip()[:60]}")
+    # Extract Five Day Average carcass (first number after the dashes)
+    for line in lines:
+        if re.search(r"Five Day Average", line, re.IGNORECASE):
+            # Format: "Five Day Average -- 95.54  93.65  122.76  71.64  183.43  83.96  114.97"
+            nums = re.findall(r"[\d]+\.[\d]+", line)
+            if nums:
+                v = float(nums[0])
+                if 40.0 <= v <= 200.0:
+                    price = v
+                    print(f"  [LM_PK601 Five Day Avg] {line.strip()[:80]}")
                     break
 
-    if price:
-        print(f"  Carcass PDF {dt.strftime('%Y-%m-%d')}: {price:.2f} USD/cwt")
+    # Fallback to most recent daily carcass if no 5-day avg found
+    if price is None:
+        for line in lines:
+            m = re.match(r"(\d{2}/\d{2}/\d{4})\s+([\d.]+)\s+([\d.]+)", line.strip())
+            if m:
+                try:
+                    v = float(m.group(3))
+                    if 40.0 <= v <= 200.0:
+                        price = v
+                        print(f"  [LM_PK601 daily fallback] {line.strip()[:60]}")
+                        break
+                except ValueError:
+                    continue
+
+    if dt and price:
+        print(f"  Carcass (LM_PK601/BOXPC185) {dt.strftime('%Y-%m-%d')}: {price:.2f} USD/cwt")
         return [{"date": dt, "value": price}]
-    print("  ⚠ Carcass PDF: price not found")
+    print("  ⚠ Carcass PDF (LM_PK601): price not found")
     return []
 
 
