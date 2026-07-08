@@ -1608,6 +1608,10 @@ async function buildPaneAnalytics(){
   const loginsByUser = {};
   logins.forEach(l=>{ loginsByUser[l.user_email]=(loginsByUser[l.user_email]||0)+1; });
 
+  // Module (dashboard) opens by user
+  const opensByUser = {};
+  dashOpens.forEach(l=>{ opensByUser[l.user_email]=(opensByUser[l.user_email]||0)+1; });
+
   // Dash opens by title
   const opensByDash = {};
   dashOpens.forEach(l=>{ opensByDash[l.dash_title]=(opensByDash[l.dash_title]||0)+1; });
@@ -1642,7 +1646,8 @@ async function buildPaneAnalytics(){
   const topUserRows = topUsers.map(([email,count],i)=>{
     const u=STATE.portalUsers.find(x=>x.email===email);
     const name=u?.display_name||email;
-    return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td><strong>${esc(name)}</strong><br><span style="font-size:11px;color:var(--gray-mid);">${esc(email)}</span></td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td></tr>`;
+    const opens=opensByUser[email]||0;
+    return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td><strong>${esc(name)}</strong><br><span style="font-size:11px;color:var(--gray-mid);">${esc(email)}</span></td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${opens}</td></tr>`;
   }).join('');
 
   const topDashRows = topDashes.map(([title,count],i)=>{
@@ -1695,9 +1700,9 @@ async function buildPaneAnalytics(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
       <div class="analytics-chart-card" style="margin:0;">
         <div class="analytics-chart-title">
-          Top Users <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">by logins</span>
+          Top Users <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">logins &amp; modules opened</span>
         </div>
-        ${topUserRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>User</th><th style="text-align:right;">Logins</th></tr></thead><tbody>${topUserRows}</tbody></table>` : '<div class="analytics-empty">No login data</div>'}
+        ${topUserRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>User</th><th style="text-align:right;">Logins</th><th style="text-align:right;">Modules</th></tr></thead><tbody>${topUserRows}</tbody></table>` : '<div class="analytics-empty">No login data</div>'}
       </div>
       <div class="analytics-chart-card" style="margin:0;">
         <div class="analytics-chart-title">
