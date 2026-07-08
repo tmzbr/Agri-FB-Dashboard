@@ -1585,8 +1585,10 @@ async function logEvent(type, dash){
 
 /* ══ ANALYTICS PANE ══ */
 async function buildPaneAnalytics(){
+  const isAll = STATE.analyticsPeriod === 'all';
   const days  = STATE.analyticsPeriod;
-  const since = new Date(Date.now() - days*24*60*60*1000).toISOString();
+  const since = isAll ? '1970-01-01T00:00:00.000Z'
+                      : new Date(Date.now() - days*24*60*60*1000).toISOString();
 
   const { data: rawLogs } = await sb.from('access_logs')
     .select('*').gte('created_at', since).order('created_at', {ascending:false});
@@ -1616,9 +1618,14 @@ async function buildPaneAnalytics(){
   const opensByDash = {};
   dashOpens.forEach(l=>{ opensByDash[l.dash_title]=(opensByDash[l.dash_title]||0)+1; });
 
-  // Logins by day (last N days)
+  // Logins by day. For "All", span from the earliest event (capped at 365 days).
+  let chartDays = days;
+  if(isAll){
+    const earliest = logs.reduce((m,l)=> l.created_at<m ? l.created_at : m, logs[0].created_at);
+    chartDays = Math.min(365, Math.max(1, Math.ceil((Date.now()-new Date(earliest).getTime())/864e5)+1));
+  }
   const byDay = {};
-  for(let i=days-1;i>=0;i--){
+  for(let i=chartDays-1;i>=0;i--){
     const d=new Date(Date.now()-i*864e5);
     byDay[d.toLocaleDateString('en-US',{month:'short',day:'numeric'})]=0;
   }
@@ -1639,9 +1646,11 @@ async function buildPaneAnalytics(){
   const recentLimit = STATE.analyticsRecentLimit || 20;
   const recent = logs.slice(0, recentLimit);
 
-  const periodBtns = [7,30,90].map(d=>
-    `<button class="${STATE.analyticsPeriod===d?'active':''}" onclick="STATE.analyticsPeriod=${d};renderContent();">${d}d</button>`
-  ).join('');
+  const periodBtns = [7,30,90,'all'].map(d=>{
+    const val = d==='all' ? "'all'" : d;
+    const lbl = d==='all' ? 'All' : d+'d';
+    return `<button class="${STATE.analyticsPeriod===d?'active':''}" onclick="STATE.analyticsPeriod=${val};renderContent();">${lbl}</button>`;
+  }).join('');
 
   const topUserRows = topUsers.map(([email,count],i)=>{
     const u=STATE.portalUsers.find(x=>x.email===email);
@@ -1667,10 +1676,10 @@ async function buildPaneAnalytics(){
   return `<div class="admin-panel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
       <div><h2 style="font-size:16px;font-weight:700;color:var(--black);">Portal Analytics</h2>
-        <p style="font-size:12px;color:var(--gray-mid);margin-top:3px;">Last ${days} days</p></div>
+        <p style="font-size:12px;color:var(--gray-mid);margin-top:3px;">${isAll?'All time':'Last '+days+' days'}</p></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <div class="analytics-period">${periodBtns}</div>
-        <button class="btn-outline" onclick="exportAnalyticsExcel(${days})" title="Export analytics to Excel">&#8659; Export</button>
+        <button class="btn-outline" onclick="exportAnalyticsExcel(${isAll?"'all'":days})" title="Export analytics to Excel">&#8659; Export</button>
       </div>
     </div>
 
@@ -1678,7 +1687,7 @@ async function buildPaneAnalytics(){
       <div class="analytics-kpi">
         <div class="analytics-kpi-val">${logins.length}</div>
         <div class="analytics-kpi-label">Total Logins</div>
-        <div class="analytics-kpi-sub">last ${days} days</div>
+        <div class="analytics-kpi-sub">${isAll?'all time':'last '+days+' days'}</div>
       </div>
       <div class="analytics-kpi">
         <div class="analytics-kpi-val">${activeUsers}</div>
@@ -1688,7 +1697,7 @@ async function buildPaneAnalytics(){
       <div class="analytics-kpi">
         <div class="analytics-kpi-val">${dashOpens.length}</div>
         <div class="analytics-kpi-label">Dashboard Opens</div>
-        <div class="analytics-kpi-sub">last ${days} days</div>
+        <div class="analytics-kpi-sub">${isAll?'all time':'last '+days+' days'}</div>
       </div>
     </div>
 
@@ -1756,7 +1765,8 @@ async function buildPaneAnalytics(){
 /* ══ ANALYTICS EXPORT ══ */
 async function exportAnalyticsExcel(days){
   if(!window.XLSX){ showToast('Excel library not loaded.'); return; }
-  const since=new Date(Date.now()-days*864e5).toISOString();
+  const isAll=days==='all';
+  const since=isAll?'1970-01-01T00:00:00.000Z':new Date(Date.now()-days*864e5).toISOString();
   const {data:logs}=await sb.from('access_logs').select('*').gte('created_at',since).order('created_at',{ascending:false});
   if(!logs||!logs.length){ showToast('No data to export.'); return; }
   const rows=logs.map(l=>({
@@ -1773,7 +1783,7 @@ async function exportAnalyticsExcel(days){
     {key:'Email',label:'Email'},{key:'Event',label:'Event'},
     {key:'Dashboard',label:'Dashboard'},{key:'Sector',label:'Sector'},{key:'Subsector',label:'Subsector'},
   ];
-  downloadExcel(rows,cols,'Activity Log',`Portal Analytics — Last ${days}d`);
+  downloadExcel(rows,cols,'Activity Log',`Portal Analytics — ${isAll?'All time':'Last '+days+'d'}`);
 }
 
 /* ══ START ══ */
