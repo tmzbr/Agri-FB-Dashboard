@@ -28,6 +28,22 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .seg-btn:hover:not(.on){color:var(--gray-dark);}
 .price-seg .seg-btn.on,.unit-seg .seg-btn.on{background:var(--orange);color:white;box-shadow:none;}
 .cmdty-pills{display:flex;gap:6px;flex-wrap:wrap;}
+
+/* ── Tooltip (info hover) ── */
+.info-wrap{position:relative;display:inline-flex;align-items:center;}
+.info-dot{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+  margin-left:5px;border-radius:50%;background:var(--gray-light);border:1px solid var(--border);
+  color:var(--gray-mid);font-size:10px;font-weight:700;font-style:normal;cursor:help;line-height:1;}
+.seg-btn.on .info-dot{background:rgba(255,255,255,.35);color:inherit;border-color:transparent;}
+.price-seg .seg-btn.on .info-dot{background:rgba(255,255,255,.35);color:#fff;}
+.info-tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  width:220px;background:var(--gray-dark);color:#fff;font-size:11px;font-weight:400;
+  line-height:1.4;padding:8px 10px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.18);
+  text-transform:none;letter-spacing:normal;opacity:0;visibility:hidden;transition:opacity .15s ease;
+  z-index:50;pointer-events:none;}
+.info-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:var(--gray-dark);}
+.info-wrap:hover .info-tip{opacity:1;visibility:visible;}
 .pill{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;
   border:1.5px solid var(--border);cursor:pointer;font-size:12px;font-weight:600;
   color:var(--gray-mid);background:var(--white);transition:all .15s;user-select:none;}
@@ -113,16 +129,24 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   <div class="filter-group">
     <div class="filter-label">Period</div>
     <div class="seg" id="seg-period">
-      <button class="seg-btn on" onclick="setPeriod('monthly',this)">Monthly</button>
-      <button class="seg-btn"    onclick="setPeriod('annual',this)">Annual (Crop Year)</button>
+      <button class="seg-btn"    onclick="setPeriod('monthly',this)">Monthly</button>
+      <button class="seg-btn on" onclick="setPeriod('annual',this)">Annual (Crop Year)</button>
     </div>
   </div>
   <div class="filter-sep"></div>
   <div class="filter-group">
     <div class="filter-label">Price Basis</div>
     <div class="seg price-seg" id="seg-price">
-      <button class="seg-btn on" onclick="setPrice('std',this)">Crop Avg.</button>
-      <button class="seg-btn"    onclick="setPrice('spot',this)">Spot</button>
+      <button class="seg-btn on" onclick="setPrice('std',this)">
+        <span class="info-wrap">Crop Avg.<span class="info-dot">i</span>
+          <span class="info-tip">Average price across the harvest calendar: Sep–Aug for Soybean, and Jan–Dec for Corn and Cotton.</span>
+        </span>
+      </button>
+      <button class="seg-btn"    onclick="setPrice('spot',this)">
+        <span class="info-wrap">Spot<span class="info-dot">i</span>
+          <span class="info-tip">Snapshot of the costs and price as of the reference month.</span>
+        </span>
+      </button>
     </div>
   </div>
   <div class="filter-sep"></div>
@@ -191,7 +215,7 @@ const CULT_COL={SOJA:'#FF5500',MILHO:'#FF5500',ALGODAO:'#FF5500'};
 const CULT_ALP={SOJA:'rgba(255,85,0,',MILHO:'rgba(255,85,0,',ALGODAO:'rgba(255,85,0,'};
 const CULT_LBL={SOJA:'Soybean',MILHO:'Corn',ALGODAO:'Cotton'};
 
-let ACTIVE=['SOJA'], PERIOD='monthly', PRICE='std', UNIT='brl', DRE_VIEW='history', AXIS_RIGHT='total';
+let ACTIVE=['SOJA'], PERIOD='annual', PRICE='std', UNIT='brl', DRE_VIEW='history', AXIS_RIGHT='total';
 let CH={};
 
 /* ── Helpers ── */
