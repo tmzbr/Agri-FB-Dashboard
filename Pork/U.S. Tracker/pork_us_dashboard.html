@@ -37,11 +37,11 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
 
-/* ── CONTROLS BAR — Period (left) · Mode (middle) · View (right) ── */
+/* ── CONTROLS BAR — Period (left) · View (right) — matches Chicken ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;padding:0 20px;height:40px;gap:22px;flex-shrink:0;}
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:40px;gap:16px;flex-shrink:0;}
 .ctrl-group{display:flex;align-items:center;gap:8px;}
-.ctrl-group.right{margin-left:auto;}
 .view-label{font-size:11px;font-weight:700;color:var(--gray-mid);
   text-transform:uppercase;letter-spacing:.5px;}
 .view-btns{display:flex;gap:4px;}
@@ -56,15 +56,15 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .tab-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
 .tab-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
 
-/* Mode toggle — integrated / non-integrated */
-.mode-toggle{display:flex;gap:0;border:1.5px solid var(--border);border-radius:5px;overflow:hidden;}
-.mode-btn{padding:4px 13px;font-size:12px;font-family:var(--font);cursor:pointer;
-  border:none;background:none;color:var(--gray-mid);transition:all .15s;font-weight:600;
-  white-space:nowrap;}
-.mode-btn.active.integrated{background:var(--int-color);color:white;}
-.mode-btn.active.non-integrated{background:var(--nint-color);color:white;}
-.mode-btn:not(.active):hover{background:#f5f5f5;color:var(--gray-dark);}
-.mode-divider{width:1px;background:var(--border);}
+/* Producer Type selector — lives in the left panel like Chicken's Feed Cost Lag */
+.ptype-row{display:flex;gap:5px;margin-bottom:6px;}
+.ptype-btn{flex:1;padding:6px 4px;border:1.5px solid var(--border);border-radius:4px;
+  font-size:11px;font-family:var(--font);cursor:pointer;background:none;
+  color:var(--gray-mid);transition:all .15s;text-align:center;font-weight:600;}
+.ptype-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+.ptype-btn.active[data-mode="integrated"]{background:var(--int-color);color:#fff;border-color:var(--int-color);}
+.ptype-btn.active[data-mode="non-integrated"]{background:var(--nint-color);color:#fff;border-color:var(--nint-color);}
+.ptype-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
 
 /* ── MAIN LAYOUT ── */
 .main-wrap{display:flex;flex-direction:column;}
@@ -101,12 +101,6 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .wp-section{font-size:10px;font-weight:700;color:var(--orange);
   text-transform:uppercase;letter-spacing:.7px;margin:14px 0 8px;}
 .wp-section:first-of-type{margin-top:2px;}
-
-/* formula box */
-.formula-box{background:#FAFAFA;border:1px solid var(--border);border-radius:5px;
-  padding:10px 12px;margin-bottom:8px;}
-.formula-line{font-size:11px;color:var(--gray-dark);line-height:1.7;font-family:monospace;}
-.formula-line span{color:var(--orange);font-weight:700;}
 
 /* info rows */
 .info-row{display:flex;justify-content:space-between;align-items:center;
@@ -182,7 +176,7 @@ tr:hover td{background:#FFF8F5;}
 </div>
 <div class="orange-rule"></div>
 
-<!-- CONTROLS — Period (granularity) left · Mode middle · View right -->
+<!-- CONTROLS — Period (granularity) on the left, View on the right -->
 <div class="controls-bar">
   <div class="ctrl-group">
     <span class="view-label">Period:</span>
@@ -193,14 +187,6 @@ tr:hover td{background:#FFF8F5;}
     </div>
   </div>
   <div class="ctrl-group">
-    <span class="view-label">Mode:</span>
-    <div class="mode-toggle">
-      <button class="mode-btn active integrated" data-mode="integrated" onclick="setMode('integrated')">Integrated</button>
-      <div class="mode-divider"></div>
-      <button class="mode-btn non-integrated" data-mode="non-integrated" onclick="setMode('non-integrated')">Non-Integrated</button>
-    </div>
-  </div>
-  <div class="ctrl-group right">
     <span class="view-label">View:</span>
     <div class="view-btns">
       <button class="view-btn" data-view="all"  onclick="setView('all')">All</button>
@@ -238,11 +224,14 @@ tr:hover td{background:#FFF8F5;}
 
     <!-- INFO PANEL -->
     <div class="info-panel">
-      <div class="panel-title">Spread Model</div>
+      <div class="panel-title">Model Parameters</div>
 
-      <div class="wp-section">Formula</div>
-      <div class="formula-box" id="formula-box"><!-- filled by JS --></div>
-      <div class="desc-text" id="formula-desc"></div>
+      <div class="wp-section">Producer Type</div>
+      <div class="ptype-row">
+        <button class="ptype-btn active" data-mode="integrated" onclick="setMode('integrated')">Integrated</button>
+        <button class="ptype-btn" data-mode="non-integrated" onclick="setMode('non-integrated')">Non-Integrated</button>
+      </div>
+      <div class="ptype-desc" id="ptype-desc"></div>
 
       <div class="wp-section">Latest Quarter</div>
       <div class="info-row">
@@ -280,7 +269,7 @@ tr:hover td{background:#FFF8F5;}
     <!-- TABLE PANEL -->
     <div class="table-panel">
       <div class="table-hint">
-        Table follows the <strong>&nbsp;Period&nbsp;</strong> selector above (Quarterly · Monthly · Weekly)
+        Table follows the <strong>Period</strong> selector above (Quarterly · Monthly · Weekly)
       </div>
       <div class="table-wrap">
         <table>
@@ -374,7 +363,7 @@ async function loadDB() {
 // ─── MODE / VIEW / TAB ───────────────────────────────────────────────────────
 function setMode(mode) {
   currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b =>
+  document.querySelectorAll('.ptype-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
   updateLatestLabel();
   render();
@@ -495,19 +484,9 @@ function updateInfoPanel() {
   const color = spreadColor();
   const isInt = currentMode === 'integrated';
 
-  document.getElementById('formula-box').innerHTML = isInt ? `
-    <div class="formula-line">spread = <span>(Carcass / 45.36)</span></div>
-    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(FeedGrain × 5.8)</span></div>
-    <div class="formula-line" style="margin-top:4px">FeedGrain = <span>⅔ Corn + ⅓ SBM</span> (USD/kg)</div>
-    <div class="formula-line">applied with a <span>6-month lag</span></div>
-  ` : `
-    <div class="formula-line">spread = <span>(Carcass / HogPrice)</span></div>
-    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>45.36</span></div>
-  `;
-
-  document.getElementById('formula-desc').textContent = isInt
-    ? 'Integrated producers own hog farms, so their cost is the feed-grain basket (⅔ corn + ⅓ SBM), lagged ~6 months. Feed grain is the dominant cost. FCR 5.8 kg feed per kg carcass. Spread = carcass revenue ÷ feed cost (×).'
-    : 'Non-integrated packers buy live hogs on the open market. Spread measures the packing margin per kg (USD/kg), reflecting the carcass-to-hog price differential.';
+  document.getElementById('ptype-desc').textContent = isInt
+    ? 'Integrated producers own hog farms — cost is the feed-grain basket (6-month lag). Spread = Carcass ÷ Feed Grain (×).'
+    : 'Non-integrated packers buy live hogs on the open market. Spread = Carcass ÷ Hog Price (USD/kg packing margin).';
 
   document.getElementById('top-sub').innerHTML = isInt
     ? 'Integrated spread — Carcass ÷ Feed Grain &nbsp;<span class="mode-badge integrated">Integrated</span>'
@@ -792,7 +771,6 @@ function renderTable() {
     <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg (6m lag)</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
                 : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg)</span>'}</th>
-    <th>QoQ Δ</th>
   </tr>`;
 
   const rows = [...computeSeries()].reverse();
@@ -802,22 +780,12 @@ function renderTable() {
       ? `<span class="${tdClass}">${formatSpread(sv)}</span>`
       : '<span class="td-na">—</span>';
 
-    let deltaFmt = '<span class="td-na">—</span>';
-    if (r.dSpread != null) {
-      const sign = r.dSpread >= 0 ? '+' : '';
-      const cls  = r.dSpread >= 0 ? 'td-pos' : 'td-neg';
-      const dStr = isInt ? sign + r.dSpread.toFixed(3) + '×'
-                         : sign + r.dSpread.toFixed(4);
-      deltaFmt = `<span class="${cls}">${dStr}</span>`;
-    }
-
     return `<tr>
       <td>${r.quarter}</td>
       <td>${fmtN(r.carcass)}</td>
       <td>${fmtN(r.hog_price)}</td>
       <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
       <td>${spreadFmt}</td>
-      <td>${deltaFmt}</td>
     </tr>`;
   }).join('');
 }
