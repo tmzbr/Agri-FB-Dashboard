@@ -71,10 +71,11 @@ SCHEMA — table: quarterly
   hog_price    REAL               avg USD/cwt
   corn         REAL               avg $/bu
   sbm          REAL               avg $/ton
-  fc_spot      REAL               avg feed cost spot USD/cwt
-  fc_6m        REAL               feed cost with 6Q lag
-  spread_integrated    REAL       avg carcass / fc_6m
-  spread_non_integrated REAL      avg carcass / hog_price
+  fc_spot      REAL               avg corn/SBM basket $/ton (informational)
+  fc_6m        REAL               corn/SBM basket with 2Q lag (informational)
+  feed_grain_6m REAL              feed-grain basket USD/kg (6m lag) — drives integrated
+  spread_integrated    REAL       (carcass/45.36) / (feed_grain_6m × 5.8)
+  spread_non_integrated REAL      (carcass / hog_price) / 45.36
   updated_at   TEXT
 """
 
@@ -777,12 +778,20 @@ def init_db(conn):
         sbm                   REAL,
         fc_spot               REAL,
         fc_6m                 REAL,
+        feed_grain_6m         REAL,
         spread_integrated     REAL,
         spread_non_integrated REAL,
         updated_at            TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_qtr_year_q ON quarterly(year_q);
     """)
+    # ── Migration: add feed_grain_6m to pre-existing quarterly tables ────────
+    # The integrated spread is grain-based (Carcass ÷ FeedGrain), so the
+    # quarterly table must expose the feed-grain basket price the dashboard
+    # displays. Older DBs were created without this column.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(quarterly)").fetchall()}
+    if "feed_grain_6m" not in cols:
+        conn.execute("ALTER TABLE quarterly ADD COLUMN feed_grain_6m REAL")
     conn.commit()
 
 
@@ -1354,13 +1363,18 @@ def materialise_quarterly(conn):
         if r[3] is not None: d["corn"].append(r[3])
         if r[4] is not None: d["sbm"].append(r[4])
         if r[5] is not None: d["fc_spot"].append(r[5])
-        if r[6] is not None: d["feed_grain_6m"].append(r[6])
+        # feed_grain_6m is USD/kg with the 6-month lag already baked in.
+        # Ignore the 0.0 placeholder rows (stub weeks with no grain data).
+        if r[6] is not None and r[6] > 0: d["feed_grain_6m"].append(r[6])
         if r[7] is not None: d["spread_int"].append(r[7])
         if r[8] is not None: d["spread_nint"].append(r[8])
 
     def avg(lst): return sum(lst)/len(lst) if lst else None
 
-    # Build quarterly rows with 6-month (2Q) lag for fc_6m
+    # Build quarterly rows. fc_6m keeps the corn/SBM basket (2-quarter lag) for
+    # transparency, but the integrated spread is driven by feed_grain_6m — the
+    # grain-basket series (USD/kg) that carries full history and already embeds
+    # the 6-month lag. This matches the seed and the dashboard.
     quarters = sorted(qdata.keys())
     fc_spot_by_q = {k: avg(qdata[k]["fc_spot"]) for k in quarters}
 
@@ -1370,26 +1384,29 @@ def materialise_quarterly(conn):
         label = f"{q}Q{str(yr)[2:]}"
         yq    = yr * 10 + q
 
-        # fc_6m: fc_spot averaged 2 quarters ago (≈6 months lag)
+        # fc_6m: corn/SBM basket ($/ton) averaged 2 quarters ago (≈6 months lag).
+        # Informational only — None until corn/SBM history is populated.
         fc_6m = fc_spot_by_q.get(quarters[i-2]) if i >= 2 else None
 
         carcass   = avg(d["carcass"])
         hog_price = avg(d["hog_price"])
+        feed_grain_6m = avg(d["feed_grain_6m"])   # USD/kg, already 6m-lagged
 
-        # spread_integrated  = (Carcass/45.36) / (fc_6m/1000 × HOG_FCR)
-        #   carcass/45.36     → USD/kg carcass
-        #   fc_6m/1000×5.8    → USD/kg carcass equiv feed cost ($/ton ÷ 1000 × FCR)
+        # spread_integrated  = (Carcass/45.36) / (feed_grain_6m × HOG_FCR)
+        #   carcass/45.36           → USD/kg carcass
+        #   feed_grain_6m × 5.8     → USD/kg carcass-equivalent feed cost
         # spread_non_integrated = (Carcass/Hog) / 45.36
-        spread_int  = ((carcass / 45.36) / (fc_6m / 1000 * HOG_FCR)) if (carcass and fc_6m) else None
-        spread_nint = ((carcass / hog_price) / 45.36)                 if (carcass and hog_price) else avg(d["spread_nint"])
+        spread_int  = ((carcass / 45.36) / (feed_grain_6m * HOG_FCR)) if (carcass and feed_grain_6m) else avg(d["spread_int"])
+        spread_nint = ((carcass / hog_price) / 45.36)                  if (carcass and hog_price)     else avg(d["spread_nint"])
 
         conn.execute("""
             INSERT OR REPLACE INTO quarterly
             (quarter, year_q, year, q, carcass, hog_price, corn, sbm,
-             fc_spot, fc_6m, spread_integrated, spread_non_integrated, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+             fc_spot, fc_6m, feed_grain_6m, spread_integrated, spread_non_integrated, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (label, yq, yr, q, carcass, hog_price,
               avg(d["corn"]), avg(d["sbm"]), avg(d["fc_spot"]), fc_6m,
+              round(feed_grain_6m, 6) if feed_grain_6m else None,
               round(spread_int,  4) if spread_int  else None,
               round(spread_nint, 4) if spread_nint else None,
               ts))

@@ -37,21 +37,11 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
 
-/* ── CONTROLS BAR ── */
+/* ── CONTROLS BAR — Period (left) · Mode (middle) · View (right) ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;padding:0 20px;height:44px;gap:20px;flex-shrink:0;}
-
-/* Mode toggle — integrated / non-integrated */
-.mode-toggle{display:flex;gap:0;border:1.5px solid var(--border);border-radius:5px;overflow:hidden;}
-.mode-btn{padding:5px 14px;font-size:12px;font-family:var(--font);cursor:pointer;
-  border:none;background:none;color:var(--gray-mid);transition:all .15s;font-weight:600;
-  white-space:nowrap;}
-.mode-btn.active.integrated{background:var(--int-color);color:white;}
-.mode-btn.active.non-integrated{background:var(--nint-color);color:white;}
-.mode-btn:not(.active):hover{background:#f5f5f5;color:var(--gray-dark);}
-.mode-divider{width:1px;background:var(--border);}
-
-.controls-spacer{flex:1;}
+  display:flex;align-items:center;padding:0 20px;height:40px;gap:22px;flex-shrink:0;}
+.ctrl-group{display:flex;align-items:center;gap:8px;}
+.ctrl-group.right{margin-left:auto;}
 .view-label{font-size:11px;font-weight:700;color:var(--gray-mid);
   text-transform:uppercase;letter-spacing:.5px;}
 .view-btns{display:flex;gap:4px;}
@@ -60,6 +50,21 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   font-family:var(--font);transition:all .15s;}
 .view-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
 .view-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+.tab-btn{padding:4px 12px;font-size:12px;border:1px solid var(--border);
+  border-radius:4px;cursor:pointer;font-family:var(--font);
+  background:none;color:var(--gray-mid);transition:all .12s;}
+.tab-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.tab-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+
+/* Mode toggle — integrated / non-integrated */
+.mode-toggle{display:flex;gap:0;border:1.5px solid var(--border);border-radius:5px;overflow:hidden;}
+.mode-btn{padding:4px 13px;font-size:12px;font-family:var(--font);cursor:pointer;
+  border:none;background:none;color:var(--gray-mid);transition:all .15s;font-weight:600;
+  white-space:nowrap;}
+.mode-btn.active.integrated{background:var(--int-color);color:white;}
+.mode-btn.active.non-integrated{background:var(--nint-color);color:white;}
+.mode-btn:not(.active):hover{background:#f5f5f5;color:var(--gray-dark);}
+.mode-divider{width:1px;background:var(--border);}
 
 /* ── MAIN LAYOUT ── */
 .main-wrap{display:flex;flex-direction:column;}
@@ -89,6 +94,8 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── INFO PANEL ── */
 .info-panel{background:var(--white);border-right:1px solid var(--border);
   padding:14px 14px 24px;overflow-y:auto;}
+.info-panel::-webkit-scrollbar{width:4px;}
+.info-panel::-webkit-scrollbar-thumb{background:#e0e0e0;border-radius:2px;}
 .panel-title{font-size:13px;font-weight:700;color:var(--black);
   margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--orange);}
 .wp-section{font-size:10px;font-weight:700;color:var(--orange);
@@ -114,12 +121,10 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 
 /* ── TABLE PANEL ── */
 .table-panel{display:flex;flex-direction:column;min-height:300px;}
-.table-tabs{display:flex;align-items:center;padding:8px 16px 0;
-  border-bottom:1px solid var(--border);background:var(--white);flex-shrink:0;gap:4px;}
-.tab-btn{padding:5px 14px;font-size:12px;border:1px solid var(--border);
-  border-radius:4px 4px 0 0;cursor:pointer;font-family:var(--font);
-  background:none;color:var(--gray-mid);transition:all .12s;}
-.tab-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.table-hint{display:flex;align-items:center;padding:8px 16px;
+  border-bottom:1px solid var(--border);background:var(--white);flex-shrink:0;
+  font-size:11px;color:var(--gray-mid);}
+.table-hint strong{color:var(--gray-dark);}
 .table-wrap{overflow:auto;max-height:460px;}
 .table-wrap::-webkit-scrollbar{width:5px;height:5px;}
 .table-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
@@ -170,36 +175,38 @@ tr:hover td{background:#FFF8F5;}
   </button>
   <div class="top-bar-divider"></div>
   <div>
-    <div class="top-title">🇺🇸 U.S. Pork Spread Tracker</div>
-    <div class="top-sub" id="top-sub">Quarterly spread model — select Integrated or Non-Integrated view</div>
+    <div class="top-title">U.S. Pork Spread Tracker</div>
+    <div class="top-sub" id="top-sub">Quarterly spread model — Integrated (Carcass ÷ Feed Grain) vs. Non-Integrated (Carcass ÷ Hog)</div>
   </div>
   <div class="top-latest">Latest: <strong id="latest-q">—</strong></div>
 </div>
 <div class="orange-rule"></div>
 
-<!-- CONTROLS BAR -->
+<!-- CONTROLS — Period (granularity) left · Mode middle · View right -->
 <div class="controls-bar">
-
-  <!-- Mode selector -->
-  <span class="view-label">MODE:</span>
-  <div class="mode-toggle">
-    <button class="mode-btn active integrated" data-mode="integrated" onclick="setMode('integrated')">
-      Integrated
-    </button>
-    <div class="mode-divider"></div>
-    <button class="mode-btn non-integrated" data-mode="non-integrated" onclick="setMode('non-integrated')">
-      Non-Integrated
-    </button>
+  <div class="ctrl-group">
+    <span class="view-label">Period:</span>
+    <div class="view-btns">
+      <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+      <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+      <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
+    </div>
   </div>
-
-  <div class="controls-spacer"></div>
-
-  <!-- View range -->
-  <span class="view-label">VIEW:</span>
-  <div class="view-btns">
-    <button class="view-btn" data-view="all"  onclick="setView('all')">All</button>
-    <button class="view-btn active" data-view="3y" onclick="setView('3y')">Last 3 Years</button>
-    <button class="view-btn" data-view="1y"  onclick="setView('1y')">Last 12 Months</button>
+  <div class="ctrl-group">
+    <span class="view-label">Mode:</span>
+    <div class="mode-toggle">
+      <button class="mode-btn active integrated" data-mode="integrated" onclick="setMode('integrated')">Integrated</button>
+      <div class="mode-divider"></div>
+      <button class="mode-btn non-integrated" data-mode="non-integrated" onclick="setMode('non-integrated')">Non-Integrated</button>
+    </div>
+  </div>
+  <div class="ctrl-group right">
+    <span class="view-label">View:</span>
+    <div class="view-btns">
+      <button class="view-btn" data-view="all"  onclick="setView('all')">All</button>
+      <button class="view-btn active" data-view="3y" onclick="setView('3y')">Last 3 Years</button>
+      <button class="view-btn" data-view="1y"  onclick="setView('1y')">Last 12 Months</button>
+    </div>
   </div>
 </div>
 
@@ -208,11 +215,11 @@ tr:hover td{background:#FFF8F5;}
 
   <!-- CHARTS ROW -->
   <div class="charts-row">
-    <!-- LEFT: QoQ Delta -->
-    <div class="chart-card">
+    <!-- LEFT: QoQ Delta (quarterly only) -->
+    <div class="chart-card" id="delta-card">
       <div class="chart-card-header">
         <div class="chart-title" id="chart1-title">QoQ ΔSpread — by Quarter</div>
-        <div class="chart-stat" id="chart1-stat">r = <strong>—</strong> &nbsp; R² = <strong>—</strong> &nbsp; N = <strong>—</strong></div>
+        <div class="chart-stat" id="chart1-stat">N = <strong>—</strong></div>
       </div>
       <div class="chart-wrap"><canvas id="deltaChart"></canvas></div>
     </div>
@@ -234,9 +241,7 @@ tr:hover td{background:#FFF8F5;}
       <div class="panel-title">Spread Model</div>
 
       <div class="wp-section">Formula</div>
-      <div class="formula-box" id="formula-box">
-        <!-- filled by JS -->
-      </div>
+      <div class="formula-box" id="formula-box"><!-- filled by JS --></div>
       <div class="desc-text" id="formula-desc"></div>
 
       <div class="wp-section">Latest Quarter</div>
@@ -248,7 +253,7 @@ tr:hover td{background:#FFF8F5;}
         <span class="info-label">Hog Price</span>
         <span class="info-val" id="info-hog">—</span>
       </div>
-      <div class="info-row">
+      <div class="info-row" id="row-feedgrain">
         <span class="info-label">Feed Grain (6m)</span>
         <span class="info-val" id="info-fg">—</span>
       </div>
@@ -274,10 +279,8 @@ tr:hover td{background:#FFF8F5;}
 
     <!-- TABLE PANEL -->
     <div class="table-panel">
-      <div class="table-tabs">
-        <button class="tab-btn active" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
-        <button class="tab-btn" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
-        <button class="tab-btn" data-tab="weekly" onclick="setTab('weekly')">Weekly</button>
+      <div class="table-hint">
+        Table follows the <strong>&nbsp;Period&nbsp;</strong> selector above (Quarterly · Monthly · Weekly)
       </div>
       <div class="table-wrap">
         <table>
@@ -289,10 +292,10 @@ tr:hover td{background:#FFF8F5;}
 
   </div><!-- bottom-row -->
 
-  <div class="note-bar">
+  <div class="note-bar" id="note-bar">
     <em>Integrated spread</em>: (Carcass ÷ 45.36) ÷ (Feed Grain USD/kg × 5.8) &nbsp;·&nbsp;
     <em>Non-Integrated spread</em>: (Carcass ÷ Hog Price) ÷ 45.36 &nbsp;·&nbsp;
-    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg (6-month lag) · FCR: 5.8×
+    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (6-month lag, ⅔ corn + ⅓ SBM) · FCR: 5.8×
   </div>
 
 </div><!-- main-wrap -->
@@ -303,7 +306,7 @@ let DB_ROWS     = [];
 let WEEKLY_ROWS = [];
 let charts      = {};
 let currentMode = 'integrated';   // 'integrated' | 'non-integrated'
-let currentView = '3y';
+let currentView = '3y';           // 'all' | '3y' | '1y'
 let currentTab  = 'quarterly';    // 'quarterly' | 'monthly' | 'weekly'
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
@@ -330,7 +333,7 @@ async function loadDB() {
 
     const stmt = db.exec(`
       SELECT quarter, year_q, year, q,
-             carcass, hog_price, corn, sbm, fc_spot, fc_6m,
+             carcass, hog_price, corn, sbm, fc_spot, fc_6m, feed_grain_6m,
              spread_integrated, spread_non_integrated
       FROM quarterly ORDER BY year_q ASC
     `);
@@ -340,10 +343,11 @@ async function loadDB() {
       const o = {}; cols.forEach((c,i) => { o[c] = r[i]; }); return o;
     });
 
-    // Load weekly rows
+    // Load weekly rows — include integrated spread + feed grain so all
+    // granularities support both modes and show the grain cost.
     const wstmt = db.exec(`
-      SELECT report_date, carcass, hog_price, corn, sbm,
-             fc_spot, spread_non_integrated
+      SELECT report_date, carcass, hog_price, corn, sbm, fc_spot,
+             feed_grain_6m, spread_integrated, spread_non_integrated
       FROM weekly ORDER BY report_date ASC
     `);
     if (wstmt.length) {
@@ -354,13 +358,10 @@ async function loadDB() {
     }
 
     db.close();
-
     loadEl.style.display = 'none';
+    document.getElementById('note-bar').style.display = 'block';
 
-    const latest = [...DB_ROWS].reverse().find(r =>
-      r.spread_integrated != null || r.spread_non_integrated != null);
-    if (latest) document.getElementById('latest-q').textContent = latest.quarter;
-
+    updateLatestLabel();
     render();
   } catch(e) {
     loadEl.innerHTML = `<div style="text-align:center;padding:40px">
@@ -370,12 +371,12 @@ async function loadDB() {
   }
 }
 
-// ─── MODE & VIEW ─────────────────────────────────────────────────────────────
+// ─── MODE / VIEW / TAB ───────────────────────────────────────────────────────
 function setMode(mode) {
   currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === mode);
-  });
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode));
+  updateLatestLabel();
   render();
 }
 
@@ -383,18 +384,14 @@ function setView(v) {
   currentView = v;
   document.querySelectorAll('.view-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.view === v));
-  renderCharts();
+  render();
 }
 
 function setTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
-  // Show charts only for quarterly
-  document.querySelector('.charts-row').style.display = tab === 'quarterly' ? '' : 'none';
-  if (tab === 'quarterly') render();
-  else if (tab === 'monthly') renderMonthlyTable();
-  else renderWeeklyTable();
+  render();
 }
 
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
@@ -410,6 +407,10 @@ function spreadColor() {
     : getComputedStyle(document.documentElement).getPropertyValue('--nint-color').trim();
 }
 
+function spreadBgColor() {
+  return currentMode === 'integrated' ? 'rgba(255,85,0,0.07)' : 'rgba(41,128,185,0.07)';
+}
+
 function spreadLabel() {
   return currentMode === 'integrated'
     ? 'Integrated Spread (×)'
@@ -423,6 +424,15 @@ function formatSpread(v) {
     : v.toFixed(4) + ' USD/kg';
 }
 
+function latestRowForMode() {
+  return [...DB_ROWS].reverse().find(r => getSpread(r) != null);
+}
+
+function updateLatestLabel() {
+  const latest = latestRowForMode();
+  document.getElementById('latest-q').textContent = latest ? latest.quarter : '—';
+}
+
 function computeSeries() {
   return DB_ROWS.map((row, i) => {
     const spread     = getSpread(row);
@@ -433,6 +443,7 @@ function computeSeries() {
   });
 }
 
+// Quarterly view-window filter (by quarter count)
 function filterByView(series) {
   if (currentView === 'all') return series;
   const last = [...series].reverse().find(r => r.spread != null);
@@ -443,29 +454,39 @@ function filterByView(series) {
   return series.slice(Math.max(0, idx - cutQ + 1));
 }
 
-// ─── PEARSON ─────────────────────────────────────────────────────────────────
-function pearson(xs, ys) {
-  const pairs = xs.map((x,i) => [x,ys[i]]).filter(([a,b]) => a!=null && b!=null);
-  const n = pairs.length;
-  if (n < 4) return { r:null, r2:null, n };
-  const mx = pairs.reduce((s,[a])=>s+a,0)/n;
-  const my = pairs.reduce((s,[,b])=>s+b,0)/n;
-  let num=0, dx=0, dy=0;
-  for (const [a,b] of pairs) { num+=(a-mx)*(b-my); dx+=(a-mx)**2; dy+=(b-my)**2; }
-  const r = Math.sqrt(dx*dy)>0 ? num/Math.sqrt(dx*dy) : null;
-  return { r, r2: r!=null ? r*r : null, n };
+// Fine-granularity view-window filter (key = 'month' YYYY-MM | 'week' YYYY-MM-DD)
+function filterFineByView(rows, key) {
+  if (currentView === 'all' || !rows.length) return rows;
+  const toD = s => new Date((key === 'month' ? s + '-01' : s) + 'T00:00:00Z');
+  const lastD  = toD(rows[rows.length - 1][key]);
+  const cutoff = new Date(lastD);
+  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - (currentView === '3y' ? 3 : 1));
+  return rows.filter(r => toD(r[key]) >= cutoff);
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render() {
   updateInfoPanel();
+  const deltaCard = document.getElementById('delta-card');
+  const chartsRow = document.querySelector('.charts-row');
+
   if (currentTab === 'quarterly') {
-    renderCharts();
+    // Quarterly: both charts (ΔSpread bars + Spread level).
+    deltaCard.style.display = '';
+    chartsRow.style.gridTemplateColumns = '1fr 1fr';
+    renderQuarterlyCharts();
     renderTable();
-  } else if (currentTab === 'monthly') {
-    renderMonthlyTable();
   } else {
-    renderWeeklyTable();
+    // Monthly / Weekly: single full-width spread level chart + fine table.
+    deltaCard.style.display = 'none';
+    chartsRow.style.gridTemplateColumns = '1fr';
+    const isMonth = currentTab === 'monthly';
+    const key     = isMonth ? 'month' : 'week';
+    const agg     = isMonth ? computeMonthly() : computeWeekly();   // newest-first
+    const asc     = [...agg].reverse();
+    const vis     = filterFineByView(asc, key);
+    renderFineLevelChart(vis, key);
+    if (isMonth) renderMonthlyTable(); else renderWeeklyTable();
   }
 }
 
@@ -474,36 +495,36 @@ function updateInfoPanel() {
   const color = spreadColor();
   const isInt = currentMode === 'integrated';
 
-  // Formula box
   document.getElementById('formula-box').innerHTML = isInt ? `
     <div class="formula-line">spread = <span>(Carcass / 45.36)</span></div>
-    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(fc_6m / 1000 × 5.8)</span></div>
-    <div class="formula-line" style="margin-top:4px">fc_spot = <span>⅔ × Corn × 39.368</span> + <span>⅓ × SBM</span></div>
-    <div class="formula-line">fc_6m = fc_spot with <span>2-quarter lag</span></div>
+    <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>(FeedGrain × 5.8)</span></div>
+    <div class="formula-line" style="margin-top:4px">FeedGrain = <span>⅔ Corn + ⅓ SBM</span> (USD/kg)</div>
+    <div class="formula-line">applied with a <span>6-month lag</span></div>
   ` : `
     <div class="formula-line">spread = <span>(Carcass / HogPrice)</span></div>
     <div class="formula-line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ <span>45.36</span></div>
   `;
 
   document.getElementById('formula-desc').textContent = isInt
-    ? 'Integrated producers own hog farms. Feed cost basket: 2/3 corn (Central IL $/bu → $/ton) + 1/3 SBM (Illinois $/ton). fc_6m applies a 2-quarter lag (~6 months). FCR 5.8 kg feed per kg carcass.'
-    : 'Non-integrated packers buy live hogs on the open market. Spread measures packing margin per kg (USD/kg), reflecting the carcass-to-hog price differential.';
+    ? 'Integrated producers own hog farms, so their cost is the feed-grain basket (⅔ corn + ⅓ SBM), lagged ~6 months. Feed grain is the dominant cost. FCR 5.8 kg feed per kg carcass. Spread = carcass revenue ÷ feed cost (×).'
+    : 'Non-integrated packers buy live hogs on the open market. Spread measures the packing margin per kg (USD/kg), reflecting the carcass-to-hog price differential.';
 
-  // Top sub
   document.getElementById('top-sub').innerHTML = isInt
-    ? 'Integrated spread — Carcass ÷ Feed Cost &nbsp;<span class="mode-badge integrated">Integrated</span>'
+    ? 'Integrated spread — Carcass ÷ Feed Grain &nbsp;<span class="mode-badge integrated">Integrated</span>'
     : 'Non-Integrated spread — Carcass ÷ Hog Price &nbsp;<span class="mode-badge non-integrated">Non-Integrated</span>';
 
-  // Latest quarter stats
-  const latest = [...DB_ROWS].reverse().find(r =>
-    r.spread_integrated != null || r.spread_non_integrated != null);
+  // Feed grain row is only meaningful in integrated mode
+  document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
+
+  // Latest quarter for the active mode
+  const latest = latestRowForMode();
   if (latest) {
     document.getElementById('info-carcass').textContent =
       latest.carcass != null ? `$${latest.carcass.toFixed(2)}/cwt` : '—';
     document.getElementById('info-hog').textContent =
       latest.hog_price != null ? `$${latest.hog_price.toFixed(2)}/cwt` : '—';
     document.getElementById('info-fg').textContent =
-      latest.fc_6m != null ? `$${latest.fc_6m.toFixed(1)}/ton` : '—';
+      latest.feed_grain_6m != null ? `$${latest.feed_grain_6m.toFixed(4)}/kg` : '—';
 
     const sv = getSpread(latest);
     const infoSpread = document.getElementById('info-spread');
@@ -515,40 +536,33 @@ function updateInfoPanel() {
   const all = DB_ROWS.map(r => getSpread(r)).filter(v => v != null);
   if (all.length) {
     const avg = all.reduce((s,v)=>s+v,0)/all.length;
-    const mx  = Math.max(...all);
-    const mn  = Math.min(...all);
     document.getElementById('stat-avg').textContent = formatSpread(avg);
-    document.getElementById('stat-max').textContent = formatSpread(mx);
-    document.getElementById('stat-min').textContent = formatSpread(mn);
+    document.getElementById('stat-max').textContent = formatSpread(Math.max(...all));
+    document.getElementById('stat-min').textContent = formatSpread(Math.min(...all));
   }
 }
 
-// ─── CHART 1: QoQ Delta ──────────────────────────────────────────────────────
-function renderCharts() {
+// ─── QUARTERLY CHARTS ────────────────────────────────────────────────────────
+function renderQuarterlyCharts() {
   const allSeries = computeSeries();
   const series    = filterByView(allSeries);
   const color     = spreadColor();
   const isInt     = currentMode === 'integrated';
 
-  // Stats over full series
   const allValid = allSeries.filter(r => r.dSpread != null);
-  const corrSelf = pearson(allValid.map(r => r.spread), allValid.map((_,i) => i));
-  const rStr  = '—'; // no external GM to correlate against for pork
   document.getElementById('chart1-stat').innerHTML =
     `N = <strong>${allValid.length}</strong> quarters`;
 
-  // Chart titles
   document.getElementById('chart1-title').textContent =
     `QoQ ΔSpread — ${isInt ? 'Integrated' : 'Non-Integrated'}`;
   document.getElementById('chart2-title').textContent =
     `Spread Level — ${isInt ? 'Integrated (×)' : 'Non-Integrated (USD/kg)'}`;
 
-  // Average line for level chart
   const validSpreads = allSeries.filter(r => r.spread != null).map(r => r.spread);
   const avg = validSpreads.length ? validSpreads.reduce((s,v)=>s+v,0)/validSpreads.length : null;
 
   // ── Chart 1: QoQ Delta ────────────────────────────────────────────────────
-  const deltaValid = series.filter(r => r.dSpread != null);
+  const deltaValid  = series.filter(r => r.dSpread != null);
   const deltaLabels = deltaValid.map(r => r.quarter);
   const deltaData   = deltaValid.map(r => r.dSpread);
 
@@ -564,10 +578,8 @@ function renderCharts() {
         backgroundColor: deltaData.map(v =>
           v >= 0
             ? (isInt ? 'rgba(255,85,0,0.80)' : 'rgba(41,128,185,0.80)')
-            : 'rgba(160,160,160,0.55)'
-        ),
-        borderRadius: 3,
-        borderSkipped: false,
+            : 'rgba(160,160,160,0.55)'),
+        borderRadius: 3, borderSkipped: false,
       }]
     },
     options: {
@@ -575,25 +587,18 @@ function renderCharts() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const v = ctx.parsed.y;
-              const sign = v >= 0 ? '+' : '';
-              return isInt
-                ? `ΔSpread: ${sign}${v.toFixed(4)}×`
-                : `ΔSpread: ${sign}${v.toFixed(5)} USD/kg`;
-            }
+        tooltip: { callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y, sign = v >= 0 ? '+' : '';
+            return isInt ? `ΔSpread: ${sign}${v.toFixed(4)}×`
+                         : `ΔSpread: ${sign}${v.toFixed(5)} USD/kg`;
           }
-        }
+        } }
       },
       scales: {
         x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
-        y: {
-          grid:{color:'#f0f0f0'},
-          ticks:{font:{size:10},color:'#888',
-            callback: v => (v>=0?'+':'')+v.toFixed(isInt?3:4)+(isInt?'×':'')},
-        }
+        y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:'#888',
+             callback: v => (v>=0?'+':'')+v.toFixed(isInt?3:4)+(isInt?'×':'')} }
       }
     }
   });
@@ -611,23 +616,13 @@ function renderCharts() {
     data: {
       labels: levelLabels,
       datasets: [
-        {
-          label: spreadLabel(),
-          data: levelData,
-          borderColor: color,
-          backgroundColor: isInt ? 'rgba(255,85,0,0.07)' : 'rgba(41,128,185,0.07)',
-          tension: 0.35, borderWidth: 2.5,
-          pointRadius: 3, pointBackgroundColor: color,
-          fill: true, spanGaps: true,
-        },
-        {
-          label: 'Historical Avg',
-          data: avgLine,
-          borderColor: '#aaa',
-          backgroundColor: 'transparent',
-          tension: 0, borderWidth: 1.5, borderDash: [6,4],
-          pointRadius: 0, spanGaps: true,
-        }
+        { label: spreadLabel(), data: levelData,
+          borderColor: color, backgroundColor: spreadBgColor(),
+          tension: 0.35, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: color,
+          fill: true, spanGaps: true },
+        { label: 'Historical Avg', data: avgLine,
+          borderColor: '#aaa', backgroundColor: 'transparent',
+          tension: 0, borderWidth: 1.5, borderDash: [6,4], pointRadius: 0, spanGaps: true }
       ]
     },
     options: {
@@ -635,33 +630,24 @@ function renderCharts() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position:'top', labels:{font:{size:10.5},boxWidth:12,padding:12,color:'#555'} },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const v = ctx.parsed.y;
-              if (v == null) return null;
-              const lbl = ctx.dataset.label;
-              return isInt
-                ? `${lbl}: ${v.toFixed(3)}×`
-                : `${lbl}: ${v.toFixed(4)} USD/kg`;
-            }
+        tooltip: { callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y; if (v == null) return null;
+            return isInt ? `${ctx.dataset.label}: ${v.toFixed(3)}×`
+                         : `${ctx.dataset.label}: ${v.toFixed(4)} USD/kg`;
           }
-        }
+        } }
       },
       scales: {
         x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
-        y: {
-          grid:{color:'#f0f0f0'},
-          ticks:{font:{size:10},color:color,
-            callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
-          title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
-            font:{size:9.5},color:color}
-        }
+        y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:color,
+             callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
+             title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
+               font:{size:9.5},color:color} }
       }
     }
   });
 
-  // chart2 stat — show avg vs latest
   if (avg != null && levelData.length) {
     const latest = levelData[levelData.length-1];
     const vs = latest - avg;
@@ -672,66 +658,99 @@ function renderCharts() {
   }
 }
 
-// ─── MONTHLY / WEEKLY TABLES ──────────────────────────────────────────────────
+// ─── FINE-GRANULARITY LEVEL CHART (monthly / weekly) ─────────────────────────
+function fineSpread(row) {
+  return currentMode === 'integrated' ? row.spread_integrated : row.spread_non_integrated;
+}
+
+function renderFineLevelChart(rows, key) {
+  const isInt  = currentMode === 'integrated';
+  const color  = spreadColor();
+  const valid  = rows.filter(r => fineSpread(r) != null);
+  const labels = valid.map(r => r[key]);
+  const data   = valid.map(r => fineSpread(r));
+  const period = currentTab === 'monthly' ? 'Monthly' : 'Weekly';
+
+  document.getElementById('chart2-title').textContent =
+    `Spread Level — ${period} · ${isInt ? 'Integrated (×)' : 'Non-Integrated (USD/kg)'}`;
+  document.getElementById('chart2-stat').textContent =
+    `${period} average · ${isInt ? 'Integrated' : 'Non-Integrated'} mode`;
+
+  const ctx = document.getElementById('levelChart').getContext('2d');
+  if (charts.level) charts.level.destroy();
+  charts.level = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: spreadLabel(), data,
+        borderColor: color, backgroundColor: spreadBgColor(),
+        tension: 0.3, borderWidth: 2.5,
+        pointRadius: data.length > 80 ? 0 : 2, pointBackgroundColor: color,
+        fill: true, spanGaps: true,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y; if (v == null) return null;
+            return isInt ? `${ctx.dataset.label}: ${v.toFixed(3)}×`
+                         : `${ctx.dataset.label}: ${v.toFixed(4)} USD/kg`;
+          }
+        } }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45,
+             autoSkip:true, maxTicksLimit:14} },
+        y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:color,
+             callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
+             title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
+               font:{size:9.5},color:color} }
+      }
+    }
+  });
+}
+
+// ─── MONTHLY / WEEKLY AGGREGATION ─────────────────────────────────────────────
 function avgField(rows, key) {
   const vs = rows.map(r => r[key]).filter(v => v != null);
   return vs.length ? vs.reduce((s,v) => s+v, 0) / vs.length : null;
+}
+
+function aggRow(rows, extra) {
+  return {
+    carcass:               avgField(rows,'carcass'),
+    hog_price:             avgField(rows,'hog_price'),
+    corn:                  avgField(rows,'corn'),
+    sbm:                   avgField(rows,'sbm'),
+    feed_grain_6m:         avgField(rows,'feed_grain_6m'),
+    spread_integrated:     avgField(rows,'spread_integrated'),
+    spread_non_integrated: avgField(rows,'spread_non_integrated'),
+    ...extra,
+  };
 }
 
 function computeMonthly() {
   const byMonth = {};
   for (const row of WEEKLY_ROWS) {
     const m = row.report_date.slice(0, 7);
-    if (!byMonth[m]) byMonth[m] = [];
-    byMonth[m].push(row);
+    (byMonth[m] = byMonth[m] || []).push(row);
   }
   return Object.entries(byMonth)
     .sort(([a],[b]) => b.localeCompare(a))
-    .map(([month, rows]) => ({
+    .map(([month, rows]) => aggRow(rows, {
       month,
-      carcass:              avgField(rows,'carcass'),
-      hog_price:            avgField(rows,'hog_price'),
-      corn:                 avgField(rows,'corn'),
-      sbm:                  avgField(rows,'sbm'),
-      fc_spot:              avgField(rows,'fc_spot'),
-      spread_non_integrated:avgField(rows,'spread_non_integrated'),
-      n:                    rows.length,
+      n: new Set(rows.map(r => weekMonday(r.report_date))).size,
     }));
 }
 
-function renderMonthlyTable() {
-  const isInt = currentMode === 'integrated';
-  const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
-  const fmtSp = (v) => v != null ? v.toFixed(4)+' USD/kg' : '<span class="td-na">—</span>';
-
-  document.getElementById('table-head').innerHTML = `<tr>
-    <th style="text-align:left;">Month</th>
-    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu avg</span></th>
-    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t avg</span></th>
-    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton avg</span></th>
-    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-    <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
-  </tr>`;
-
-  const rows = computeMonthly();
-  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
-    <td>${r.month}</td>
-    <td>${fmtN(r.carcass)}</td>
-    <td>${fmtN(r.hog_price)}</td>
-    <td>${fmtN(r.corn,2)}</td>
-    <td>${fmtN(r.sbm,0)}</td>
-    <td>${fmtN(r.fc_spot,1)}</td>
-    <td><span class="td-spread-nint">${fmtSp(r.spread_non_integrated)}</span></td>
-    <td style="color:#aaa;">${r.n}</td>
-  </tr>`).join('');
-}
-
 function weekMonday(dateStr) {
-  // Returns YYYY-MM-DD of the Monday of the ISO week containing dateStr
   const d = new Date(dateStr + 'T00:00:00Z');
-  const day = d.getUTCDay(); // 0=Sun
+  const day = d.getUTCDay();               // 0=Sun
   const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
@@ -741,72 +760,42 @@ function computeWeekly() {
   const byWeek = {};
   for (const row of WEEKLY_ROWS) {
     const wk = weekMonday(row.report_date);
-    if (!byWeek[wk]) byWeek[wk] = [];
-    byWeek[wk].push(row);
+    (byWeek[wk] = byWeek[wk] || []).push(row);
   }
   return Object.entries(byWeek)
-    .sort(([a],[b]) => b.localeCompare(a))   // newest first
-    .map(([wk, rows]) => ({
-      week: wk,
-      carcass:               avgField(rows,'carcass'),
-      hog_price:             avgField(rows,'hog_price'),
-      corn:                  avgField(rows,'corn'),
-      sbm:                   avgField(rows,'sbm'),
-      fc_spot:               avgField(rows,'fc_spot'),
-      spread_non_integrated: avgField(rows,'spread_non_integrated'),
-      n: rows.length,
-    }));
+    .sort(([a],[b]) => b.localeCompare(a))
+    .map(([week, rows]) => aggRow(rows, { week, n: rows.length }));
 }
 
-function renderWeeklyTable() {
-  const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
-  const fmtSp = (v) => v != null ? v.toFixed(4)+' USD/kg' : '<span class="td-na">—</span>';
+// ─── TABLE HELPERS ────────────────────────────────────────────────────────────
+const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
 
-  document.getElementById('table-head').innerHTML = `<tr>
-    <th style="text-align:left;">Week of (Mon)</th>
-    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu avg</span></th>
-    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/t avg</span></th>
-    <th>Feed Cost Spot<br><span style="font-weight:400;font-size:9.5px;">$/ton avg</span></th>
-    <th>Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-  </tr>`;
-
-  const rows = computeWeekly();
-  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
-    <td>${r.week}</td>
-    <td>${fmtN(r.carcass)}</td>
-    <td>${fmtN(r.hog_price)}</td>
-    <td>${fmtN(r.corn,2)}</td>
-    <td>${fmtN(r.sbm,0)}</td>
-    <td>${fmtN(r.fc_spot,1)}</td>
-    <td><span class="td-spread-nint">${fmtSp(r.spread_non_integrated)}</span></td>
-  </tr>`).join('');
+function fineSpreadCell(r) {
+  const isInt = currentMode === 'integrated';
+  const v = isInt ? r.spread_integrated : r.spread_non_integrated;
+  const cls = isInt ? 'td-spread-int' : 'td-spread-nint';
+  if (v == null) return '<span class="td-na">—</span>';
+  return `<span class="${cls}">${isInt ? v.toFixed(3)+'×' : v.toFixed(4)+' USD/kg'}</span>`;
 }
 
-// ─── TABLE ────────────────────────────────────────────────────────────────────
+// ─── QUARTERLY TABLE ──────────────────────────────────────────────────────────
 function renderTable() {
   const isInt   = currentMode === 'integrated';
   const thead   = document.getElementById('table-head');
   const tbody   = document.getElementById('table-body');
   const tdClass = isInt ? 'td-spread-int' : 'td-spread-nint';
-  const fmtN    = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
 
   thead.innerHTML = `<tr>
     <th style="text-align:left;">Quarter</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
-    <th>Feed Cost 6m<br><span style="font-weight:400;font-size:9.5px;">$/ton (2Q lag)</span></th>
-    <th>Corn<br><span style="font-weight:400;font-size:9.5px;">$/bu</span></th>
-    <th>SBM<br><span style="font-weight:400;font-size:9.5px;">$/ton</span></th>
+    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg (6m lag)</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
                 : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg)</span>'}</th>
     <th>QoQ Δ</th>
   </tr>`;
 
-  const series = computeSeries();
-  const rows   = [...series].reverse();
-
+  const rows = [...computeSeries()].reverse();
   tbody.innerHTML = rows.map(r => {
     const sv = getSpread(r);
     const spreadFmt = sv != null
@@ -815,11 +804,10 @@ function renderTable() {
 
     let deltaFmt = '<span class="td-na">—</span>';
     if (r.dSpread != null) {
-      const sign  = r.dSpread >= 0 ? '+' : '';
-      const cls   = r.dSpread >= 0 ? 'td-pos' : 'td-neg';
-      const dStr  = isInt
-        ? sign + r.dSpread.toFixed(3) + '×'
-        : sign + r.dSpread.toFixed(4);
+      const sign = r.dSpread >= 0 ? '+' : '';
+      const cls  = r.dSpread >= 0 ? 'td-pos' : 'td-neg';
+      const dStr = isInt ? sign + r.dSpread.toFixed(3) + '×'
+                         : sign + r.dSpread.toFixed(4);
       deltaFmt = `<span class="${cls}">${dStr}</span>`;
     }
 
@@ -827,13 +815,57 @@ function renderTable() {
       <td>${r.quarter}</td>
       <td>${fmtN(r.carcass)}</td>
       <td>${fmtN(r.hog_price)}</td>
-      <td>${r.fc_6m != null ? r.fc_6m.toFixed(1) : '<span class="td-na">—</span>'}</td>
-      <td>${fmtN(r.corn, 2)}</td>
-      <td>${fmtN(r.sbm, 0)}</td>
+      <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
       <td>${spreadFmt}</td>
       <td>${deltaFmt}</td>
     </tr>`;
   }).join('');
+}
+
+// ─── MONTHLY TABLE ────────────────────────────────────────────────────────────
+function renderMonthlyTable() {
+  const isInt = currentMode === 'integrated';
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th style="text-align:left;">Month</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
+                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
+    <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
+  </tr>`;
+
+  const rows = computeMonthly();
+  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
+    <td>${r.month}</td>
+    <td>${fmtN(r.carcass)}</td>
+    <td>${fmtN(r.hog_price)}</td>
+    <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+    <td>${fineSpreadCell(r)}</td>
+    <td style="color:#aaa;">${r.n}</td>
+  </tr>`).join('');
+}
+
+// ─── WEEKLY TABLE ─────────────────────────────────────────────────────────────
+function renderWeeklyTable() {
+  const isInt = currentMode === 'integrated';
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th style="text-align:left;">Week of (Mon)</th>
+    <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
+    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
+                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
+  </tr>`;
+
+  const rows = computeWeekly();
+  document.getElementById('table-body').innerHTML = rows.map(r => `<tr>
+    <td>${r.week}</td>
+    <td>${fmtN(r.carcass)}</td>
+    <td>${fmtN(r.hog_price)}</td>
+    <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+    <td>${fineSpreadCell(r)}</td>
+  </tr>`).join('');
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
