@@ -100,7 +100,7 @@ CULTURAS = {
         "conab_produto":   "SOJA",          # para tabela conab_safra
         "conab_safra":     None,            # qualquer (UNICA)
         "bag_kg":          60,
-        "portal_shift":    -1,              # portal 1 ano à frente
+        "portal_shift":    -1,              # DEPRECATED — não usado mais (ver safra_label_monthly)
     },
     "MILHO": {
         "cadeia_id":       3,
@@ -109,7 +109,7 @@ CULTURAS = {
         "conab_produto":   "MILHO",
         "conab_safra":     "2ª SAFRA",       # safrinha MT
         "bag_kg":          60,
-        "portal_shift":    0,
+        "portal_shift":    0,                # DEPRECATED — não usado mais
     },
     "ALGODAO": {
         "cadeia_id":       1,
@@ -118,7 +118,7 @@ CULTURAS = {
         "conab_produto":   "ALGODAO EM PLUMA",
         "conab_safra":     None,
         "bag_kg":          15,              # 1 arroba = 15 kg
-        "portal_shift":    0,
+        "portal_shift":    0,                # DEPRECATED — não usado mais
     },
 }
 
@@ -836,39 +836,43 @@ def parse_shift(raw, shift=0):
     except: return None
 
 
+def calc_safra_label(cultura, ym):
+    """
+    Regra ÚNICA e determinística de safra a partir de (cultura, 'YYYY-MM').
+    Usada tanto pela geração do dataset (safra_label_monthly) quanto pela
+    migração de limpeza do banco (migrate_safra_labels) — garante que as
+    duas nunca fiquem dessincronizadas de novo.
+
+      SOJA            : início em outubro → Out/ano1 .. Set/ano1+1
+      MILHO / ALGODAO : início em janeiro → Jan/ano1 .. Dez/ano1
+    """
+    ano, mes = int(ym[:4]), int(ym[5:7])
+    if cultura == "SOJA":
+        y1 = ano if mes >= 10 else ano - 1
+    else:  # MILHO, ALGODAO
+        y1 = ano
+    return norm_y(y1)
+
+
 def safra_label_monthly(conn, cultura, ym):
     """
-    Determina o label de safra para um mês mensal.
+    Determina o label de safra para um mês mensal — pelo CALENDÁRIO, não
+    mais pela fonte.
 
-    Regras por prioridade:
-      1. SOJA 2022 → fonte sempre interna, shift=0 (header já correto).
-      2. Portal (indicador_id IS NOT NULL) → shift=-1 para SOJA (portal
-         armazena 1 safra à frente), shift=0 para MILHO/ALGODÃO.
-      3. Interno (safra_tipo='mensal') → aplica o MESMO shift do portal.
-         Isso evita o bug onde meses com custo interno isolado (sem portal)
-         ficavam rotulados com a safra futura (ex: 2024-04 SOJA → 2024/25
-         em vez de 2023/24).
+    Antes, essa função lia o campo 'safra' gravado no portal/histórico IMEA
+    e aplicava um shift fixo (-1 para soja) pra compensar o portal "guardar
+    1 ano à frente". Isso quebrava sempre que a própria fonte publicava um
+    mês com o rótulo errado (ex.: Out–Dez/2022 SOJA vieram do portal já
+    como "2023/24", quando ainda eram 2022/23) — o shift fixo não corrige
+    um erro pontual da fonte, só desloca todo mundo igual, então o erro
+    passava direto.
+
+    Agora o rótulo é 100% determinístico a partir do calendário de safra
+    (calc_safra_label — a mesma regra que safra_inicio() já usa, então os
+    dois ficam sempre consistentes entre si). Não depende mais do campo
+    'safra' da fonte nem de shift por cultura.
     """
-    cfg   = CULTURAS[cultura]
-    shift = cfg["portal_shift"]
-    if cultura == "SOJA" and ym[:4] == "2022":
-        r = conn.execute(
-            "SELECT safra FROM historico WHERE cultura='SOJA' AND grupo='CUSTO' "
-            "AND strftime('%Y-%m',data_referencia)=? AND safra_tipo='mensal' "
-            "AND safra IS NOT NULL LIMIT 1", (ym,)).fetchone()
-        return parse_shift(r[0], 0) if r else None
-    r = conn.execute(
-        "SELECT safra FROM historico WHERE cultura=? AND grupo='CUSTO' "
-        "AND strftime('%Y-%m',data_referencia)=? AND safra IS NOT NULL "
-        "AND indicador_id IS NOT NULL LIMIT 1", (cultura, ym)).fetchone()
-    if r and r[0]: return parse_shift(r[0], shift)
-    # Fallback interno: aplica o mesmo shift do portal (corrige bug onde meses
-    # com custo interno isolado ficavam rotulados com safra futura).
-    r = conn.execute(
-        "SELECT safra FROM historico WHERE cultura=? AND grupo='CUSTO' "
-        "AND strftime('%Y-%m',data_referencia)=? AND safra IS NOT NULL "
-        "AND indicador_id IS NULL AND safra_tipo='mensal' LIMIT 1", (cultura, ym)).fetchone()
-    return parse_shift(r[0], shift) if r and r[0] else None
+    return calc_safra_label(cultura, ym)
 
 
 def safra_inicio(conn, cultura, ym, safra_lbl=None):
@@ -1085,6 +1089,49 @@ def build_rec(conn, cultura, ym, s_label, anual=False):
 # ════════════════════════════════════════════════════════════════════════════════
 # DATASET BUILDER
 # ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# CORREÇÕES PONTUAIS — meses com anomalia confirmada na fonte
+# ════════════════════════════════════════════════════════════════════════════════
+# Meses em que os itens de custo publicados pela IMEA vieram com um dado
+# claramente fora do padrão (pico/vale isolado entre o mês anterior e o
+# seguinte), sem arquivo original disponível para conferência manual.
+# Enquanto isso não é confirmado na fonte, interpolamos linearmente (média
+# simples) entre o mês anterior e o seguinte, só para os campos de CUSTO —
+# preço, produtividade e receita do mês NÃO são tocados.
+#
+# Formato: (cultura, "YYYY-MM"): ("YYYY-MM anterior", "YYYY-MM seguinte")
+COST_INTERPOLATE = {
+    ("SOJA", "2022-11"): ("2022-10", "2022-12"),
+}
+
+_COST_FIELDS = ["sem", "fer", "pes", "labor", "other", "coe_s", "arr", "dep"]
+
+
+def apply_cost_interpolation(monthly):
+    """Substitui os campos de custo (e recalcula gp_ex/gp_inc/margens) dos
+    meses listados em COST_INTERPOLATE pela média simples dos meses vizinhos.
+    Preço, produtividade e receita bruta do mês permanecem os originais."""
+    by_ym = {r["d"]: r for r in monthly}
+    for (cultura, ym), (prev_ym, next_ym) in COST_INTERPOLATE.items():
+        rec, prev, nxt = by_ym.get(ym), by_ym.get(prev_ym), by_ym.get(next_ym)
+        if not (rec and prev and nxt):
+            continue
+        for f in _COST_FIELDS:
+            if prev.get(f) is not None and nxt.get(f) is not None:
+                rec[f] = round((prev[f] + nxt[f]) / 2, 2)
+        named = sum(rec.get(f) or 0 for f in ["sem", "fer", "pes", "labor", "other"])
+        rb_std = rec.get("rb_std")
+        gp_ex  = (rb_std - named) if rb_std and named else None
+        gp_inc = (gp_ex - rec["arr"]) if gp_ex is not None and rec.get("arr") else gp_ex
+        rec["gp_ex"]      = round(gp_ex, 2) if gp_ex is not None else None
+        rec["gp_inc"]     = round(gp_inc, 2) if gp_inc is not None else None
+        rec["gm_ex_pct"]  = round(gp_ex / rb_std, 4) if gp_ex is not None and rb_std else None
+        rec["gm_inc_pct"] = round(gp_inc / rb_std, 4) if gp_inc is not None and rb_std else None
+        log.info(f"  [{cultura}] {ym}: custos interpolados de {prev_ym}/{next_ym} "
+                 f"(sem confirmação da fonte original)")
+    return monthly
+
+
 def build_dataset(conn):
     output = {}
     for cultura in ["SOJA", "MILHO", "ALGODAO"]:
@@ -1099,6 +1146,7 @@ def build_dataset(conn):
             build_rec(conn, cultura, ym, safra_label_monthly(conn, cultura, ym) or ym)
             for ym in m_yms
         ]
+        monthly = apply_cost_interpolation(monthly)
         annual, seen = [], set()
         for ym, lbl, tipo in ANNUAL_SNAPS[cultura]:
             if lbl in seen: continue
@@ -1129,6 +1177,48 @@ def update_dashboard(data):
 # ════════════════════════════════════════════════════════════════════════════════
 # MIGRATION — idempotent, run once per startup
 # ════════════════════════════════════════════════════════════════════════════════
+def migrate_safra_labels(conn, now_str):
+    """
+    Limpeza única e idempotente da coluna historico.safra.
+
+    Reescreve o rótulo de safra de TODAS as linhas de grupo='CUSTO' que
+    alimentam a série mensal do dashboard (safra_tipo='mensal' OU
+    indicador_id IS NOT NULL) usando calc_safra_label() — a mesma regra
+    determinística que safra_label_monthly() já usa para montar o dataset.
+
+    Isso corrige o rótulo errado que a própria fonte (portal IMEA) publicou
+    para alguns meses (ex.: Out–Dez/2022 SOJA gravados como "2023/24"),
+    deixando o banco consistente com o que o dashboard exibe — sem isso, o
+    campo 'safra' do banco ficava como "lixo histórico" divergente do que
+    é realmente usado.
+
+    NÃO toca nas linhas safra_tipo='anual' (histórico interno pré-tracking
+    mensal): essas usam uma convenção própria de "custo publicado 1 ano após
+    o fechamento" (ver ANNUAL_SNAPS) que não segue o calendário mês-a-mês.
+
+    Seguro para rodar a cada inicialização: só grava quando o valor muda.
+    """
+    rows = conn.execute(
+        "SELECT id, cultura, data_referencia, safra FROM historico "
+        "WHERE grupo='CUSTO' AND (safra_tipo='mensal' OR indicador_id IS NOT NULL)"
+    ).fetchall()
+
+    updated = 0
+    for row in rows:
+        ym = row["data_referencia"][:7]
+        correct = calc_safra_label(row["cultura"], ym)
+        if row["safra"] != correct:
+            conn.execute(
+                "UPDATE historico SET safra=?, updated_at=? WHERE id=?",
+                (correct, now_str, row["id"]),
+            )
+            updated += 1
+
+    if updated:
+        log.info(f"[migrate] historico.safra: {updated} linhas corrigidas para o rótulo determinístico")
+    conn.commit()
+
+
 def migrate_preco_conab(conn):
     """
     Limpeza única e idempotente da tabela preco_conab:
@@ -1195,6 +1285,7 @@ def main():
     conn = get_conn()
     ensure_schema(conn)
     migrate_preco_conab(conn)  # idempotent cleanup: remove stale product/nivel combos
+    migrate_safra_labels(conn, now_str)  # idempotent cleanup: corrige historico.safra
 
     # ── 1. Autenticar IMEA ────────────────────────────────────────────────────
     log.info("Autenticando no portal IMEA...")
