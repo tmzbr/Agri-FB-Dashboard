@@ -70,9 +70,10 @@ select.filter-select:focus{border-color:var(--orange);}
     <div class="seg" id="seg-period">
       <button class="seg-btn on" onclick="setPeriod('all',this)">All</button>
       <button class="seg-btn"    onclick="setPeriod('3y',this)">3Y</button>
-      <button class="seg-btn"    onclick="setPeriod('2y',this)">2Y</button>
       <button class="seg-btn"    onclick="setPeriod('1y',this)">1Y</button>
       <button class="seg-btn"    onclick="setPeriod('ytd',this)">YTD</button>
+      <button class="seg-btn"    onclick="setPeriod('l3m',this)">L3M</button>
+      <button class="seg-btn"    onclick="setPeriod('l1m',this)">L1M</button>
     </div>
   </div>
   <div class="filter-sep"></div>
@@ -177,9 +178,10 @@ function filterByPeriod(arr){
   if(PERIOD==='all'||!arr||!arr.length)return arr;
   const last=new Date(arr[arr.length-1].d);
   const cuts={'3y':new Date(new Date(last).setFullYear(last.getFullYear()-3)),
-    '2y':new Date(new Date(last).setFullYear(last.getFullYear()-2)),
     '1y':new Date(new Date(last).setFullYear(last.getFullYear()-1)),
-    'ytd':new Date(last.getFullYear(),0,1)};
+    'ytd':new Date(last.getFullYear(),0,1),
+    'l3m':new Date(new Date(last).setMonth(last.getMonth()-3)),
+    'l1m':new Date(new Date(last).setMonth(last.getMonth()-1))};
   const cut=cuts[PERIOD];
   return cut?arr.filter(r=>new Date(r.d)>=cut):arr;
 }
