@@ -115,6 +115,7 @@ async function handleCreate(res, url, headers, body, email) {
   const displayName = String(body.display_name || '').trim();
   const isAdmin = body.is_admin === true;
   const password = String(body.password || '');
+  const client = String(body.client || '').trim();
 
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Please enter a valid email.' });
   if (!displayName) return res.status(400).json({ error: 'Display name is required.' });
@@ -134,9 +135,22 @@ async function handleCreate(res, url, headers, body, email) {
     await upsertAuthPassword(url, headers, email, password);
   }
 
-  const inserted = await restInsert(url, headers, 'portal_users', {
-    email, display_name: displayName, is_admin: isAdmin, active: true,
-  });
+  const row = { email, display_name: displayName, is_admin: isAdmin, active: true };
+  if (client) row.client = client;
+  let inserted;
+  try {
+    inserted = await restInsert(url, headers, 'portal_users', row);
+  } catch (e) {
+    // If the optional `client` column isn't present yet (migration not run),
+    // don't block user creation — retry without it. Real errors (e.g. a
+    // duplicate email → 409) still surface on the retry.
+    if (client) {
+      const { client: _omit, ...base } = row;
+      inserted = await restInsert(url, headers, 'portal_users', base);
+    } else {
+      throw e;
+    }
+  }
   return res.status(200).json(inserted);
 }
 
