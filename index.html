@@ -209,6 +209,26 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .btn-danger:hover{border-color:var(--red);color:var(--red);background:#fff5f5;}
 .badge-admin{font-size:10px;background:#FFF0E8;color:var(--orange);border:1px solid #FFD0B0;border-radius:3px;padding:2px 6px;font-weight:700;margin-left:6px;}
 .badge-user{font-size:10px;background:var(--gray-light);color:#aaa;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-weight:700;margin-left:6px;}
+.usr-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}
+.usr-table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px;}
+.usr-th{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.5px;
+  padding:10px 12px;border-bottom:1.5px solid var(--border);background:var(--gray-light);cursor:pointer;user-select:none;white-space:nowrap;}
+.usr-th:hover{color:var(--orange);}
+.usr-arrow{color:var(--orange);font-size:9px;}
+.usr-td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.usr-table tbody tr:last-child .usr-td{border-bottom:none;}
+.usr-table tbody tr:hover{background:#FAFAFA;}
+.usr-td-name{white-space:nowrap;}
+.usr-name-input{border:1.5px solid transparent;border-radius:5px;padding:5px 8px;font-size:13px;font-weight:600;color:var(--black);
+  font-family:var(--font);background:transparent;max-width:180px;transition:border-color .15s,background .15s;}
+.usr-name-input:hover{border-color:var(--border);background:#fff;}
+.usr-name-input:focus{border-color:var(--orange);background:#fff;outline:none;}
+.usr-email-link{color:var(--gray-dark);text-decoration:none;}
+.usr-email-link:hover{color:var(--orange);text-decoration:underline;}
+.usr-td-toggle{text-align:center;width:70px;}
+.usr-td-toggle .toggle{display:inline-block;vertical-align:middle;}
+.usr-td-actions{text-align:right;white-space:nowrap;}
+.usr-td-actions button{margin-left:6px;}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .info-box{background:#F0F7FF;border:1px solid #C8DEF5;border-radius:6px;padding:12px 16px;font-size:12.5px;color:#2A5A8C;line-height:1.55;margin-bottom:16px;}
@@ -387,6 +407,7 @@ const STATE = {
   activeDash: null,
   searchQuery: '',
   usersExpanded: false,
+  userSort: { key: 'name', dir: 'asc' },
   analyticsPeriod: 30,
   analyticsRecentLimit: 20,
   // Loaded from Supabase:
@@ -999,26 +1020,62 @@ function buildSettings(){
 function buildPaneUsersTeam(){
   const t=STATE.teamSettings;
   const analysts=Array.isArray(t.analysts)?t.analysts:[];
-  const USERS_PREVIEW = 4;
+  const USERS_PREVIEW = 8;
   const showAll = STATE.usersExpanded;
-  const displayUsers = showAll ? STATE.portalUsers : STATE.portalUsers.slice(0, USERS_PREVIEW);
+  const sort = STATE.userSort || { key:'name', dir:'asc' };
+  const sortVal = (u)=>{
+    if(sort.key==='email') return (u.email||'').toLowerCase();
+    if(sort.key==='role')   return u.is_admin?0:1;
+    if(sort.key==='status') return u.active?0:1;
+    return (u.display_name||'').toLowerCase();  // 'name'
+  };
+  const sortedUsers = [...STATE.portalUsers].sort((a,b)=>{
+    const va=sortVal(a), vb=sortVal(b);
+    const cmp = va<vb ? -1 : va>vb ? 1 : 0;
+    return sort.dir==='asc' ? cmp : -cmp;
+  });
+  const displayUsers = showAll ? sortedUsers : sortedUsers.slice(0, USERS_PREVIEW);
   const hiddenCount = STATE.portalUsers.length - USERS_PREVIEW;
-  const usersHtml=displayUsers.map((u,i)=>`
-    <div class="admin-row">
-      <div class="admin-row-info">
-        <div class="admin-row-name">${esc(u.display_name)} ${u.is_admin?'<span class="badge-admin">ADMIN</span>':'<span class="badge-user">USER</span>'}</div>
-        <div class="admin-row-sub">${esc(u.email)} &nbsp;&middot;&nbsp; ${u.active?'&#9679; Active':'&#9675; Inactive'}</div>
-      </div>
-      <label class="toggle" title="Active"><input type="checkbox" ${u.active?'checked':''} onchange="dbToggleUserActive('${u.id}',this.checked)">
-        <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
-      <label class="toggle" title="Admin"><input type="checkbox" ${u.is_admin?'checked':''} onchange="dbToggleUserAdmin('${u.id}',this.checked)">
-        <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
-      <span style="font-size:10px;color:#aaa;flex-shrink:0;">Active&nbsp;&nbsp;&nbsp;Admin</span>
-      ${u.is_admin?`<button class="btn-outline" style="flex-shrink:0;" onclick="dbResetPassword('${u.id}')">Set password</button>`:''}
-      ${!u.is_admin||STATE.portalUsers.filter(x=>x.is_admin&&x.active).length>1
-        ?`<button class="btn-danger" onclick="dbRemoveUser('${u.id}')">Remove</button>`
-        :'<span style="font-size:11px;color:#ccc;flex-shrink:0;">Protected</span>'}
-    </div>`).join('');
+  const arrow = (k)=> sort.key===k ? (sort.dir==='asc'?' &#9650;':' &#9660;') : '';
+  const th = (k,label,style='')=>`<th class="usr-th" style="${style}" onclick="setUserSort('${k}')">${label}<span class="usr-arrow">${arrow(k)}</span></th>`;
+  const rowsHtml=displayUsers.map((u)=>{
+    const protectedLast = u.is_admin && STATE.portalUsers.filter(x=>x.is_admin&&x.active).length<=1;
+    return `
+    <tr>
+      <td class="usr-td usr-td-name">
+        <input class="usr-name-input" value="${esc(u.display_name||'')}" placeholder="Full name"
+          onchange="dbRenameUser('${u.id}',this.value)" title="Click to edit name"/>
+        ${u.is_admin?'<span class="badge-admin">ADMIN</span>':'<span class="badge-user">USER</span>'}
+      </td>
+      <td class="usr-td usr-td-email"><a href="mailto:${esc(u.email)}" class="usr-email-link">${esc(u.email)}</a></td>
+      <td class="usr-td usr-td-toggle">
+        <label class="toggle" title="Active"><input type="checkbox" ${u.active?'checked':''} onchange="dbToggleUserActive('${u.id}',this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </td>
+      <td class="usr-td usr-td-toggle">
+        <label class="toggle" title="Admin"><input type="checkbox" ${u.is_admin?'checked':''} onchange="dbToggleUserAdmin('${u.id}',this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </td>
+      <td class="usr-td usr-td-actions">
+        ${u.is_admin?`<button class="btn-outline" onclick="dbResetPassword('${u.id}')">Set password</button>`:''}
+        ${protectedLast
+          ?'<span style="font-size:11px;color:#ccc;">Protected</span>'
+          :`<button class="btn-danger" onclick="dbRemoveUser('${u.id}')">Remove</button>`}
+      </td>
+    </tr>`;}).join('');
+  const usersHtml=`
+    <div class="usr-table-wrap">
+      <table class="usr-table">
+        <thead><tr>
+          ${th('name','Name','text-align:left;')}
+          ${th('email','Email','text-align:left;')}
+          ${th('status','Active','text-align:center;')}
+          ${th('role','Admin','text-align:center;')}
+          <th class="usr-th" style="text-align:right;cursor:default;">Actions</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
   const teamRows=analysts.map((a,i)=>`
     <div class="admin-row" style="flex-wrap:wrap;gap:8px;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">
@@ -1035,7 +1092,7 @@ function buildPaneUsersTeam(){
         <div class="admin-section-header">&#128101; &nbsp;User Management</div>
         <div class="admin-section-body">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-            <div class="info-box" style="margin:0;flex:1;">Toggle "Admin" to promote or demote a user. Changes save instantly to the database.</div>
+            <div class="info-box" style="margin:0;flex:1;">Click a <strong>name</strong> to edit it, or a column header to sort. Toggle <strong>Active</strong>/<strong>Admin</strong> to change access. Changes save instantly to the database.</div>
             <button class="btn-outline" onclick="exportUsersExcel()" title="Download user list as Excel">&#8659; Export to Excel</button>
           </div>
           ${usersHtml}
@@ -1278,6 +1335,22 @@ async function dbToggleUserAdmin(id, val){
   const u=STATE.portalUsers.find(x=>x.id===id); if(u) u.is_admin=val;
   showToast(val ? 'Promoted to admin — click "Set password" to give them an admin password.' : 'Admin status updated.');
   renderContent();
+}
+function setUserSort(key){
+  const s=STATE.userSort||{key:'name',dir:'asc'};
+  if(s.key===key){ s.dir = s.dir==='asc'?'desc':'asc'; }
+  else { s.key=key; s.dir='asc'; }
+  STATE.userSort=s; renderContent();
+}
+async function dbRenameUser(id, val){
+  const name=(val||'').trim();
+  const u=STATE.portalUsers.find(x=>x.id===id); if(!u) return;
+  if(!name){ showToast('Name cannot be empty.'); renderContent(); return; }
+  if(name===u.display_name) return;                 // no change
+  const {error}=await sb.from('portal_users').update({display_name:name}).eq('id',id);
+  if(error){ showToast('Error: '+error.message); renderContent(); return; }
+  u.display_name=name;
+  showToast('Name updated ✓'); renderContent();
 }
 async function dbRemoveUser(id){
   const u=STATE.portalUsers.find(x=>x.id===id); if(!u) return;
