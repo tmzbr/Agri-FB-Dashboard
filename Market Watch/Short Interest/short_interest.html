@@ -32,7 +32,7 @@ select.filter-select:focus{border-color:var(--orange);}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;
   color:var(--gray-mid);border-left:3px solid var(--orange);padding-left:8px;}
 .chart-grid{display:grid;gap:12px;margin-bottom:12px;}
-.g1{grid-template-columns:1fr;}.g2{grid-template-columns:1fr 1fr;}
+.g1{grid-template-columns:1fr;}.g2{grid-template-columns:1.1fr 1fr;}
 .chart-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
 .chart-title{font-size:13px;font-weight:700;color:var(--black);margin-bottom:2px;}
 .chart-sub{font-size:11px;color:var(--gray-mid);margin-bottom:10px;}
@@ -40,30 +40,27 @@ select.filter-select:focus{border-color:var(--orange);}
 .kpi{display:flex;flex-direction:column;gap:1px;}
 .kpi-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-mid);}
 .kpi-value{font-size:19px;font-weight:700;color:var(--black);}
+.kpi-value.big{font-size:26px;color:var(--orange);}
 .kpi-value small{font-size:12px;font-weight:600;color:var(--gray-mid);}
-.scroll-wrap{overflow-x:auto;}
+.scroll-wrap{overflow-x:auto;max-height:320px;overflow-y:auto;}
 .data-table{width:100%;border-collapse:collapse;font-size:12px;}
 .data-table th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
   color:var(--gray-mid);padding:8px 10px;border-bottom:2px solid var(--border);
-  text-align:right;position:sticky;top:0;background:var(--white);z-index:5;cursor:pointer;white-space:nowrap;}
+  text-align:right;position:sticky;top:0;background:var(--white);z-index:5;white-space:nowrap;}
 .data-table th.l{text-align:left;}
 .data-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;text-align:right;white-space:nowrap;}
 .data-table td.l{text-align:left;}
 .data-table tr:last-child td{border-bottom:none;}
-.data-table tbody tr{cursor:pointer;}
 .data-table tbody tr:hover td{background:#fafafa;}
-.data-table tbody tr.sel td{background:#fff3ed;}
-.tkr{font-weight:700;color:var(--black);}
-.cname{color:var(--gray-mid);font-size:11px;}
 .pos{color:#0a8f3c;font-weight:600;}
 .neg{color:#c0392b;font-weight:600;}
 .flat{color:var(--gray-mid);}
-.bar-cell{position:relative;}
-.bar-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,85,0,.12);border-right:2px solid var(--orange);z-index:0;}
-.bar-cell span{position:relative;z-index:1;}
 .source-note{font-size:10px;color:#bbb;text-align:right;margin-top:10px;font-style:italic;}
 .empty{padding:40px;text-align:center;color:var(--gray-mid);font-size:13px;}
-@media(max-width:760px){.g2{grid-template-columns:1fr;}}
+.company-hdr{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px;}
+.company-hdr .tkr{font-size:20px;font-weight:700;color:var(--black);}
+.company-hdr .cname{font-size:13px;color:var(--gray-mid);}
+@media(max-width:900px){.g2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -85,9 +82,11 @@ select.filter-select:focus{border-color:var(--orange);}
   <div class="filter-group">
     <div class="filter-label">Metric</div>
     <div class="seg" id="seg-view">
-      <button class="seg-btn on" onclick="setView('pct',this)">% Shares Out</button>
+      <button class="seg-btn on" onclick="setView('ff',this)">% Free Float</button>
+      <button class="seg-btn"    onclick="setView('pct',this)">% Shares Out</button>
       <button class="seg-btn"    onclick="setView('qty',this)">Shares</button>
       <button class="seg-btn"    onclick="setView('vol',this)">BRL</button>
+      <button class="seg-btn"    onclick="setView('taxa',this)">Borrow Rate</button>
     </div>
   </div>
   <div class="filter-sep"></div>
@@ -99,10 +98,32 @@ select.filter-select:focus{border-color:var(--orange);}
 <div class="body">
 
 <div class="section-hdr" style="margin-top:16px;">
-  <div class="section-title">Short Interest — Covered Names</div>
+  <div class="section-title">Short Interest — <span id="hdr-ticker">—</span></div>
 </div>
 <div class="chart-grid g1">
+  <div class="chart-card">
+    <div class="company-hdr">
+      <span class="tkr" id="company-tkr">—</span>
+      <span class="cname" id="company-name"></span>
+    </div>
+    <div class="kpi-row" id="kpi-row"></div>
+  </div>
+</div>
+
+<div class="chart-grid g2" style="align-items:start;">
+  <div class="chart-card">
+    <div class="chart-title" id="hist-title">Short Interest Trend</div>
+    <div class="chart-sub">Accumulated daily from B3 lending open positions</div>
+    <div style="position:relative;height:280px"><canvas id="ch-hist"></canvas></div>
+    <div id="hist-empty" class="empty" style="display:none;">
+      History builds up as daily snapshots accumulate.
+    </div>
+  </div>
   <div class="chart-card" style="padding:0;overflow:hidden;">
+    <div style="padding:16px 18px 0;">
+      <div class="chart-title">Daily History</div>
+      <div class="chart-sub">One row per pregão for the selected ticker</div>
+    </div>
     <div class="scroll-wrap">
       <table class="data-table" id="tbl-si">
         <thead id="tbl-head"></thead>
@@ -110,48 +131,27 @@ select.filter-select:focus{border-color:var(--orange);}
       </table>
     </div>
     <p class="source-note" style="padding:0 16px 12px;">
-      Source: B3 · Boletim Diário do Mercado — Empréstimos de Ativos (Posições em aberto, Mercado = Total).
-      Shares outstanding: B3 Empresas Listadas. Short interest as a % of total shares outstanding.
+      Source: B3 Boletim Diário — Empréstimos de Ativos (posições em aberto, Mercado=Total) &amp;
+      Empréstimos registrados (taxa doador, média ponderada). Free float: CVM Formulário de
+      Referência — Distribuição de Capital. Shares out: B3 Empresas Listadas.
     </p>
-  </div>
-</div>
-
-<div class="section-hdr">
-  <div class="section-title">History · <span id="hist-ticker">—</span></div>
-</div>
-<div class="chart-grid g2" style="align-items:start;">
-  <div class="chart-card">
-    <div class="chart-title" id="hist-title">Short Interest Trend</div>
-    <div class="chart-sub" id="hist-sub">Accumulated daily from B3 lending open positions</div>
-    <div style="position:relative;height:280px"><canvas id="ch-hist"></canvas></div>
-    <div id="hist-empty" class="empty" style="display:none;">
-      History builds up as daily snapshots accumulate.
-    </div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title" style="margin-bottom:10px;">Latest Snapshot</div>
-    <div class="kpi-row" id="kpi-row"></div>
-    <div style="margin-top:18px;">
-      <div class="chart-sub">Day-over-day change in shares on loan</div>
-      <div class="kpi-value" id="dod-value">—</div>
-    </div>
   </div>
 </div>
 
 </div>
 <script>
 /* ── Injected data (replaced by short_interest.py) ─────────────────────────
-   SI_SERIES:     { ticker: [{d, q, v, pct}, ...] }   daily history
-   SI_LATEST:     { ticker: {d,q,v,pct,shares_out,preco,dod_q,dod_pct,nome} }
+   SI_SERIES:     { ticker: [{d, q, v, pct, ff, taxa}, ...] }   daily history
+   SI_LATEST:     { ticker: {d,q,v,pct,ff,taxa,shares_out,free_float_qty,preco,dod_q,dod_pct,nome} }
    COMPANY_NAMES: { ticker: name }
    LAST_UPDATE:   "YYYY-MM-DD"                                                */
-const SI_SERIES     = {"ABEV3":[{"d":"2026-06-29","q":290765509,"v":4725764403.16,"pct":1.8445},{"d":"2026-06-30","q":294341635,"v":4788069740.82,"pct":1.8672},{"d":"2026-07-01","q":292206432,"v":4750421729.48,"pct":1.8537},{"d":"2026-07-02","q":298507859,"v":4852504666.62,"pct":1.8936},{"d":"2026-07-03","q":295698871,"v":4806872244.91,"pct":1.8758},{"d":"2026-07-06","q":300937833,"v":4891831122.87,"pct":1.9091},{"d":"2026-07-07","q":301246571,"v":4892245278.64,"pct":1.911},{"d":"2026-07-08","q":306759016,"v":4966647248.26,"pct":1.946},{"d":"2026-07-09","q":312832344,"v":5027785291.37,"pct":1.9845},{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814}],"AGRO3":[{"d":"2026-06-29","q":4108132,"v":76145089.35,"pct":4.0008},{"d":"2026-06-30","q":4124341,"v":76449689.87,"pct":4.0166},{"d":"2026-07-01","q":4068495,"v":74774117.19,"pct":3.9622},{"d":"2026-07-02","q":4100643,"v":75361704.21,"pct":3.9935},{"d":"2026-07-03","q":4085838,"v":75076420.25,"pct":3.9791},{"d":"2026-07-06","q":4077515,"v":74931204.94,"pct":3.971},{"d":"2026-07-07","q":4091806,"v":75190952.86,"pct":3.9849},{"d":"2026-07-08","q":4083504,"v":74895600.23,"pct":3.9768},{"d":"2026-07-09","q":4083108,"v":74810354.05,"pct":3.9764},{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435}],"BEEF3":[{"d":"2026-06-29","q":100941834,"v":368045117.73,"pct":10.0887},{"d":"2026-06-30","q":100781202,"v":368497214.44,"pct":10.0727},{"d":"2026-07-01","q":99183801,"v":363313500.31,"pct":9.913},{"d":"2026-07-02","q":104626921,"v":381396907.29,"pct":10.457},{"d":"2026-07-03","q":103514351,"v":376867652.81,"pct":10.3458},{"d":"2026-07-06","q":101186491,"v":367739231.63,"pct":10.1132},{"d":"2026-07-07","q":102581897,"v":372393383.27,"pct":10.2526},{"d":"2026-07-08","q":106503191,"v":382652065.27,"pct":10.6446},{"d":"2026-07-09","q":104586238,"v":375247229.28,"pct":10.453},{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065}],"CAML3":[{"d":"2026-06-29","q":5934735,"v":29543419.24,"pct":1.6956},{"d":"2026-06-30","q":5861237,"v":29173959.66,"pct":1.6746},{"d":"2026-07-01","q":5865810,"v":29137637.96,"pct":1.6759},{"d":"2026-07-02","q":6010307,"v":29874954.86,"pct":1.7172},{"d":"2026-07-03","q":6099907,"v":30333693.68,"pct":1.7428},{"d":"2026-07-06","q":6096407,"v":30316941.48,"pct":1.7418},{"d":"2026-07-07","q":6244536,"v":31023129.92,"pct":1.7842},{"d":"2026-07-08","q":6243878,"v":30961641.61,"pct":1.784},{"d":"2026-07-09","q":6421348,"v":31632880.57,"pct":1.8347},{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311}],"JALL3":[{"d":"2026-06-29","q":6928473,"v":15697542.83,"pct":2.2825},{"d":"2026-06-30","q":6826671,"v":15417528.65,"pct":2.249},{"d":"2026-07-01","q":5711477,"v":12773065.32,"pct":1.8816},{"d":"2026-07-02","q":5408165,"v":12130280.07,"pct":1.7817},{"d":"2026-07-03","q":5840866,"v":12983080.59,"pct":1.9242},{"d":"2026-07-06","q":6091026,"v":13507811.89,"pct":2.0067},{"d":"2026-07-07","q":6813962,"v":14970129.26,"pct":2.2448},{"d":"2026-07-08","q":7454296,"v":16143661.95,"pct":2.4558},{"d":"2026-07-09","q":6628469,"v":14192791.24,"pct":2.1837},{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574}],"MBRF3":[{"d":"2026-06-29","q":113601632,"v":1808369847.13,"pct":8.1033},{"d":"2026-06-30","q":111866138,"v":1792209922.1,"pct":7.9795},{"d":"2026-07-01","q":112002991,"v":1852878874.85,"pct":7.9893},{"d":"2026-07-02","q":106836578,"v":1782449695.24,"pct":7.6208},{"d":"2026-07-03","q":107386531,"v":1798860274.44,"pct":7.66},{"d":"2026-07-06","q":108835110,"v":1824243549.87,"pct":7.7633},{"d":"2026-07-07","q":112680948,"v":1883268330.2,"pct":8.0376},{"d":"2026-07-08","q":108755449,"v":1775240736.16,"pct":7.7576},{"d":"2026-07-09","q":108628891,"v":1742680244.93,"pct":7.7486},{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342}],"MDIA3":[{"d":"2026-06-29","q":5422546,"v":98918017.56,"pct":1.5996},{"d":"2026-06-30","q":5503428,"v":100361176.54,"pct":1.6234},{"d":"2026-07-01","q":5459461,"v":98005078.88,"pct":1.6105},{"d":"2026-07-02","q":5552792,"v":99576322.23,"pct":1.638},{"d":"2026-07-03","q":5522785,"v":99009332.32,"pct":1.6291},{"d":"2026-07-06","q":5429411,"v":97382376.49,"pct":1.6016},{"d":"2026-07-07","q":5476839,"v":98198760.77,"pct":1.6156},{"d":"2026-07-08","q":5550160,"v":98450866.8,"pct":1.6372},{"d":"2026-07-09","q":5630785,"v":99671728.18,"pct":1.661},{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628}],"SLCE3":[{"d":"2026-06-29","q":47710655,"v":681473684.04,"pct":9.5661},{"d":"2026-06-30","q":48772471,"v":694581805.56,"pct":9.779},{"d":"2026-07-01","q":49506352,"v":683966375.3,"pct":9.9262},{"d":"2026-07-02","q":50294170,"v":693452997.67,"pct":10.0841},{"d":"2026-07-03","q":49346177,"v":674265752.48,"pct":9.8941},{"d":"2026-07-06","q":49151155,"v":671573160.24,"pct":9.8549},{"d":"2026-07-07","q":49497004,"v":675720803.9,"pct":9.9243},{"d":"2026-07-08","q":50843993,"v":685151386.81,"pct":10.1944},{"d":"2026-07-09","q":52906405,"v":707051496.86,"pct":10.6079},{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808}],"SMTO3":[{"d":"2026-06-29","q":15880340,"v":251545428.76,"pct":4.777},{"d":"2026-06-30","q":16935191,"v":267643216.22,"pct":5.0943},{"d":"2026-07-01","q":17232643,"v":269780329.55,"pct":5.1838},{"d":"2026-07-02","q":17330920,"v":271739797.98,"pct":5.2133},{"d":"2026-07-03","q":17064980,"v":266858814.73,"pct":5.1333},{"d":"2026-07-06","q":16945498,"v":264907835.86,"pct":5.0974},{"d":"2026-07-07","q":16147120,"v":252419040.1,"pct":4.8572},{"d":"2026-07-08","q":16464251,"v":255693709.73,"pct":4.9526},{"d":"2026-07-09","q":16187584,"v":249290066.98,"pct":4.8694},{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042}],"SOJA3":[{"d":"2026-06-29","q":15417757,"v":93826198.68,"pct":10.865},{"d":"2026-06-30","q":15466409,"v":94134318.85,"pct":10.8993},{"d":"2026-07-01","q":15722598,"v":95550672.06,"pct":11.0798},{"d":"2026-07-02","q":15811384,"v":96072074.92,"pct":11.1424},{"d":"2026-07-03","q":15730409,"v":95540283.61,"pct":11.0853},{"d":"2026-07-06","q":15719867,"v":95479648.15,"pct":11.0779},{"d":"2026-07-07","q":15736921,"v":95564379.05,"pct":11.0899},{"d":"2026-07-08","q":15905994,"v":95863560.22,"pct":11.2091},{"d":"2026-07-09","q":15796626,"v":94957563.42,"pct":11.132},{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226}],"TTEN3":[{"d":"2026-06-29","q":14334000,"v":209911771.51,"pct":2.8626},{"d":"2026-06-30","q":14323948,"v":209850278.51,"pct":2.8606},{"d":"2026-07-01","q":14342213,"v":209987640.96,"pct":2.8642},{"d":"2026-07-02","q":14583925,"v":213842323.97,"pct":2.9125},{"d":"2026-07-03","q":13994103,"v":205333941.04,"pct":2.7947},{"d":"2026-07-06","q":13894197,"v":203879340.63,"pct":2.7747},{"d":"2026-07-07","q":14060276,"v":206382910.04,"pct":2.8079},{"d":"2026-07-08","q":14157276,"v":209333283.82,"pct":2.8273},{"d":"2026-07-09","q":13909455,"v":205927458.14,"pct":2.7778},{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587}],"VITT3":[{"d":"2026-06-29","q":1218016,"v":3994431.81,"pct":0.7729},{"d":"2026-06-30","q":1248671,"v":4092702.56,"pct":0.7924},{"d":"2026-07-01","q":1386393,"v":4536771.14,"pct":0.8797},{"d":"2026-07-02","q":1323175,"v":4324161.0,"pct":0.8396},{"d":"2026-07-03","q":1250140,"v":4081110.39,"pct":0.7933},{"d":"2026-07-06","q":1257010,"v":4102941.79,"pct":0.7976},{"d":"2026-07-07","q":1245112,"v":4063887.05,"pct":0.7901},{"d":"2026-07-08","q":1272953,"v":4138680.35,"pct":0.8078},{"d":"2026-07-09","q":1242042,"v":4037001.62,"pct":0.7881},{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633}]};
-const SI_LATEST     = {"ABEV3":{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814,"shares_out":15763664889.0,"preco":16.0382,"dod_q":-497094,"dod_pct":-0.16,"nome":"AMBEV S.A."},"AGRO3":{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435,"shares_out":102683444.0,"preco":18.3213,"dod_q":-33832,"dod_pct":-0.83,"nome":"BRASILAGRO - CIA BRAS DE PROP AGRICOLAS"},"BEEF3":{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065,"shares_out":1000540922.0,"preco":3.587,"dod_q":535401,"dod_pct":0.51,"nome":"MINERVA S.A."},"CAML3":{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311,"shares_out":350000000.0,"preco":4.9252,"dod_q":-12481,"dod_pct":-0.19,"nome":"CAMIL ALIMENTOS S.A."},"JALL3":{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574,"shares_out":303541864.0,"preco":2.1354,"dod_q":-79924,"dod_pct":-1.21,"nome":"JALLES MACHADO S.A."},"MBRF3":{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342,"shares_out":1401916108.0,"preco":15.9585,"dod_q":-202077,"dod_pct":-0.19,"nome":"MARFRIG GLOBAL FOODS S.A."},"MDIA3":{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628,"shares_out":339000000.0,"preco":17.6232,"dod_q":6022,"dod_pct":0.11,"nome":"M.DIAS BRANCO S.A. IND COM DE ALIMENTOS"},"SLCE3":{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808,"shares_out":498745930.0,"preco":13.3376,"dod_q":1361189,"dod_pct":2.57,"nome":"SLC AGRICOLA S.A."},"SMTO3":{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042,"shares_out":332435391.0,"preco":15.3914,"dod_q":115694,"dod_pct":0.71,"nome":"SAO MARTINHO S.A."},"SOJA3":{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226,"shares_out":141902688.0,"preco":5.9748,"dod_q":-13401,"dod_pct":-0.08,"nome":"BOA SAFRA SEMENTES S.A."},"TTEN3":{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587,"shares_out":500737647.0,"preco":14.8156,"dod_q":-95387,"dod_pct":-0.69,"nome":"TRÊS TENTOS AGROINDUSTRIAL S/A"},"VITT3":{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633,"shares_out":157589984.0,"preco":3.2475,"dod_q":-39135,"dod_pct":-3.15,"nome":"VITTIA S.A."}};
+const SI_SERIES     = {"ABEV3":[{"d":"2026-06-29","q":290765509,"v":4725764403.16,"pct":1.8445,"ff":6.9272,"taxa":0.13},{"d":"2026-06-30","q":294341635,"v":4788069740.82,"pct":1.8672,"ff":7.0124,"taxa":0.12},{"d":"2026-07-01","q":292206432,"v":4750421729.48,"pct":1.8537,"ff":6.9616,"taxa":0.12},{"d":"2026-07-02","q":298507859,"v":4852504666.62,"pct":1.8936,"ff":7.1117,"taxa":0.11},{"d":"2026-07-03","q":295698871,"v":4806872244.91,"pct":1.8758,"ff":7.0448,"taxa":0.11},{"d":"2026-07-06","q":300937833,"v":4891831122.87,"pct":1.9091,"ff":7.1696,"taxa":0.09},{"d":"2026-07-07","q":301246571,"v":4892245278.64,"pct":1.911,"ff":7.1769,"taxa":0.09},{"d":"2026-07-08","q":306759016,"v":4966647248.26,"pct":1.946,"ff":7.3083,"taxa":0.09},{"d":"2026-07-09","q":312832344,"v":5027785291.37,"pct":1.9845,"ff":7.4529,"taxa":0.09},{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814,"ff":7.4411,"taxa":0.09}],"AGRO3":[{"d":"2026-06-29","q":4108132,"v":76145089.35,"pct":4.0008,"ff":6.4892,"taxa":0.07},{"d":"2026-06-30","q":4124341,"v":76449689.87,"pct":4.0166,"ff":6.5148,"taxa":0.09},{"d":"2026-07-01","q":4068495,"v":74774117.19,"pct":3.9622,"ff":6.4266,"taxa":0.09},{"d":"2026-07-02","q":4100643,"v":75361704.21,"pct":3.9935,"ff":6.4774,"taxa":0.09},{"d":"2026-07-03","q":4085838,"v":75076420.25,"pct":3.9791,"ff":6.454,"taxa":0.09},{"d":"2026-07-06","q":4077515,"v":74931204.94,"pct":3.971,"ff":6.4408,"taxa":0.09},{"d":"2026-07-07","q":4091806,"v":75190952.86,"pct":3.9849,"ff":6.4634,"taxa":0.09},{"d":"2026-07-08","q":4083504,"v":74895600.23,"pct":3.9768,"ff":6.4503,"taxa":0.09},{"d":"2026-07-09","q":4083108,"v":74810354.05,"pct":3.9764,"ff":6.4497,"taxa":0.09},{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435,"ff":6.3962,"taxa":0.09}],"BEEF3":[{"d":"2026-06-29","q":100941834,"v":368045117.73,"pct":10.0887,"ff":22.7306,"taxa":5.88},{"d":"2026-06-30","q":100781202,"v":368497214.44,"pct":10.0727,"ff":22.6944,"taxa":5.84},{"d":"2026-07-01","q":99183801,"v":363313500.31,"pct":9.913,"ff":22.3347,"taxa":5.78},{"d":"2026-07-02","q":104626921,"v":381396907.29,"pct":10.457,"ff":23.5604,"taxa":5.83},{"d":"2026-07-03","q":103514351,"v":376867652.81,"pct":10.3458,"ff":23.3099,"taxa":5.79},{"d":"2026-07-06","q":101186491,"v":367739231.63,"pct":10.1132,"ff":22.7857,"taxa":5.19},{"d":"2026-07-07","q":102581897,"v":372393383.27,"pct":10.2526,"ff":23.0999,"taxa":4.56},{"d":"2026-07-08","q":106503191,"v":382652065.27,"pct":10.6446,"ff":23.9829,"taxa":4.53},{"d":"2026-07-09","q":104586238,"v":375247229.28,"pct":10.453,"ff":23.5513,"taxa":4.38},{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065,"ff":23.6718,"taxa":3.0}],"CAML3":[{"d":"2026-06-29","q":5934735,"v":29543419.24,"pct":1.6956,"ff":6.168,"taxa":0.16},{"d":"2026-06-30","q":5861237,"v":29173959.66,"pct":1.6746,"ff":6.0916,"taxa":0.16},{"d":"2026-07-01","q":5865810,"v":29137637.96,"pct":1.6759,"ff":6.0963,"taxa":0.14},{"d":"2026-07-02","q":6010307,"v":29874954.86,"pct":1.7172,"ff":6.2465,"taxa":0.13},{"d":"2026-07-03","q":6099907,"v":30333693.68,"pct":1.7428,"ff":6.3396,"taxa":0.13},{"d":"2026-07-06","q":6096407,"v":30316941.48,"pct":1.7418,"ff":6.336,"taxa":0.13},{"d":"2026-07-07","q":6244536,"v":31023129.92,"pct":1.7842,"ff":6.49,"taxa":0.13},{"d":"2026-07-08","q":6243878,"v":30961641.61,"pct":1.784,"ff":6.4893,"taxa":0.13},{"d":"2026-07-09","q":6421348,"v":31632880.57,"pct":1.8347,"ff":6.6737,"taxa":0.13},{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311,"ff":6.6607,"taxa":0.13}],"JALL3":[{"d":"2026-06-29","q":6928473,"v":15697542.83,"pct":2.2825,"ff":7.1558,"taxa":0.07},{"d":"2026-06-30","q":6826671,"v":15417528.65,"pct":2.249,"ff":7.0507,"taxa":0.07},{"d":"2026-07-01","q":5711477,"v":12773065.32,"pct":1.8816,"ff":5.8989,"taxa":0.07},{"d":"2026-07-02","q":5408165,"v":12130280.07,"pct":1.7817,"ff":5.5856,"taxa":0.06},{"d":"2026-07-03","q":5840866,"v":12983080.59,"pct":1.9242,"ff":6.0325,"taxa":0.06},{"d":"2026-07-06","q":6091026,"v":13507811.89,"pct":2.0067,"ff":6.2909,"taxa":0.05},{"d":"2026-07-07","q":6813962,"v":14970129.26,"pct":2.2448,"ff":7.0376,"taxa":0.05},{"d":"2026-07-08","q":7454296,"v":16143661.95,"pct":2.4558,"ff":7.6989,"taxa":0.05},{"d":"2026-07-09","q":6628469,"v":14192791.24,"pct":2.1837,"ff":6.846,"taxa":0.05},{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574,"ff":6.7634,"taxa":0.05}],"MBRF3":[{"d":"2026-06-29","q":113601632,"v":1808369847.13,"pct":8.1033,"ff":14.9398,"taxa":22.93},{"d":"2026-06-30","q":111866138,"v":1792209922.1,"pct":7.9795,"ff":14.7116,"taxa":22.59},{"d":"2026-07-01","q":112002991,"v":1852878874.85,"pct":7.9893,"ff":14.7296,"taxa":22.54},{"d":"2026-07-02","q":106836578,"v":1782449695.24,"pct":7.6208,"ff":14.0502,"taxa":17.17},{"d":"2026-07-03","q":107386531,"v":1798860274.44,"pct":7.66,"ff":14.1225,"taxa":13.71},{"d":"2026-07-06","q":108835110,"v":1824243549.87,"pct":7.7633,"ff":14.313,"taxa":13.04},{"d":"2026-07-07","q":112680948,"v":1883268330.2,"pct":8.0376,"ff":14.8188,"taxa":11.68},{"d":"2026-07-08","q":108755449,"v":1775240736.16,"pct":7.7576,"ff":14.3025,"taxa":9.63},{"d":"2026-07-09","q":108628891,"v":1742680244.93,"pct":7.7486,"ff":14.2859,"taxa":9.58},{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342,"ff":14.2593,"taxa":9.47}],"MDIA3":[{"d":"2026-06-29","q":5422546,"v":98918017.56,"pct":1.5996,"ff":8.3418,"taxa":0.03},{"d":"2026-06-30","q":5503428,"v":100361176.54,"pct":1.6234,"ff":8.4663,"taxa":0.03},{"d":"2026-07-01","q":5459461,"v":98005078.88,"pct":1.6105,"ff":8.3986,"taxa":0.03},{"d":"2026-07-02","q":5552792,"v":99576322.23,"pct":1.638,"ff":8.5422,"taxa":0.06},{"d":"2026-07-03","q":5522785,"v":99009332.32,"pct":1.6291,"ff":8.496,"taxa":0.06},{"d":"2026-07-06","q":5429411,"v":97382376.49,"pct":1.6016,"ff":8.3524,"taxa":0.06},{"d":"2026-07-07","q":5476839,"v":98198760.77,"pct":1.6156,"ff":8.4254,"taxa":0.06},{"d":"2026-07-08","q":5550160,"v":98450866.8,"pct":1.6372,"ff":8.5382,"taxa":0.06},{"d":"2026-07-09","q":5630785,"v":99671728.18,"pct":1.661,"ff":8.6622,"taxa":0.06},{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628,"ff":8.6714,"taxa":0.06}],"SLCE3":[{"d":"2026-06-29","q":47710655,"v":681473684.04,"pct":9.5661,"ff":21.6872,"taxa":0.34},{"d":"2026-06-30","q":48772471,"v":694581805.56,"pct":9.779,"ff":22.1699,"taxa":0.34},{"d":"2026-07-01","q":49506352,"v":683966375.3,"pct":9.9262,"ff":22.5035,"taxa":0.34},{"d":"2026-07-02","q":50294170,"v":693452997.67,"pct":10.0841,"ff":22.8616,"taxa":0.34},{"d":"2026-07-03","q":49346177,"v":674265752.48,"pct":9.8941,"ff":22.4307,"taxa":0.34},{"d":"2026-07-06","q":49151155,"v":671573160.24,"pct":9.8549,"ff":22.342,"taxa":0.25},{"d":"2026-07-07","q":49497004,"v":675720803.9,"pct":9.9243,"ff":22.4992,"taxa":0.22},{"d":"2026-07-08","q":50843993,"v":685151386.81,"pct":10.1944,"ff":23.1115,"taxa":0.22},{"d":"2026-07-09","q":52906405,"v":707051496.86,"pct":10.6079,"ff":24.049,"taxa":0.22},{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808,"ff":24.6677,"taxa":0.2}],"SMTO3":[{"d":"2026-06-29","q":15880340,"v":251545428.76,"pct":4.777,"ff":12.8499,"taxa":5.91},{"d":"2026-06-30","q":16935191,"v":267643216.22,"pct":5.0943,"ff":13.7034,"taxa":5.91},{"d":"2026-07-01","q":17232643,"v":269780329.55,"pct":5.1838,"ff":13.9441,"taxa":5.83},{"d":"2026-07-02","q":17330920,"v":271739797.98,"pct":5.2133,"ff":14.0237,"taxa":5.81},{"d":"2026-07-03","q":17064980,"v":266858814.73,"pct":5.1333,"ff":13.8085,"taxa":5.77},{"d":"2026-07-06","q":16945498,"v":264907835.86,"pct":5.0974,"ff":13.7118,"taxa":5.61},{"d":"2026-07-07","q":16147120,"v":252419040.1,"pct":4.8572,"ff":13.0658,"taxa":5.61},{"d":"2026-07-08","q":16464251,"v":255693709.73,"pct":4.9526,"ff":13.3224,"taxa":5.61},{"d":"2026-07-09","q":16187584,"v":249290066.98,"pct":4.8694,"ff":13.0985,"taxa":5.61},{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042,"ff":13.1921,"taxa":5.6}],"SOJA3":[{"d":"2026-06-29","q":15417757,"v":93826198.68,"pct":10.865,"ff":26.3358,"taxa":1.58},{"d":"2026-06-30","q":15466409,"v":94134318.85,"pct":10.8993,"ff":26.4189,"taxa":1.58},{"d":"2026-07-01","q":15722598,"v":95550672.06,"pct":11.0798,"ff":26.8565,"taxa":1.56},{"d":"2026-07-02","q":15811384,"v":96072074.92,"pct":11.1424,"ff":27.0082,"taxa":1.47},{"d":"2026-07-03","q":15730409,"v":95540283.61,"pct":11.0853,"ff":26.8699,"taxa":1.47},{"d":"2026-07-06","q":15719867,"v":95479648.15,"pct":11.0779,"ff":26.8519,"taxa":1.47},{"d":"2026-07-07","q":15736921,"v":95564379.05,"pct":11.0899,"ff":26.881,"taxa":1.47},{"d":"2026-07-08","q":15905994,"v":95863560.22,"pct":11.2091,"ff":27.1698,"taxa":1.45},{"d":"2026-07-09","q":15796626,"v":94957563.42,"pct":11.132,"ff":26.983,"taxa":1.44},{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226,"ff":26.9601,"taxa":1.44}],"TTEN3":[{"d":"2026-06-29","q":14334000,"v":209911771.51,"pct":2.8626,"ff":12.7469,"taxa":0.06},{"d":"2026-06-30","q":14323948,"v":209850278.51,"pct":2.8606,"ff":12.738,"taxa":0.06},{"d":"2026-07-01","q":14342213,"v":209987640.96,"pct":2.8642,"ff":12.7542,"taxa":0.06},{"d":"2026-07-02","q":14583925,"v":213842323.97,"pct":2.9125,"ff":12.9692,"taxa":0.06},{"d":"2026-07-03","q":13994103,"v":205333941.04,"pct":2.7947,"ff":12.4447,"taxa":0.06},{"d":"2026-07-06","q":13894197,"v":203879340.63,"pct":2.7747,"ff":12.3558,"taxa":0.06},{"d":"2026-07-07","q":14060276,"v":206382910.04,"pct":2.8079,"ff":12.5035,"taxa":0.06},{"d":"2026-07-08","q":14157276,"v":209333283.82,"pct":2.8273,"ff":12.5898,"taxa":0.06},{"d":"2026-07-09","q":13909455,"v":205927458.14,"pct":2.7778,"ff":12.3694,"taxa":0.06},{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587,"ff":12.2846,"taxa":0.06}],"VITT3":[{"d":"2026-06-29","q":1218016,"v":3994431.81,"pct":0.7729,"ff":2.4197,"taxa":0.55},{"d":"2026-06-30","q":1248671,"v":4092702.56,"pct":0.7924,"ff":2.4806,"taxa":0.55},{"d":"2026-07-01","q":1386393,"v":4536771.14,"pct":0.8797,"ff":2.7541,"taxa":0.55},{"d":"2026-07-02","q":1323175,"v":4324161.0,"pct":0.8396,"ff":2.6286,"taxa":0.55},{"d":"2026-07-03","q":1250140,"v":4081110.39,"pct":0.7933,"ff":2.4835,"taxa":0.55},{"d":"2026-07-06","q":1257010,"v":4102941.79,"pct":0.7976,"ff":2.4971,"taxa":0.55},{"d":"2026-07-07","q":1245112,"v":4063887.05,"pct":0.7901,"ff":2.4735,"taxa":0.55},{"d":"2026-07-08","q":1272953,"v":4138680.35,"pct":0.8078,"ff":2.5288,"taxa":0.54},{"d":"2026-07-09","q":1242042,"v":4037001.62,"pct":0.7881,"ff":2.4674,"taxa":0.54},{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633,"ff":2.3896,"taxa":0.54}]};
+const SI_LATEST     = {"ABEV3":{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814,"ff":7.4411,"taxa":0.09,"shares_out":15763664889.0,"free_float_qty":4197431637.0,"preco":16.0382,"dod_q":-497094,"dod_pct":-0.16,"nome":"AMBEV S.A."},"AGRO3":{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435,"ff":6.3962,"taxa":0.09,"shares_out":102683444.0,"free_float_qty":63307258.0,"preco":18.3213,"dod_q":-33832,"dod_pct":-0.83,"nome":"BRASILAGRO - CIA BRAS DE PROP AGRICOLAS"},"BEEF3":{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065,"ff":23.6718,"taxa":3.0,"shares_out":1000540922.0,"free_float_qty":444079134.0,"preco":3.587,"dod_q":535401,"dod_pct":0.51,"nome":"MINERVA S.A."},"CAML3":{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311,"ff":6.6607,"taxa":0.13,"shares_out":350000000.0,"free_float_qty":96218424.0,"preco":4.9252,"dod_q":-12481,"dod_pct":-0.19,"nome":"CAMIL ALIMENTOS S.A."},"JALL3":{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574,"ff":6.7634,"taxa":0.05,"shares_out":303541864.0,"free_float_qty":96822690.0,"preco":2.1354,"dod_q":-79924,"dod_pct":-1.21,"nome":"JALLES MACHADO S.A."},"MBRF3":{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342,"ff":14.2593,"taxa":9.47,"shares_out":1401916108.0,"free_float_qty":760393642.0,"preco":15.9585,"dod_q":-202077,"dod_pct":-0.19,"nome":"MARFRIG GLOBAL FOODS S.A."},"MDIA3":{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628,"ff":8.6714,"taxa":0.06,"shares_out":339000000.0,"free_float_qty":65004221.0,"preco":17.6232,"dod_q":6022,"dod_pct":0.11,"nome":"M.DIAS BRANCO S.A. IND COM DE ALIMENTOS"},"SLCE3":{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808,"ff":24.6677,"taxa":0.2,"shares_out":498745930.0,"free_float_qty":219994273.0,"preco":13.3376,"dod_q":1361189,"dod_pct":2.57,"nome":"SLC AGRICOLA S.A."},"SMTO3":{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042,"ff":13.1921,"taxa":5.6,"shares_out":332435391.0,"free_float_qty":123583436.0,"preco":15.3914,"dod_q":115694,"dod_pct":0.71,"nome":"SAO MARTINHO S.A."},"SOJA3":{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226,"ff":26.9601,"taxa":1.44,"shares_out":141902688.0,"free_float_qty":58542883.0,"preco":5.9748,"dod_q":-13401,"dod_pct":-0.08,"nome":"BOA SAFRA SEMENTES S.A."},"TTEN3":{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587,"ff":12.2846,"taxa":0.06,"shares_out":500737647.0,"free_float_qty":112450686.0,"preco":14.8156,"dod_q":-95387,"dod_pct":-0.69,"nome":"TRÊS TENTOS AGROINDUSTRIAL S/A"},"VITT3":{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633,"ff":2.3896,"taxa":0.54,"shares_out":157589984.0,"free_float_qty":50338358.0,"preco":3.2475,"dod_q":-39135,"dod_pct":-3.15,"nome":"VITTIA S.A."}};
 const COMPANY_NAMES = {"ABEV3":"AMBEV S.A.","AGRO3":"BRASILAGRO - CIA BRAS DE PROP AGRICOLAS","BEEF3":"MINERVA S.A.","CAML3":"CAMIL ALIMENTOS S.A.","JALL3":"JALLES MACHADO S.A.","MBRF3":"MARFRIG GLOBAL FOODS S.A.","MDIA3":"M.DIAS BRANCO S.A. IND COM DE ALIMENTOS","SLCE3":"SLC AGRICOLA S.A.","SMTO3":"SAO MARTINHO S.A.","SOJA3":"BOA SAFRA SEMENTES S.A.","TTEN3":"TRÊS TENTOS AGROINDUSTRIAL S/A","VITT3":"VITTIA S.A."};
 const LAST_UPDATE   = "2026-07-10";
 
 /* ── State ── */
-let SEL_TICKER = null, PERIOD = 'all', VIEW = 'pct', SORT_KEY = 'pct', SORT_DIR = -1;
+let SEL_TICKER = null, PERIOD = 'all', VIEW = 'ff';
 let CH = null;
 
 /* ── Formatting ── */
@@ -185,87 +185,86 @@ function init(){
   document.getElementById('last-update').textContent = fmtDate(LAST_UPDATE);
   SEL_TICKER = defaultTicker(tickers);
   sel.value = SEL_TICKER;
-  renderTable();
-  renderDetail();
+  renderAll();
 }
 
 function defaultTicker(tickers){
-  // default to the highest short interest (% of shares out)
-  return tickers.slice().sort((a,b)=>(SI_LATEST[b].pct||0)-(SI_LATEST[a].pct||0))[0];
+  // default to the highest short interest as % of free float (fallback: % of shares out)
+  return tickers.slice().sort((a,b)=>{
+    const av = SI_LATEST[a].ff ?? SI_LATEST[a].pct ?? 0;
+    const bv = SI_LATEST[b].ff ?? SI_LATEST[b].pct ?? 0;
+    return bv-av;
+  })[0];
 }
 
 /* ── Controls ── */
-function setTicker(t){ SEL_TICKER=t; document.getElementById('sel-ticker').value=t; renderTable(); renderDetail(); }
+function setTicker(t){ SEL_TICKER=t; document.getElementById('sel-ticker').value=t; renderAll(); }
 function setPeriod(p,el){ PERIOD=p; segOn('seg-period',el); renderChart(); }
-function setView(v,el){ VIEW=v; segOn('seg-view',el); SORT_KEY=v; SORT_DIR=-1; renderTable(); renderChart(); }
+function setView(v,el){ VIEW=v; segOn('seg-view',el); renderChart(); renderHistoryTable(); }
 function segOn(id,el){ document.querySelectorAll('#'+id+' .seg-btn').forEach(b=>b.classList.remove('on')); el.classList.add('on'); }
-function sortBy(k){ if(SORT_KEY===k){SORT_DIR*=-1;} else {SORT_KEY=k;SORT_DIR=-1;} renderTable(); }
 
-/* ── Table ── */
-function renderTable(){
-  const tickers = Object.keys(SI_LATEST);
-  const rows = tickers.map(t=>({t, ...SI_LATEST[t]}));
-  const key = SORT_KEY;
-  rows.sort((a,b)=>{
-    let av,bv;
-    if(key==='qty'){av=a.q;bv=b.q;} else if(key==='vol'){av=a.v;bv=b.v;}
-    else if(key==='dod'){av=a.dod_q;bv=b.dod_q;} else {av=a.pct;bv=b.pct;}
-    return ((bv||0)-(av||0))*(SORT_DIR===-1?1:-1);
-  });
-  const maxPct = Math.max(...rows.map(r=>r.pct||0), 0.0001);
-
-  const arrow = k => SORT_KEY===k ? (SORT_DIR===-1?' ▾':' ▴') : '';
-  document.getElementById('tbl-head').innerHTML =
-    `<tr>
-      <th class="l" onclick="sortBy('tkr')">Ticker</th>
-      <th class="l">Company</th>
-      <th onclick="sortBy('pct')">% Shares Out${arrow('pct')}</th>
-      <th onclick="sortBy('qty')">Shares on Loan${arrow('qty')}</th>
-      <th onclick="sortBy('vol')">R$ on Loan${arrow('vol')}</th>
-      <th onclick="sortBy('dod')">DoD Δ (shares)${arrow('dod')}</th>
-    </tr>`;
-
-  document.getElementById('tbl-body').innerHTML = rows.map(r=>{
-    const w = ((r.pct||0)/maxPct*100).toFixed(1);
-    const dod = r.dod_q;
-    let dodCell='<span class="flat">—</span>';
-    if(dod!=null){
-      const cls = dod>0?'neg':(dod<0?'pos':'flat'); // more shorting = negative signal
-      const sign = dod>0?'+':'';
-      const pctTxt = r.dod_pct!=null ? ` (${sign}${r.dod_pct.toFixed(2)}%)` : '';
-      dodCell = `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
-    }
-    return `<tr class="${r.t===SEL_TICKER?'sel':''}" onclick="setTicker('${r.t}')">
-      <td class="l"><span class="tkr">${r.t}</span></td>
-      <td class="l cname">${r.nome||''}</td>
-      <td class="bar-cell"><div class="bar-fill" style="width:${w}%"></div><span>${fmtPct(r.pct)}</span></td>
-      <td>${fmtInt(r.q)}</td>
-      <td>${fmtBRL(r.v)}</td>
-      <td>${dodCell}</td>
-    </tr>`;
-  }).join('');
+function renderAll(){
+  document.getElementById('hdr-ticker').textContent = SEL_TICKER;
+  document.getElementById('company-tkr').textContent = SEL_TICKER;
+  document.getElementById('company-name').textContent = COMPANY_NAMES[SEL_TICKER] || '';
+  renderKpis();
+  renderChart();
+  renderHistoryTable();
 }
 
-/* ── Detail (KPIs + DoD) ── */
-function renderDetail(){
+/* ── KPIs ── */
+function dodHtml(dod, dodPct){
+  if(dod==null) return '<span class="flat">— (no prior snapshot)</span>';
+  const cls = dod>0?'neg':(dod<0?'pos':'flat'); // more shorting = negative signal
+  const sign = dod>0?'+':'';
+  const pctTxt = dodPct!=null ? ` (${sign}${dodPct.toFixed(2)}%)` : '';
+  return `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
+}
+
+function renderKpis(){
   const L = SI_LATEST[SEL_TICKER];
-  document.getElementById('hist-ticker').textContent = SEL_TICKER;
-  if(!L){ document.getElementById('kpi-row').innerHTML=''; return; }
-  document.getElementById('kpi-row').innerHTML = `
-    <div class="kpi"><div class="kpi-label">Short Interest</div><div class="kpi-value">${fmtPct(L.pct)}<br><small>of shares out</small></div></div>
+  const row = document.getElementById('kpi-row');
+  if(!L){ row.innerHTML=''; return; }
+  row.innerHTML = `
+    <div class="kpi"><div class="kpi-label">Short Interest</div><div class="kpi-value big">${fmtPct(L.ff)}<br><small>of free float</small></div></div>
+    <div class="kpi"><div class="kpi-label">% of Shares Out</div><div class="kpi-value">${fmtPct(L.pct)}</div></div>
+    <div class="kpi"><div class="kpi-label">Borrow Rate</div><div class="kpi-value">${fmtPct(L.taxa)}<br><small>média ponderada</small></div></div>
     <div class="kpi"><div class="kpi-label">Shares on Loan</div><div class="kpi-value">${fmtInt(L.q)}</div></div>
     <div class="kpi"><div class="kpi-label">Value on Loan</div><div class="kpi-value">${fmtBRL(L.v)}</div></div>
+    <div class="kpi"><div class="kpi-label">DoD Δ (shares)</div><div class="kpi-value">${dodHtml(L.dod_q, L.dod_pct)}</div></div>
+    <div class="kpi"><div class="kpi-label">Free Float Shares</div><div class="kpi-value">${fmtInt(L.free_float_qty)}</div></div>
     <div class="kpi"><div class="kpi-label">Shares Outstanding</div><div class="kpi-value">${fmtInt(L.shares_out)}</div></div>`;
-  const dod = L.dod_q;
-  const el = document.getElementById('dod-value');
-  if(dod==null){ el.innerHTML='<span class="flat">— (no prior snapshot yet)</span>'; }
-  else{
-    const cls = dod>0?'neg':(dod<0?'pos':'flat');
-    const sign = dod>0?'+':'';
-    const pctTxt = L.dod_pct!=null?` (${sign}${L.dod_pct.toFixed(2)}%)`:'';
-    el.innerHTML = `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
+}
+
+/* ── Daily history table (single ticker) ── */
+function renderHistoryTable(){
+  const rows = (SI_SERIES[SEL_TICKER] || []).slice().sort((a,b)=>b.d.localeCompare(a.d));
+  document.getElementById('tbl-head').innerHTML =
+    `<tr>
+      <th class="l">Date</th>
+      <th>% Free Float</th>
+      <th>% Shares Out</th>
+      <th>Shares on Loan</th>
+      <th>R$ on Loan</th>
+      <th>Borrow Rate</th>
+    </tr>`;
+  if(!rows.length){
+    document.getElementById('tbl-body').innerHTML =
+      '<tr><td class="empty" colspan="6">No history yet for this ticker.</td></tr>';
+    return;
   }
-  renderChart();
+  document.getElementById('tbl-body').innerHTML = rows.map((r,i)=>{
+    const prev = rows[i+1]; // rows are desc, so i+1 is the earlier day
+    const dod = prev ? r.q - prev.q : null;
+    return `<tr>
+      <td class="l">${fmtDate(r.d)}</td>
+      <td>${fmtPct(r.ff)}</td>
+      <td>${fmtPct(r.pct)}</td>
+      <td>${fmtInt(r.q)}${dod!=null?` <span class="${dod>0?'neg':(dod<0?'pos':'flat')}" style="font-size:10px;">(${dod>0?'+':''}${fmtInt(dod)})</span>`:''}</td>
+      <td>${fmtBRL(r.v)}</td>
+      <td>${fmtPct(r.taxa)}</td>
+    </tr>`;
+  }).join('');
 }
 
 /* ── History chart ── */
@@ -277,42 +276,51 @@ function filterPeriod(rows){
   return rows.filter(r=>new Date(r.d)>=cut);
 }
 
+const VIEW_LABEL = {
+  ff:   'Short Interest (% of Free Float)',
+  pct:  'Short Interest (% of Shares Out)',
+  qty:  'Shares on Loan',
+  vol:  'Value on Loan (R$)',
+  taxa: 'Borrow Rate (média ponderada)',
+};
+const VIEW_KEY = { ff:'ff', pct:'pct', qty:'q', vol:'v', taxa:'taxa' };
+
 function renderChart(){
   const raw = SI_SERIES[SEL_TICKER] || [];
   const rows = filterPeriod(raw);
   const emptyEl = document.getElementById('hist-empty');
   const canvas = document.getElementById('ch-hist');
+  document.getElementById('hist-title').textContent = VIEW_LABEL[VIEW];
+
   if(rows.length < 2){
     if(CH){ CH.destroy(); CH=null; }
     canvas.style.display='none'; emptyEl.style.display='block';
-  } else {
-    canvas.style.display='block'; emptyEl.style.display='none';
+    return;
   }
-  const labels = rows.map(r=>r.d);
-  const key = VIEW==='qty'?'q':(VIEW==='vol'?'v':'pct');
-  const data = rows.map(r=>r[key]);
-  const label = VIEW==='qty'?'Shares on loan':(VIEW==='vol'?'R$ on loan':'% of shares out');
-  document.getElementById('hist-title').textContent =
-    ({pct:'Short Interest (% of Shares Out)',qty:'Shares on Loan',vol:'Value on Loan (R$)'})[VIEW];
+  canvas.style.display='block'; emptyEl.style.display='none';
 
-  if(rows.length < 2) return;
+  const labels = rows.map(r=>r.d);
+  const key = VIEW_KEY[VIEW];
+  const data = rows.map(r=>r[key]);
+
   const cfg = {
     type:'line',
     data:{ labels, datasets:[{
-      label, data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
+      label: VIEW_LABEL[VIEW], data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
       borderWidth:2, pointRadius: rows.length>60?0:2, pointHoverRadius:4,
-      fill:true, tension:.2,
+      fill:true, tension:.2, spanGaps:true,
     }]},
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false},
         tooltip:{ callbacks:{ label:c=>{
           const v=c.parsed.y;
-          return VIEW==='pct'?fmtPct(v):(VIEW==='vol'?fmtBRL(v):fmtInt(v)+' shares');
+          return (VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?fmtPct(v):(VIEW==='vol'?fmtBRL(v):fmtInt(v)+' shares');
         }}}},
       scales:{
         x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, font:{size:10}, color:'#999' }, grid:{display:false} },
-        y:{ ticks:{ font:{size:10}, color:'#999', callback:v=>VIEW==='pct'?v+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
+        y:{ ticks:{ font:{size:10}, color:'#999',
+              callback:v=>(VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?v+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
             grid:{color:'#f0f0f0'} }
       }
     }

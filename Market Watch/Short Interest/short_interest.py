@@ -2,24 +2,38 @@
 Short Interest — monitor de posições de empréstimo de ativos (short interest)
 das companhias cobertas.
 
-Fonte:
-  B3 · Boletim Diário do Mercado (BDI) · Empréstimos de Ativos — Posições em aberto
-  Endpoint (tabela 553 = BTBLendingOpenPosition):
-    POST https://arquivos.b3.com.br/bdi/table/BTBLendingOpenPosition/{date}/{date}/{page}/{take}
-    Content-Type: application/json   body: {}
-  Colunas: Data | Data | Código IF | Código ISIN | Empresa | Tipo de empréstimo |
-           Mercado | Saldo em quantidade do ativo | Preço médio | Saldo em R$
-  Filtramos Mercado == "Total" para os tickers cobertos. "Saldo em quantidade do
-  ativo" é o número de ações emprestadas (= posição vendida/short do mercado).
+Fontes:
+  1. B3 · Boletim Diário do Mercado (BDI) · Empréstimos de Ativos — Posições em aberto
+     Endpoint (tabela 553 = BTBLendingOpenPosition):
+       POST https://arquivos.b3.com.br/bdi/table/BTBLendingOpenPosition/{date}/{date}/{page}/{take}
+       Content-Type: application/json   body: {}
+     Colunas: Data | Data | Código IF | Código ISIN | Empresa | Tipo de empréstimo |
+              Mercado | Saldo em quantidade do ativo | Preço médio | Saldo em R$
+     Filtramos Mercado == "Total" para os tickers cobertos. "Saldo em quantidade do
+     ativo" é o número de ações emprestadas (= posição vendida/short do mercado).
 
-  Ações em circulação (denominador do short interest % das ações totais):
-    B3 · Empresas Listadas · GetListedSupplementCompany
-    GET https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/CompanyCall/
-        GetListedSupplementCompany/{base64({issuingCompany, language})}
-    → campo totalNumberShares
+  2. B3 · Empréstimos registrados (tabela 554 = BTBLoanBalance) — taxa do aluguel:
+       POST .../BTBLoanBalance/{date}/{date}/{page}/{take}?filter={base64(ticker)}
+     Colunas incluem Taxa doador (Mínima/Média ponderada/Máxima) e Taxa tomador.
+     A "Média ponderada" já vem igual em todas as linhas de mercado do ticker no
+     dia (é a taxa agregada do pregão) — não é preciso reponderar por segmento.
 
-  A B3 mantém apenas ~21 pregões desta tabela (limitDate D-21), então o histórico
-  é acumulado localmente: cada execução grava o snapshot do dia no SQLite.
+  3. Ações em circulação (denominador do short interest % das ações totais):
+     B3 · Empresas Listadas · GetListedSupplementCompany
+       GET https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/CompanyCall/
+           GetListedSupplementCompany/{base64({issuingCompany, language})}
+       → campo totalNumberShares
+
+  4. Free float % (denominador do short interest % do free float):
+     CVM Dados Abertos · Formulário de Referência · Distribuição de Capital
+       https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/fre_cia_aberta_{year}.zip
+       → fre_cia_aberta_distribuicao_capital_{year}.csv
+     Campo oficial "Percentual_Total_Acoes_Circulacao" (% em free float, disclosure
+     regulatório periódico — não diário). Atualizado localmente a cada ~25 dias.
+
+  A B3 mantém apenas ~21 pregões da tabela de posições em aberto (limitDate D-21),
+  então o histórico é acumulado localmente: cada execução grava o snapshot do dia
+  no SQLite.
 
 Execução:
   python short_interest.py                # incremental (último pregão disponível)
@@ -29,11 +43,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
+import io
 import json
 import logging
 import re
 import sqlite3
 import time
+import zipfile
 from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -52,20 +69,38 @@ TICKERS: list[str] = [
     "TTEN3", "SMTO3", "JALL3", "SOJA3", "VITT3", "AGRO3",
 ]
 
+# ticker → CNPJ (mesmo mapeamento do módulo CVM Buybacks), usado para casar
+# com o dataset de Distribuição de Capital (free float) da CVM.
+CNPJ_OF: dict[str, str] = {
+    "MBRF3": "03853896000140",
+    "BEEF3": "67620377000114",
+    "JBSS3": "02916265000160",
+    "ABEV3": "07526557000100",
+    "MDIA3": "07206816000115",
+    "CAML3": "64904295000103",
+    "SLCE3": "89096457000155",
+    "TTEN3": "94813102000170",
+    "SMTO3": "51466860000156",
+    "JALL3": "02635522000195",
+    "SOJA3": "10807374000177",
+    "VITT3": "45365558000109",
+    "AGRO3": "07628528000159",
+}
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 DB_PATH    = SCRIPT_DIR / "short_interest.db"
 DASHBOARD_HTML = SCRIPT_DIR / "short_interest.html"
 
-TABLE_NAME = "BTBLendingOpenPosition"
 BDI_URL = (
-    "https://arquivos.b3.com.br/bdi/table/"
-    + TABLE_NAME
-    + "/{date}/{date}/{page}/{take}"
+    "https://arquivos.b3.com.br/bdi/table/{table}/{date}/{date}/{page}/{take}"
 )
 SUPPLEMENT_URL = (
     "https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/CompanyCall/"
     "GetListedSupplementCompany/{payload}"
 )
+FRE_ZIP_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/fre_cia_aberta_{year}.zip"
+FRE_CSV_NAME = "fre_cia_aberta_distribuicao_capital_{year}.csv"
+FREE_FLOAT_MAX_AGE_DAYS = 25  # disclosure é periódica (quadrimestral/anual), não diária
 
 HTTP_HEADERS = {
     "User-Agent": "short-interest-monitor/1.0 (github-actions)",
@@ -108,11 +143,23 @@ CREATE TABLE IF NOT EXISTS short_interest (
     preco_medio   REAL,            -- volume / qtd
     shares_out    REAL,            -- ações em circulação (totalNumberShares) no dia
     pct_shares    REAL,            -- qtd / shares_out * 100
+    free_float_qty REAL,           -- ações em free float (CVM FRE) vigentes no dia
+    pct_free_float REAL,           -- qtd / free_float_qty * 100
+    taxa_doador   REAL,            -- taxa média ponderada do aluguel (% a.a., tabela 554)
     nome          TEXT,
     PRIMARY KEY (ticker, data)
 );
 CREATE INDEX IF NOT EXISTS idx_si_ticker ON short_interest(ticker);
 CREATE INDEX IF NOT EXISTS idx_si_data   ON short_interest(data);
+
+-- Free float por ticker — disclosure periódica (CVM FRE), não diária.
+CREATE TABLE IF NOT EXISTS free_float (
+    ticker          TEXT PRIMARY KEY,
+    data_referencia TEXT,          -- referência do FRE (Formulário de Referência)
+    qtd_free_float  REAL,
+    pct_free_float  REAL,          -- % do capital total em free float
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -131,9 +178,22 @@ def db_conn() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _migrate_columns(conn: sqlite3.Connection) -> None:
+    """Adiciona colunas novas em bancos já existentes (idempotente)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(short_interest)")}
+    for col, decl in [
+        ("free_float_qty", "REAL"),
+        ("pct_free_float", "REAL"),
+        ("taxa_doador", "REAL"),
+    ]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE short_interest ADD COLUMN {col} {decl}")
+
+
 def init_db() -> None:
     with db_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate_columns(conn)
         for t in TICKERS:
             conn.execute(
                 "INSERT INTO companies(ticker, issuer) VALUES(?,?) "
@@ -153,7 +213,7 @@ def _session() -> requests.Session:
 
 
 def _num_br(s) -> float | None:
-    """'15.763.664.889' → 15763664889.0 ; '1.020,32' → 1020.32"""
+    """'15.763.664.889' → 15763664889.0 ; '1.020,32' → 1020.32 (formato B3/pt-BR)."""
     if s is None:
         return None
     s = str(s).strip()
@@ -166,9 +226,23 @@ def _num_br(s) -> float | None:
         return None
 
 
+def _num_fre(s) -> float | None:
+    """Campos numéricos do CSV da CVM (FRE) usam ponto decimal simples,
+    sem separador de milhar: '31.898000' → 31.898 ; '96822690' → 96822690.0."""
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return _num_br(s)
+
+
 def fetch_lending_page(sess: requests.Session, day: str, page: int,
                        take: int = PAGE_TAKE, retries: int = 3) -> dict | None:
-    url = BDI_URL.format(date=day, page=page, take=take)
+    url = BDI_URL.format(table="BTBLendingOpenPosition", date=day, page=page, take=take)
     for attempt in range(retries):
         try:
             r = sess.post(url, data="{}",
@@ -240,6 +314,118 @@ def fetch_shares_out(sess: requests.Session, issuer: str) -> dict:
         return {"total": None, "common": None, "preferred": None, "name": None}
 
 
+# Índices das colunas na tabela BTBLoanBalance ("Empréstimos registrados")
+LB_C_QTD          = 7   # Quantidade de ativos
+LB_C_TAXA_DOADOR_MP = 9   # Taxa doador — Média ponderada
+
+
+def fetch_borrow_rate(sess: requests.Session, day: str, ticker: str) -> float | None:
+    """Taxa média ponderada do aluguel (tabela 554) para o ticker no pregão.
+
+    A "Média ponderada" já vem repetida e idêntica em todas as linhas de
+    Mercado do ticker no dia (é a taxa agregada do pregão, não por segmento).
+    Preferimos a linha com maior quantidade, por robustez.
+    """
+    filt = base64.b64encode(ticker.encode()).decode()
+    url = BDI_URL.format(table="BTBLoanBalance", date=day, page=1, take=100) + f"?filter={filt}"
+    try:
+        r = sess.post(url, data="{}", headers={"Content-Type": "application/json"}, timeout=60)
+        if r.status_code != 200 or not r.headers.get("content-type", "").startswith("application/json"):
+            return None
+        rows = (r.json().get("table") or {}).get("values") or []
+        rows = [row for row in rows if row[2] == ticker]
+        if not rows:
+            return None
+        rows.sort(key=lambda row: float(row[LB_C_QTD] or 0), reverse=True)
+        rate = rows[0][LB_C_TAXA_DOADOR_MP]
+        return round(float(rate) * 100, 4) if rate is not None else None
+    except (requests.RequestException, ValueError, TypeError, IndexError) as e:
+        log.warning("  taxa_doador %s (%s) falhou: %s", ticker, day, e)
+        return None
+
+
+# ============================================================================
+# FREE FLOAT (CVM · Formulário de Referência · Distribuição de Capital)
+# ============================================================================
+
+def _fetch_fre_year(sess: requests.Session, year: int) -> list[dict]:
+    """Baixa o ZIP anual do FRE e retorna as linhas de distribuição de capital."""
+    url = FRE_ZIP_URL.format(year=year)
+    csv_name = FRE_CSV_NAME.format(year=year)
+    try:
+        r = sess.get(url, timeout=90)
+        r.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            if csv_name not in z.namelist():
+                return []
+            with z.open(csv_name) as f:
+                text = io.TextIOWrapper(f, encoding="latin-1", newline="")
+                return list(csv.DictReader(text, delimiter=";"))
+    except (requests.RequestException, zipfile.BadZipFile, KeyError) as e:
+        log.warning("  FRE %d falhou: %s", year, e)
+        return []
+
+
+def refresh_free_float(sess: requests.Session, conn: sqlite3.Connection) -> None:
+    """Atualiza a tabela free_float a partir do FRE da CVM (ano atual + anterior).
+
+    Disclosure é periódica (não diária) — só refaz o download se o cache
+    local estiver ausente ou vencido (> FREE_FLOAT_MAX_AGE_DAYS dias).
+    """
+    row = conn.execute(
+        "SELECT MIN(updated_at) AS oldest, COUNT(*) AS n FROM free_float"
+    ).fetchone()
+    # Nem todo ticker tem disclosure FRE (ex.: JBSS3, N.V. holandesa) — não
+    # exigimos cobertura completa, só que o cache exista e esteja fresco.
+    if row["n"] > 0 and row["oldest"]:
+        age_days = (date.today() - date.fromisoformat(row["oldest"][:10])).days
+        if age_days < FREE_FLOAT_MAX_AGE_DAYS:
+            log.info("Free float: cache local com %d dias — reaproveitando.", age_days)
+            return
+
+    log.info("Free float: atualizando via CVM FRE (Distribuição de Capital)...")
+    year = date.today().year
+    rows = _fetch_fre_year(sess, year) + _fetch_fre_year(sess, year - 1)
+    if not rows:
+        log.warning("  FRE indisponível — mantendo free float existente (se houver).")
+        return
+
+    cnpj_to_ticker = {v: k for k, v in CNPJ_OF.items()}
+    best: dict[str, tuple] = {}  # cnpj -> (data_ref, versao, qtd, pct)
+    for r in rows:
+        cnpj = re.sub(r"\D", "", r.get("CNPJ_Companhia", ""))
+        if cnpj not in cnpj_to_ticker:
+            continue
+        try:
+            versao = int(r.get("Versao") or 0)
+        except ValueError:
+            versao = 0
+        data_ref = r.get("Data_Referencia") or ""
+        key = (data_ref, versao)
+        if cnpj not in best or key > best[cnpj][:2]:
+            best[cnpj] = (data_ref, versao, r.get("Quantidade_Total_Acoes_Circulacao"),
+                          r.get("Percentual_Total_Acoes_Circulacao"))
+
+    for cnpj, (data_ref, _versao, qtd_str, pct_str) in best.items():
+        ticker = cnpj_to_ticker[cnpj]
+        qtd = _num_fre(qtd_str)
+        pct = _num_fre(pct_str)
+        conn.execute(
+            """
+            INSERT INTO free_float (ticker, data_referencia, qtd_free_float, pct_free_float, updated_at)
+            VALUES (?,?,?,?, datetime('now'))
+            ON CONFLICT(ticker) DO UPDATE SET
+                data_referencia=excluded.data_referencia,
+                qtd_free_float=excluded.qtd_free_float,
+                pct_free_float=excluded.pct_free_float,
+                updated_at=datetime('now')
+            """,
+            (ticker, data_ref, qtd, pct),
+        )
+        log.info("  %-6s  free float %.2f%% (%s ações) — ref %s",
+                 ticker, pct or 0, f"{round(qtd or 0):,}", data_ref)
+
+
 # ============================================================================
 # INGESTÃO
 # ============================================================================
@@ -289,24 +475,36 @@ def ingest_day(sess: requests.Session, conn: sqlite3.Connection, day: str) -> in
         pct = round(qtd / shares_out * 100, 4) if (shares_out and shares_out > 0) else None
         preco = round(vol / qtd, 4) if qtd else None
         nome = a["nome"] or so["name"] or ticker
+
+        ff = conn.execute(
+            "SELECT qtd_free_float FROM free_float WHERE ticker=?", (ticker,)
+        ).fetchone()
+        ff_qty = ff["qtd_free_float"] if ff else None
+        pct_ff = round(qtd / ff_qty * 100, 4) if (ff_qty and ff_qty > 0) else None
+        taxa = fetch_borrow_rate(sess, day, ticker)
+
         conn.execute(
             """
             INSERT INTO short_interest
-                (ticker, data, qtd, volume, preco_medio, shares_out, pct_shares, nome)
-            VALUES (?,?,?,?,?,?,?,?)
+                (ticker, data, qtd, volume, preco_medio, shares_out, pct_shares,
+                 free_float_qty, pct_free_float, taxa_doador, nome)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(ticker, data) DO UPDATE SET
                 qtd=excluded.qtd, volume=excluded.volume,
                 preco_medio=excluded.preco_medio, shares_out=excluded.shares_out,
-                pct_shares=excluded.pct_shares, nome=excluded.nome
+                pct_shares=excluded.pct_shares, free_float_qty=excluded.free_float_qty,
+                pct_free_float=excluded.pct_free_float, taxa_doador=excluded.taxa_doador,
+                nome=excluded.nome
             """,
-            (ticker, day, round(qtd), round(vol, 2), preco, shares_out, pct, nome),
+            (ticker, day, round(qtd), round(vol, 2), preco, shares_out, pct,
+             ff_qty, pct_ff, taxa, nome),
         )
         conn.execute(
             "UPDATE companies SET nome=? WHERE ticker=?", (nome, ticker)
         )
         n += 1
-        log.info("  %-6s  %14s ações  (%.2f%% do capital)  R$ %s",
-                 ticker, f"{round(qtd):,}", pct or 0, f"{round(vol):,}")
+        log.info("  %-6s  %14s ações  (%.2f%% capital, %.2f%% free float, taxa %.2f%%)  R$ %s",
+                 ticker, f"{round(qtd):,}", pct or 0, pct_ff or 0, taxa or 0, f"{round(vol):,}")
     return n
 
 
@@ -361,14 +559,16 @@ def build_dashboard(conn: sqlite3.Connection) -> None:
     # SI_SERIES: histórico diário por ticker
     series: dict[str, list] = {}
     for r in conn.execute(
-        "SELECT ticker, data, qtd, volume, pct_shares "
+        "SELECT ticker, data, qtd, volume, pct_shares, pct_free_float, taxa_doador "
         "FROM short_interest ORDER BY ticker, data"
     ):
         series.setdefault(r["ticker"], []).append({
-            "d":   r["data"],
-            "q":   round(r["qtd"] or 0),
-            "v":   round(r["volume"] or 0, 2),
-            "pct": round(r["pct_shares"], 4) if r["pct_shares"] is not None else None,
+            "d":     r["data"],
+            "q":     round(r["qtd"] or 0),
+            "v":     round(r["volume"] or 0, 2),
+            "pct":   round(r["pct_shares"], 4) if r["pct_shares"] is not None else None,
+            "ff":    round(r["pct_free_float"], 4) if r["pct_free_float"] is not None else None,
+            "taxa":  round(r["taxa_doador"], 4) if r["taxa_doador"] is not None else None,
         })
 
     # SI_LATEST: último snapshot + variação diária (DoD)
@@ -381,22 +581,25 @@ def build_dashboard(conn: sqlite3.Connection) -> None:
         cur = rows[-1]
         prev = rows[-2] if len(rows) >= 2 else None
         rec = conn.execute(
-            "SELECT nome, shares_out, preco_medio FROM short_interest "
+            "SELECT nome, shares_out, preco_medio, free_float_qty FROM short_interest "
             "WHERE ticker=? AND data=?", (ticker, cur["d"])
         ).fetchone()
         nome = rec["nome"] if rec else ticker
         company_names[ticker] = nome
         latest[ticker] = {
-            "d":         cur["d"],
-            "q":         cur["q"],
-            "v":         cur["v"],
-            "pct":       cur["pct"],
+            "d":          cur["d"],
+            "q":          cur["q"],
+            "v":          cur["v"],
+            "pct":        cur["pct"],
+            "ff":         cur["ff"],
+            "taxa":       cur["taxa"],
             "shares_out": rec["shares_out"] if rec else None,
-            "preco":     rec["preco_medio"] if rec else None,
-            "dod_q":     (cur["q"] - prev["q"]) if prev else None,
-            "dod_pct":   (round((cur["q"] - prev["q"]) / prev["q"] * 100, 2)
-                          if prev and prev["q"] else None),
-            "nome":      nome,
+            "free_float_qty": rec["free_float_qty"] if rec else None,
+            "preco":      rec["preco_medio"] if rec else None,
+            "dod_q":      (cur["q"] - prev["q"]) if prev else None,
+            "dod_pct":    (round((cur["q"] - prev["q"]) / prev["q"] * 100, 2)
+                           if prev and prev["q"] else None),
+            "nome":       nome,
         }
         if cur["d"] > last_date:
             last_date = cur["d"]
@@ -427,6 +630,8 @@ def main() -> None:
     sess = _session()
 
     with db_conn() as conn:
+        refresh_free_float(sess, conn)
+
         if args.backfill > 0:
             today = date.today()
             days = []
