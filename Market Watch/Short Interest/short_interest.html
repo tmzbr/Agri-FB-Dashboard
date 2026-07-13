@@ -222,25 +222,16 @@ function renderAll(){
 }
 
 /* ── KPIs ── */
-function dodHtml(dod, dodPct){
-  if(dod==null) return '<span class="flat">— (no prior snapshot)</span>';
-  const cls = dod>0?'neg':(dod<0?'pos':'flat'); // more shorting = negative signal
-  const sign = dod>0?'+':'';
-  const pctTxt = dodPct!=null ? ` (${sign}${dodPct.toFixed(2)}%)` : '';
-  return `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
-}
-
 function renderKpis(){
   const L = SI_LATEST[SEL_TICKER];
   const row = document.getElementById('kpi-row');
   if(!L){ row.innerHTML=''; return; }
   row.innerHTML = `
-    <div class="kpi"><div class="kpi-label">Short Interest</div><div class="kpi-value big">${fmtPct(L.ff)}<br><small>of free float</small></div></div>
+    <div class="kpi"><div class="kpi-label">% of Free Float</div><div class="kpi-value big">${fmtPct(L.ff)}</div></div>
     <div class="kpi"><div class="kpi-label">% of Shares Out</div><div class="kpi-value">${fmtPct(L.pct)}</div></div>
-    <div class="kpi"><div class="kpi-label">Borrow Rate</div><div class="kpi-value">${fmtPct(L.taxa)}<br><small>weighted average</small></div></div>
+    <div class="kpi"><div class="kpi-label">Borrow Rate</div><div class="kpi-value">${fmtPct(L.taxa)}</div></div>
     <div class="kpi"><div class="kpi-label">Shares on Loan</div><div class="kpi-value">${fmtInt(L.q)}</div></div>
     <div class="kpi"><div class="kpi-label">Value on Loan</div><div class="kpi-value">${fmtBRL(L.v)}</div></div>
-    <div class="kpi"><div class="kpi-label">DoD Δ (shares)</div><div class="kpi-value">${dodHtml(L.dod_q, L.dod_pct)}</div></div>
     <div class="kpi"><div class="kpi-label">Free Float Shares</div><div class="kpi-value">${fmtInt(L.free_float_qty)}</div></div>
     <div class="kpi"><div class="kpi-label">Shares Outstanding</div><div class="kpi-value">${fmtInt(L.shares_out)}</div></div>`;
 }
