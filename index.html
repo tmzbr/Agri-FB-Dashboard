@@ -1072,7 +1072,7 @@ function buildPaneUsersTeam(){
         ${u.is_admin?'<span class="badge-admin">ADMIN</span>':'<span class="badge-user">USER</span>'}
       </td>
       <td class="usr-td usr-td-client">
-        <input class="usr-client-input" value="${esc(clientOf(u))}" placeholder="Client / house"
+        <input class="usr-client-input" value="${esc(clientOf(u))}" placeholder="Client"
           onchange="dbSetClient('${u.id}',this.value)" title="Click to edit client"/>
       </td>
       <td class="usr-td usr-td-email"><a href="mailto:${esc(u.email)}" class="usr-email-link">${esc(u.email)}</a></td>
@@ -1137,7 +1137,7 @@ function buildPaneUsersTeam(){
           <div class="info-box" style="margin-bottom:12px;"><strong>Regular users</strong> sign in with just their email — no password needed. <strong>Admins</strong> sign in with email + a password you set below. Everything is created here; no Supabase step required.</div>
           <div class="form-grid">
             <div><label class="admin-label">Display Name</label><input class="admin-input" id="nu-name" placeholder="Full Name"/></div>
-            <div><label class="admin-label">Client (house)</label><input class="admin-input" id="nu-client" placeholder="e.g. Itaú BBA"/></div>
+            <div><label class="admin-label">Client</label><input class="admin-input" id="nu-client" placeholder="e.g. Itaú BBA"/></div>
             <div><label class="admin-label">Corporate Email</label><input class="admin-input" id="nu-email" type="email" placeholder="name@corporateemail.com" onblur="const c=document.getElementById('nu-client'); if(c&&!c.value.trim()) c.value=deriveClient(this.value);"/></div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
