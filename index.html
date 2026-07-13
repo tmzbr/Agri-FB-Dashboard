@@ -212,10 +212,10 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .usr-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}
 .usr-table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px;}
 .usr-th{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.5px;
-  padding:10px 12px;border-bottom:1.5px solid var(--border);background:var(--gray-light);cursor:pointer;user-select:none;white-space:nowrap;}
+  padding:10px 9px;border-bottom:1.5px solid var(--border);background:var(--gray-light);cursor:pointer;user-select:none;white-space:nowrap;}
 .usr-th:hover{color:var(--orange);}
 .usr-arrow{color:var(--orange);font-size:9px;}
-.usr-td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.usr-td{padding:8px 9px;border-bottom:1px solid var(--border);vertical-align:middle;}
 .usr-table tbody tr:last-child .usr-td{border-bottom:none;}
 .usr-table tbody tr:hover{background:#FAFAFA;}
 .usr-td-name{white-space:nowrap;}
@@ -234,6 +234,7 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .usr-td-toggle .toggle{display:inline-block;vertical-align:middle;}
 .usr-td-actions{text-align:right;white-space:nowrap;}
 .usr-td-actions button{margin-left:6px;}
+.usr-td-access{text-align:right;white-space:nowrap;font-size:12px;color:var(--gray-mid);}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .info-box{background:#F0F7FF;border:1px solid #C8DEF5;border-radius:6px;padding:12px 16px;font-size:12.5px;color:#2A5A8C;line-height:1.55;margin-bottom:16px;}
@@ -413,6 +414,8 @@ const STATE = {
   searchQuery: '',
   usersExpanded: false,
   userSort: { key: 'name', dir: 'asc' },
+  lastAccess: null,          // { email(lower) -> ISO timestamp }, lazy-loaded
+  lastAccessLoading: false,
   analyticsPeriod: 30,
   analyticsRecentLimit: 20,
   // Loaded from Supabase:
@@ -1039,18 +1042,48 @@ function clientOf(u){
   return c || deriveClient(u&&u.email);
 }
 
+/* Last access per user, from the admin-only user_last_access view. Loaded once,
+   lazily, the first time the User Management pane renders; re-renders when ready. */
+async function ensureLastAccess(){
+  if(STATE.lastAccess!==null || STATE.lastAccessLoading) return;
+  STATE.lastAccessLoading=true;
+  try{
+    const { data, error } = await sb.from('user_last_access').select('user_email,last_access');
+    if(error) throw error;
+    const map={};
+    (data||[]).forEach(r=>{ if(r.user_email) map[String(r.user_email).toLowerCase()]=r.last_access; });
+    STATE.lastAccess=map;
+  }catch(e){
+    STATE.lastAccess={};                 // give up quietly; column shows "—"
+  }finally{
+    STATE.lastAccessLoading=false;
+    if(STATE.activeSector==='settings' && STATE.activeSettingsTab==='admin-panel') renderContent();
+  }
+}
+function lastAccessOf(u){
+  const m=STATE.lastAccess;
+  return (m && u && u.email) ? (m[u.email.toLowerCase()]||null) : null;
+}
+function fmtLastAccess(iso){
+  if(!iso) return '<span style="color:#ccc;">Never</span>';
+  const d=new Date(iso);
+  return d.toLocaleDateString('en-US',{day:'2-digit',month:'short',year:'numeric'});
+}
+
 /* PANE 1: Users & Team */
 function buildPaneUsersTeam(){
   const t=STATE.teamSettings;
   const analysts=Array.isArray(t.analysts)?t.analysts:[];
   const USERS_PREVIEW = 8;
   const showAll = STATE.usersExpanded;
+  ensureLastAccess();                       // lazy-load "Last Access" (re-renders when ready)
   const sort = STATE.userSort || { key:'name', dir:'asc' };
   const sortVal = (u)=>{
     if(sort.key==='client') return clientOf(u).toLowerCase();
     if(sort.key==='email') return (u.email||'').toLowerCase();
     if(sort.key==='role')   return u.is_admin?0:1;
     if(sort.key==='status') return u.active?0:1;
+    if(sort.key==='lastaccess'){ const v=lastAccessOf(u); return v?new Date(v).getTime():0; }
     return (u.display_name||'').toLowerCase();  // 'name'
   };
   const sortedUsers = [...STATE.portalUsers].sort((a,b)=>{
@@ -1090,6 +1123,9 @@ function buildPaneUsersTeam(){
           ?'<span style="font-size:11px;color:#ccc;">Protected</span>'
           :`<button class="btn-danger" onclick="dbRemoveUser('${u.id}')">Remove</button>`}
       </td>
+      <td class="usr-td usr-td-access" title="${lastAccessOf(u)?new Date(lastAccessOf(u)).toLocaleString('en-US'):'No recorded access'}">
+        ${STATE.lastAccess===null ? '<span style="color:#ccc;">…</span>' : fmtLastAccess(lastAccessOf(u))}
+      </td>
     </tr>`;}).join('');
   const usersHtml=`
     <div class="usr-table-wrap">
@@ -1101,6 +1137,7 @@ function buildPaneUsersTeam(){
           ${th('status','Active','text-align:center;')}
           ${th('role','Admin','text-align:center;')}
           <th class="usr-th" style="text-align:right;cursor:default;">Actions</th>
+          ${th('lastaccess','Last Access','text-align:right;')}
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -1606,6 +1643,7 @@ function exportUsersExcel(){
     'Email':         u.email||'',
     'Role':          u.is_admin?'Admin':'User',
     'Status':        u.active?'Active':'Inactive',
+    'Last Access':   lastAccessOf(u) ? new Date(lastAccessOf(u)).toLocaleDateString('en-US') : '',
     'Created At':    u.created_at ? new Date(u.created_at).toLocaleDateString('en-US') : '',
   }));
   const cols = [
@@ -1614,6 +1652,7 @@ function exportUsersExcel(){
     {key:'Email',        label:'Email'},
     {key:'Role',         label:'Role'},
     {key:'Status',       label:'Status'},
+    {key:'Last Access',  label:'Last Access'},
     {key:'Created At',   label:'Created At'},
   ];
   downloadExcel(rows, cols, 'Users', 'Portal Users');
