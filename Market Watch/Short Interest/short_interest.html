@@ -122,7 +122,7 @@ select.filter-select:focus{border-color:var(--orange);}
   <div class="chart-card" style="padding:0;overflow:hidden;">
     <div style="padding:16px 18px 0;">
       <div class="chart-title">Daily History</div>
-      <div class="chart-sub">One row per pregão for the selected ticker</div>
+      <div class="chart-sub">One row per trading day for the selected ticker</div>
     </div>
     <div class="scroll-wrap">
       <table class="data-table" id="tbl-si">
@@ -131,9 +131,9 @@ select.filter-select:focus{border-color:var(--orange);}
       </table>
     </div>
     <p class="source-note" style="padding:0 16px 12px;">
-      Source: B3 Boletim Diário — Empréstimos de Ativos (posições em aberto, Mercado=Total) &amp;
-      Empréstimos registrados (taxa doador, média ponderada). Free float: CVM Formulário de
-      Referência — Distribuição de Capital. Shares out: B3 Empresas Listadas.
+      Source: B3 Daily Bulletin — Securities Lending (open positions, Market=Total) &amp;
+      Registered Loans (lender rate, weighted average). Free float: CVM Reference Form —
+      Capital Distribution. Shares outstanding: B3 Listed Companies.
     </p>
   </div>
 </div>
@@ -228,7 +228,7 @@ function renderKpis(){
   row.innerHTML = `
     <div class="kpi"><div class="kpi-label">Short Interest</div><div class="kpi-value big">${fmtPct(L.ff)}<br><small>of free float</small></div></div>
     <div class="kpi"><div class="kpi-label">% of Shares Out</div><div class="kpi-value">${fmtPct(L.pct)}</div></div>
-    <div class="kpi"><div class="kpi-label">Borrow Rate</div><div class="kpi-value">${fmtPct(L.taxa)}<br><small>média ponderada</small></div></div>
+    <div class="kpi"><div class="kpi-label">Borrow Rate</div><div class="kpi-value">${fmtPct(L.taxa)}<br><small>weighted average</small></div></div>
     <div class="kpi"><div class="kpi-label">Shares on Loan</div><div class="kpi-value">${fmtInt(L.q)}</div></div>
     <div class="kpi"><div class="kpi-label">Value on Loan</div><div class="kpi-value">${fmtBRL(L.v)}</div></div>
     <div class="kpi"><div class="kpi-label">DoD Δ (shares)</div><div class="kpi-value">${dodHtml(L.dod_q, L.dod_pct)}</div></div>
@@ -281,7 +281,7 @@ const VIEW_LABEL = {
   pct:  'Short Interest (% of Shares Out)',
   qty:  'Shares on Loan',
   vol:  'Value on Loan (R$)',
-  taxa: 'Borrow Rate (média ponderada)',
+  taxa: 'Borrow Rate (weighted average)',
 };
 const VIEW_KEY = { ff:'ff', pct:'pct', qty:'q', vol:'v', taxa:'taxa' };
 
@@ -319,8 +319,9 @@ function renderChart(){
         }}}},
       scales:{
         x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, font:{size:10}, color:'#999' }, grid:{display:false} },
-        y:{ ticks:{ font:{size:10}, color:'#999',
-              callback:v=>(VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?v+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
+        y:{ grace:'8%',
+            ticks:{ font:{size:10}, color:'#999',
+              callback:v=>(VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?(+Number(v).toFixed(6))+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
             grid:{color:'#f0f0f0'} }
       }
     }
