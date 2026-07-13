@@ -355,9 +355,10 @@ function drawChart(S){
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
   ds.push({label:"Forecast",data:S.curFc,borderColor:"#FF5500",borderWidth:2.2,borderDash:[3,3],pointRadius:0,fill:false,order:1,_to:2,tension:.25,spanGaps:true});
   ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:0,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
+  if(!Chart.Tooltip.positioners.awayCursor)Chart.Tooltip.positioners.awayCursor=function(items,ev){const a=this.chart.chartArea;if(!a)return ev;const midX=(a.left+a.right)/2;return{x:ev.x<midX?a.right:a.left,y:a.top+2};};
   STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:S.labels,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
-    plugins:{legend:{display:false},tooltip:{filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
+    plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
       label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
       labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
         if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const mo=S.bucketMonth[c.dataIndex],col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][mo-1],STATE.enso,+ds.label,mo)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
