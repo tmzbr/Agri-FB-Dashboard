@@ -11,22 +11,29 @@
   --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
   --font:'Segoe UI',Helvetica,Arial,sans-serif;--radius:8px;}
 html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);}
-.filter-bar{background:var(--black);border-bottom:3px solid var(--orange);
-  padding:11px 20px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+/* Light header + nav-strip — matches the other dashboards' visual identity */
+.hdr{background:var(--white);border-bottom:3px solid var(--orange);
+  padding:13px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.hdr-title{font-size:14px;font-weight:700;color:var(--orange);}
+.hdr-sub{font-size:10px;color:var(--gray-mid);margin-top:2px;}
+.hdr-right{font-size:11px;color:var(--gray-mid);}
+.hdr-right b{color:var(--gray-dark);}
+.nav-strip{background:var(--white);border-bottom:1px solid var(--border);
+  padding:8px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
   position:sticky;top:0;z-index:500;}
-.filter-group{display:flex;flex-direction:column;}
-.filter-label{font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
-.filter-sep{width:1px;height:44px;background:#444;align-self:center;}
-.seg{display:inline-flex;background:#2a2a2a;border:1px solid #444;border-radius:5px;padding:2px;gap:2px;}
-.seg-btn{padding:5px 12px;border:none;border-radius:4px;font-size:12px;font-weight:600;
-  cursor:pointer;font-family:var(--font);background:transparent;color:#777;transition:all .15s;}
-.seg-btn.on{background:var(--orange);color:#fff;}
-.seg-btn:hover:not(.on){color:#ccc;}
-select.filter-select{padding:6px 10px;border:1.5px solid #444;border-radius:5px;
-  font-size:13px;font-family:var(--font);color:#fff;background:#2a2a2a;
-  outline:none;cursor:pointer;min-width:160px;}
-select.filter-select:focus{border-color:var(--orange);}
-.filter-info{font-size:13px;font-weight:700;color:#fff;}
+.nav-strip .ctrls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+.view-ctrl{display:flex;align-items:center;gap:8px;}
+.view-lbl{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.4px;}
+.toggle-group{display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+.tog-btn{padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;background:var(--white);
+  color:var(--gray-mid);border:none;font-family:var(--font);transition:all .15s;}
+.tog-btn:not(.active):hover{color:var(--gray-dark);background:#faf7f5;}
+.tog-btn.active{background:var(--orange);color:var(--white);}
+.tog-btn+.tog-btn{border-left:1px solid var(--border);}
+select.ticker-select{padding:5px 10px;border:1.5px solid var(--border);border-radius:4px;
+  font-size:13px;font-weight:700;font-family:var(--font);color:var(--gray-dark);background:var(--white);
+  outline:none;cursor:pointer;min-width:150px;}
+select.ticker-select:focus{border-color:var(--orange);}
 .body{padding:16px 20px 60px;}
 .section-hdr{display:flex;align-items:center;margin:22px 0 10px;}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;
@@ -64,35 +71,37 @@ select.filter-select:focus{border-color:var(--orange);}
 </style>
 </head>
 <body>
-<div class="filter-bar">
-  <div class="filter-group">
-    <div class="filter-label">Ticker</div>
-    <select class="filter-select" id="sel-ticker" onchange="setTicker(this.value)"></select>
+<div class="hdr">
+  <div>
+    <div class="hdr-title">Short Interest</div>
+    <div class="hdr-sub">B3 securities-lending open positions for the covered agri &amp; F&amp;B names</div>
   </div>
-  <div class="filter-sep"></div>
-  <div class="filter-group">
-    <div class="filter-label">Period</div>
-    <div class="seg" id="seg-period">
-      <button class="seg-btn on" onclick="setPeriod('all',this)">All</button>
-      <button class="seg-btn"    onclick="setPeriod('3m',this)">3M</button>
-      <button class="seg-btn"    onclick="setPeriod('1m',this)">1M</button>
+  <div class="hdr-right">Reference date: <b id="last-update">—</b></div>
+</div>
+<div class="nav-strip">
+  <div class="view-ctrl">
+    <span class="view-lbl">Ticker</span>
+    <select class="ticker-select" id="sel-ticker" onchange="setTicker(this.value)"></select>
+  </div>
+  <div class="ctrls">
+    <div class="view-ctrl">
+      <span class="view-lbl">Period</span>
+      <div class="toggle-group" id="seg-period">
+        <button class="tog-btn active" onclick="setPeriod('all',this)">All</button>
+        <button class="tog-btn"        onclick="setPeriod('3m',this)">3M</button>
+        <button class="tog-btn"        onclick="setPeriod('1m',this)">1M</button>
+      </div>
     </div>
-  </div>
-  <div class="filter-sep"></div>
-  <div class="filter-group">
-    <div class="filter-label">Metric</div>
-    <div class="seg" id="seg-view">
-      <button class="seg-btn on" onclick="setView('ff',this)">% Free Float</button>
-      <button class="seg-btn"    onclick="setView('pct',this)">% Shares Out</button>
-      <button class="seg-btn"    onclick="setView('qty',this)">Shares</button>
-      <button class="seg-btn"    onclick="setView('vol',this)">BRL</button>
-      <button class="seg-btn"    onclick="setView('taxa',this)">Borrow Rate</button>
+    <div class="view-ctrl">
+      <span class="view-lbl">Metric</span>
+      <div class="toggle-group" id="seg-view">
+        <button class="tog-btn active" onclick="setView('ff',this)">% Free Float</button>
+        <button class="tog-btn"        onclick="setView('pct',this)">% Shares Out</button>
+        <button class="tog-btn"        onclick="setView('qty',this)">Shares</button>
+        <button class="tog-btn"        onclick="setView('vol',this)">BRL</button>
+        <button class="tog-btn"        onclick="setView('taxa',this)">Borrow Rate</button>
+      </div>
     </div>
-  </div>
-  <div class="filter-sep"></div>
-  <div class="filter-group">
-    <div class="filter-label">Reference date</div>
-    <div class="filter-info" id="last-update">—</div>
   </div>
 </div>
 <div class="body">
@@ -201,7 +210,7 @@ function defaultTicker(tickers){
 function setTicker(t){ SEL_TICKER=t; document.getElementById('sel-ticker').value=t; renderAll(); }
 function setPeriod(p,el){ PERIOD=p; segOn('seg-period',el); renderChart(); }
 function setView(v,el){ VIEW=v; segOn('seg-view',el); renderChart(); renderHistoryTable(); }
-function segOn(id,el){ document.querySelectorAll('#'+id+' .seg-btn').forEach(b=>b.classList.remove('on')); el.classList.add('on'); }
+function segOn(id,el){ document.querySelectorAll('#'+id+' .tog-btn').forEach(b=>b.classList.remove('active')); el.classList.add('active'); }
 
 function renderAll(){
   document.getElementById('hdr-ticker').textContent = SEL_TICKER;
