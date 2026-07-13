@@ -43,6 +43,19 @@ select.ticker-select:focus{border-color:var(--orange);}
 .chart-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
 .chart-title{font-size:13px;font-weight:700;color:var(--black);margin-bottom:2px;}
 .chart-sub{font-size:11px;color:var(--gray-mid);margin-bottom:10px;}
+.pos-strip{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px;}
+.pos-badge{display:flex;flex-direction:column;gap:2px;padding:7px 12px;border-radius:6px;border:1px solid var(--border);min-width:150px;}
+.pos-badge .lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-mid);}
+.pos-badge .cat{font-size:13px;font-weight:700;}
+.pos-badge .val{font-size:10px;color:var(--gray-mid);font-weight:600;}
+.b-high{background:#fdece9;border-color:#f2c7c0;}
+.b-high .cat{color:#c0392b;}
+.b-mid{background:#f5f5f5;border-color:#e2e2e2;}
+.b-mid .cat{color:#555;}
+.b-low{background:#e9f7ef;border-color:#c2e7d2;}
+.b-low .cat{color:#0a8f3c;}
+.hist-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10px;color:var(--gray-mid);margin-top:8px;}
+.hist-legend .sw{display:inline-block;width:16px;border-top:2px dashed #888;margin-right:5px;vertical-align:middle;}
 .kpi-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:6px;justify-content:space-between;}
 .kpi{flex:1 1 0;min-width:120px;}
 .kpi{display:flex;flex-direction:column;gap:1px;}
@@ -124,7 +137,9 @@ select.ticker-select:focus{border-color:var(--orange);}
   <div class="chart-card">
     <div class="chart-title" id="hist-title">Short Interest Trend</div>
     <div class="chart-sub">Accumulated daily from B3 lending open positions</div>
+    <div class="pos-strip" id="pos-badges"></div>
     <div style="position:relative;height:280px"><canvas id="ch-hist"></canvas></div>
+    <div class="hist-legend" id="hist-legend"></div>
     <div id="hist-empty" class="empty" style="display:none;">
       History builds up as daily snapshots accumulate.
     </div>
@@ -285,50 +300,132 @@ const VIEW_LABEL = {
   taxa: 'Borrow Rate (weighted average)',
 };
 const VIEW_KEY = { ff:'ff', pct:'pct', qty:'q', vol:'v', taxa:'taxa' };
+const PCT_VIEW = v => (v==='pct'||v==='ff'||v==='taxa');
+
+// Format a value with the formatter matching the given metric view
+function metricFmt(v, view){
+  if(view==='vol') return fmtBRL(v);
+  if(view==='qty') return fmtInt(v);
+  return fmtPct(v);
+}
+// Compact share count for the classification badges (e.g. 105.1M)
+const fmtCompact = n => {
+  if(n==null) return '—';
+  const a=Math.abs(n);
+  if(a>=1e9) return (n/1e9).toLocaleString('en-US',{maximumFractionDigits:2})+'bn';
+  if(a>=1e6) return (n/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'M';
+  if(a>=1e3) return (n/1e3).toLocaleString('en-US',{maximumFractionDigits:0})+'k';
+  return fmtInt(n);
+};
+
+// min / mean / max / latest over a numeric series (nulls dropped)
+function stats(vals){
+  const a = vals.filter(x=>x!=null && !isNaN(x));
+  if(!a.length) return null;
+  return { min:Math.min(...a), max:Math.max(...a),
+           mean:a.reduce((s,x)=>s+x,0)/a.length, latest:a[a.length-1] };
+}
+// Where the latest value sits vs the period: nearest of high / average / low
+function classify(s){
+  if(!s || s.max===s.min) return 'mid';
+  const dH=Math.abs(s.latest-s.max), dL=Math.abs(s.latest-s.min), dM=Math.abs(s.latest-s.mean);
+  const m=Math.min(dH,dL,dM);
+  if(m===dM) return 'mid';
+  return m===dH ? 'high' : 'low';
+}
+const CAT_TXT = {high:'Near period high', mid:'Near period average', low:'Near period low'};
+const CAT_CLS = {high:'b-high', mid:'b-mid', low:'b-low'};
+function posBadge(label, s, fmt){
+  if(!s) return '';
+  const cat = classify(s);
+  return `<div class="pos-badge ${CAT_CLS[cat]}"
+      title="Low ${fmt(s.min)} · Avg ${fmt(s.mean)} · High ${fmt(s.max)} · Now ${fmt(s.latest)}">
+    <span class="lbl">${label}</span>
+    <span class="cat">${CAT_TXT[cat]}</span>
+    <span class="val">Now ${fmt(s.latest)} · range ${fmt(s.min)}–${fmt(s.max)}</span>
+  </div>`;
+}
+
+// Uniform decimal count for percent axis ticks, derived from the tick step
+function pctDecimals(ticks){
+  if(!ticks || ticks.length<2) return 2;
+  let step = Math.abs(ticks[1].value - ticks[0].value);
+  step = +step.toFixed(8);
+  if(step>=1) return 0;
+  return Math.min(4, Math.ceil(-Math.log10(step)));
+}
 
 function renderChart(){
   const raw = SI_SERIES[SEL_TICKER] || [];
   const rows = filterPeriod(raw);
   const emptyEl = document.getElementById('hist-empty');
   const canvas = document.getElementById('ch-hist');
+  const badgesEl = document.getElementById('pos-badges');
+  const legendEl = document.getElementById('hist-legend');
   document.getElementById('hist-title').textContent = VIEW_LABEL[VIEW];
+
+  // Classification badges — shares shorted & borrow rate over the shown period
+  const sShares = stats(rows.map(r=>r.q));
+  const sRate   = stats(rows.map(r=>r.taxa));
+  badgesEl.innerHTML =
+    posBadge('Short interest (shares)', sShares, fmtCompact) +
+    posBadge('Borrow rate', sRate, fmtPct);
 
   if(rows.length < 2){
     if(CH){ CH.destroy(); CH=null; }
     canvas.style.display='none'; emptyEl.style.display='block';
+    legendEl.innerHTML='';
     return;
   }
   canvas.style.display='block'; emptyEl.style.display='none';
 
   const labels = rows.map(r=>r.d);
-  const key = VIEW_KEY[VIEW];
-  const data = rows.map(r=>r[key]);
+  const data = rows.map(r=>r[VIEW_KEY[VIEW]]);
+  const ds = stats(data);
+
+  // Dashed reference lines for the displayed metric (high / average / low)
+  const refLine = (label,val,color)=>({
+    label, data:labels.map(()=>val), borderColor:color, borderWidth:1.25,
+    borderDash:[6,4], pointRadius:0, pointHoverRadius:0, fill:false, tension:0,
+  });
 
   const cfg = {
     type:'line',
-    data:{ labels, datasets:[{
-      label: VIEW_LABEL[VIEW], data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
-      borderWidth:2, pointRadius: rows.length>60?0:2, pointHoverRadius:4,
-      fill:true, tension:.2, spanGaps:true,
-    }]},
+    data:{ labels, datasets:[
+      { label: VIEW_LABEL[VIEW], data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
+        borderWidth:2, pointRadius: rows.length>60?0:2, pointHoverRadius:4,
+        fill:true, tension:.2, spanGaps:true },
+      refLine('High', ds.max, '#c0392b'),
+      refLine('Average', ds.mean, '#888'),
+      refLine('Low', ds.min, '#0a8f3c'),
+    ]},
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false},
-        tooltip:{ callbacks:{ label:c=>{
+        tooltip:{ filter:item=>item.datasetIndex===0, callbacks:{ label:c=>{
           const v=c.parsed.y;
-          return (VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?fmtPct(v):(VIEW==='vol'?fmtBRL(v):fmtInt(v)+' shares');
+          return PCT_VIEW(VIEW)?fmtPct(v):(VIEW==='vol'?fmtBRL(v):fmtInt(v)+' shares');
         }}}},
       scales:{
         x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, font:{size:10}, color:'#999' }, grid:{display:false} },
         y:{ grace:'8%',
             ticks:{ font:{size:10}, color:'#999',
-              callback:v=>(VIEW==='pct'||VIEW==='ff'||VIEW==='taxa')?(+Number(v).toFixed(6))+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
+              callback:function(v,i,ticks){
+                if(VIEW==='vol') return fmtBRL(v);
+                if(VIEW==='qty') return fmtInt(v);
+                return Number(v).toFixed(pctDecimals(ticks))+'%';
+              } },
             grid:{color:'#f0f0f0'} }
       }
     }
   };
   if(CH){ CH.destroy(); }
   CH = new Chart(canvas.getContext('2d'), cfg);
+
+  legendEl.innerHTML =
+    `<span><i class="sw" style="border-color:#c0392b"></i>High ${metricFmt(ds.max,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#888"></i>Average ${metricFmt(ds.mean,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#0a8f3c"></i>Low ${metricFmt(ds.min,VIEW)}</span>`;
 }
 
 document.addEventListener('DOMContentLoaded', init);
