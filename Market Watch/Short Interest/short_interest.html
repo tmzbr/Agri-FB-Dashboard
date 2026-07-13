@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Short Interest</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
+  --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
+  --font:'Segoe UI',Helvetica,Arial,sans-serif;--radius:8px;}
+html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);}
+.filter-bar{background:var(--black);border-bottom:3px solid var(--orange);
+  padding:11px 20px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  position:sticky;top:0;z-index:500;}
+.filter-group{display:flex;flex-direction:column;}
+.filter-label{font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.filter-sep{width:1px;height:44px;background:#444;align-self:center;}
+.seg{display:inline-flex;background:#2a2a2a;border:1px solid #444;border-radius:5px;padding:2px;gap:2px;}
+.seg-btn{padding:5px 12px;border:none;border-radius:4px;font-size:12px;font-weight:600;
+  cursor:pointer;font-family:var(--font);background:transparent;color:#777;transition:all .15s;}
+.seg-btn.on{background:var(--orange);color:#fff;}
+.seg-btn:hover:not(.on){color:#ccc;}
+select.filter-select{padding:6px 10px;border:1.5px solid #444;border-radius:5px;
+  font-size:13px;font-family:var(--font);color:#fff;background:#2a2a2a;
+  outline:none;cursor:pointer;min-width:160px;}
+select.filter-select:focus{border-color:var(--orange);}
+.filter-info{font-size:13px;font-weight:700;color:#fff;}
+.body{padding:16px 20px 60px;}
+.section-hdr{display:flex;align-items:center;margin:22px 0 10px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--gray-mid);border-left:3px solid var(--orange);padding-left:8px;}
+.chart-grid{display:grid;gap:12px;margin-bottom:12px;}
+.g1{grid-template-columns:1fr;}.g2{grid-template-columns:1fr 1fr;}
+.chart-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
+.chart-title{font-size:13px;font-weight:700;color:var(--black);margin-bottom:2px;}
+.chart-sub{font-size:11px;color:var(--gray-mid);margin-bottom:10px;}
+.kpi-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:4px;}
+.kpi{display:flex;flex-direction:column;gap:1px;}
+.kpi-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-mid);}
+.kpi-value{font-size:19px;font-weight:700;color:var(--black);}
+.kpi-value small{font-size:12px;font-weight:600;color:var(--gray-mid);}
+.scroll-wrap{overflow-x:auto;}
+.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+.data-table th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--gray-mid);padding:8px 10px;border-bottom:2px solid var(--border);
+  text-align:right;position:sticky;top:0;background:var(--white);z-index:5;cursor:pointer;white-space:nowrap;}
+.data-table th.l{text-align:left;}
+.data-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;text-align:right;white-space:nowrap;}
+.data-table td.l{text-align:left;}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tbody tr{cursor:pointer;}
+.data-table tbody tr:hover td{background:#fafafa;}
+.data-table tbody tr.sel td{background:#fff3ed;}
+.tkr{font-weight:700;color:var(--black);}
+.cname{color:var(--gray-mid);font-size:11px;}
+.pos{color:#0a8f3c;font-weight:600;}
+.neg{color:#c0392b;font-weight:600;}
+.flat{color:var(--gray-mid);}
+.bar-cell{position:relative;}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,85,0,.12);border-right:2px solid var(--orange);z-index:0;}
+.bar-cell span{position:relative;z-index:1;}
+.source-note{font-size:10px;color:#bbb;text-align:right;margin-top:10px;font-style:italic;}
+.empty{padding:40px;text-align:center;color:var(--gray-mid);font-size:13px;}
+@media(max-width:760px){.g2{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="filter-bar">
+  <div class="filter-group">
+    <div class="filter-label">Ticker</div>
+    <select class="filter-select" id="sel-ticker" onchange="setTicker(this.value)"></select>
+  </div>
+  <div class="filter-sep"></div>
+  <div class="filter-group">
+    <div class="filter-label">Period</div>
+    <div class="seg" id="seg-period">
+      <button class="seg-btn on" onclick="setPeriod('all',this)">All</button>
+      <button class="seg-btn"    onclick="setPeriod('3m',this)">3M</button>
+      <button class="seg-btn"    onclick="setPeriod('1m',this)">1M</button>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div class="filter-group">
+    <div class="filter-label">Metric</div>
+    <div class="seg" id="seg-view">
+      <button class="seg-btn on" onclick="setView('pct',this)">% Shares Out</button>
+      <button class="seg-btn"    onclick="setView('qty',this)">Shares</button>
+      <button class="seg-btn"    onclick="setView('vol',this)">BRL</button>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div class="filter-group">
+    <div class="filter-label">Reference date</div>
+    <div class="filter-info" id="last-update">—</div>
+  </div>
+</div>
+<div class="body">
+
+<div class="section-hdr" style="margin-top:16px;">
+  <div class="section-title">Short Interest — Covered Names</div>
+</div>
+<div class="chart-grid g1">
+  <div class="chart-card" style="padding:0;overflow:hidden;">
+    <div class="scroll-wrap">
+      <table class="data-table" id="tbl-si">
+        <thead id="tbl-head"></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+    <p class="source-note" style="padding:0 16px 12px;">
+      Source: B3 · Boletim Diário do Mercado — Empréstimos de Ativos (Posições em aberto, Mercado = Total).
+      Shares outstanding: B3 Empresas Listadas. Short interest as a % of total shares outstanding.
+    </p>
+  </div>
+</div>
+
+<div class="section-hdr">
+  <div class="section-title">History · <span id="hist-ticker">—</span></div>
+</div>
+<div class="chart-grid g2" style="align-items:start;">
+  <div class="chart-card">
+    <div class="chart-title" id="hist-title">Short Interest Trend</div>
+    <div class="chart-sub" id="hist-sub">Accumulated daily from B3 lending open positions</div>
+    <div style="position:relative;height:280px"><canvas id="ch-hist"></canvas></div>
+    <div id="hist-empty" class="empty" style="display:none;">
+      History builds up as daily snapshots accumulate.
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title" style="margin-bottom:10px;">Latest Snapshot</div>
+    <div class="kpi-row" id="kpi-row"></div>
+    <div style="margin-top:18px;">
+      <div class="chart-sub">Day-over-day change in shares on loan</div>
+      <div class="kpi-value" id="dod-value">—</div>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+/* ── Injected data (replaced by short_interest.py) ─────────────────────────
+   SI_SERIES:     { ticker: [{d, q, v, pct}, ...] }   daily history
+   SI_LATEST:     { ticker: {d,q,v,pct,shares_out,preco,dod_q,dod_pct,nome} }
+   COMPANY_NAMES: { ticker: name }
+   LAST_UPDATE:   "YYYY-MM-DD"                                                */
+const SI_SERIES     = {"ABEV3":[{"d":"2026-07-07","q":301246571,"v":4892245278.64,"pct":1.911},{"d":"2026-07-08","q":306759016,"v":4966647248.26,"pct":1.946},{"d":"2026-07-09","q":312832344,"v":5027785291.37,"pct":1.9845},{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814}],"AGRO3":[{"d":"2026-07-07","q":4091806,"v":75190952.86,"pct":3.9849},{"d":"2026-07-08","q":4083504,"v":74895600.23,"pct":3.9768},{"d":"2026-07-09","q":4083108,"v":74810354.05,"pct":3.9764},{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435}],"BEEF3":[{"d":"2026-07-07","q":102581897,"v":372393383.27,"pct":10.2526},{"d":"2026-07-08","q":106503191,"v":382652065.27,"pct":10.6446},{"d":"2026-07-09","q":104586238,"v":375247229.28,"pct":10.453},{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065}],"CAML3":[{"d":"2026-07-07","q":6244536,"v":31023129.92,"pct":1.7842},{"d":"2026-07-08","q":6243878,"v":30961641.61,"pct":1.784},{"d":"2026-07-09","q":6421348,"v":31632880.57,"pct":1.8347},{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311}],"JALL3":[{"d":"2026-07-07","q":6813962,"v":14970129.26,"pct":2.2448},{"d":"2026-07-08","q":7454296,"v":16143661.95,"pct":2.4558},{"d":"2026-07-09","q":6628469,"v":14192791.24,"pct":2.1837},{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574}],"MBRF3":[{"d":"2026-07-07","q":112680948,"v":1883268330.2,"pct":8.0376},{"d":"2026-07-08","q":108755449,"v":1775240736.16,"pct":7.7576},{"d":"2026-07-09","q":108628891,"v":1742680244.93,"pct":7.7486},{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342}],"MDIA3":[{"d":"2026-07-07","q":5476839,"v":98198760.77,"pct":1.6156},{"d":"2026-07-08","q":5550160,"v":98450866.8,"pct":1.6372},{"d":"2026-07-09","q":5630785,"v":99671728.18,"pct":1.661},{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628}],"SLCE3":[{"d":"2026-07-07","q":49497004,"v":675720803.9,"pct":9.9243},{"d":"2026-07-08","q":50843993,"v":685151386.81,"pct":10.1944},{"d":"2026-07-09","q":52906405,"v":707051496.86,"pct":10.6079},{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808}],"SMTO3":[{"d":"2026-07-07","q":16147120,"v":252419040.1,"pct":4.8572},{"d":"2026-07-08","q":16464251,"v":255693709.73,"pct":4.9526},{"d":"2026-07-09","q":16187584,"v":249290066.98,"pct":4.8694},{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042}],"SOJA3":[{"d":"2026-07-07","q":15736921,"v":95564379.05,"pct":11.0899},{"d":"2026-07-08","q":15905994,"v":95863560.22,"pct":11.2091},{"d":"2026-07-09","q":15796626,"v":94957563.42,"pct":11.132},{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226}],"TTEN3":[{"d":"2026-07-07","q":14060276,"v":206382910.04,"pct":2.8079},{"d":"2026-07-08","q":14157276,"v":209333283.82,"pct":2.8273},{"d":"2026-07-09","q":13909455,"v":205927458.14,"pct":2.7778},{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587}],"VITT3":[{"d":"2026-07-07","q":1245112,"v":4063887.05,"pct":0.7901},{"d":"2026-07-08","q":1272953,"v":4138680.35,"pct":0.8078},{"d":"2026-07-09","q":1242042,"v":4037001.62,"pct":0.7881},{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633}]};
+const SI_LATEST     = {"ABEV3":{"d":"2026-07-10","q":312335250,"v":5009286920.62,"pct":1.9814,"shares_out":15763664889.0,"preco":16.0382,"dod_q":-497094,"dod_pct":-0.16,"nome":"AMBEV S.A."},"AGRO3":{"d":"2026-07-10","q":4049276,"v":74187999.28,"pct":3.9435,"shares_out":102683444.0,"preco":18.3213,"dod_q":-33832,"dod_pct":-0.83,"nome":"BRASILAGRO - CIA BRAS DE PROP AGRICOLAS"},"BEEF3":{"d":"2026-07-10","q":105121639,"v":377067104.39,"pct":10.5065,"shares_out":1000540922.0,"preco":3.587,"dod_q":535401,"dod_pct":0.51,"nome":"MINERVA S.A."},"CAML3":{"d":"2026-07-10","q":6408867,"v":31565178.36,"pct":1.8311,"shares_out":350000000.0,"preco":4.9252,"dod_q":-12481,"dod_pct":-0.19,"nome":"CAMIL ALIMENTOS S.A."},"JALL3":{"d":"2026-07-10","q":6548545,"v":13983625.58,"pct":2.1574,"shares_out":303541864.0,"preco":2.1354,"dod_q":-79924,"dod_pct":-1.21,"nome":"JALLES MACHADO S.A."},"MBRF3":{"d":"2026-07-10","q":108426814,"v":1730334136.14,"pct":7.7342,"shares_out":1401916108.0,"preco":15.9585,"dod_q":-202077,"dod_pct":-0.19,"nome":"MARFRIG GLOBAL FOODS S.A."},"MDIA3":{"d":"2026-07-10","q":5636807,"v":99338321.94,"pct":1.6628,"shares_out":339000000.0,"preco":17.6232,"dod_q":6022,"dod_pct":0.11,"nome":"M.DIAS BRANCO S.A. IND COM DE ALIMENTOS"},"SLCE3":{"d":"2026-07-10","q":54267594,"v":723801707.85,"pct":10.8808,"shares_out":498745930.0,"preco":13.3376,"dod_q":1361189,"dod_pct":2.57,"nome":"SLC AGRICOLA S.A."},"SMTO3":{"d":"2026-07-10","q":16303278,"v":250930901.45,"pct":4.9042,"shares_out":332435391.0,"preco":15.3914,"dod_q":115694,"dod_pct":0.71,"nome":"SAO MARTINHO S.A."},"SOJA3":{"d":"2026-07-10","q":15783225,"v":94300849.7,"pct":11.1226,"shares_out":141902688.0,"preco":5.9748,"dod_q":-13401,"dod_pct":-0.08,"nome":"BOA SAFRA SEMENTES S.A."},"TTEN3":{"d":"2026-07-10","q":13814068,"v":204663604.98,"pct":2.7587,"shares_out":500737647.0,"preco":14.8156,"dod_q":-95387,"dod_pct":-0.69,"nome":"TRÊS TENTOS AGROINDUSTRIAL S/A"},"VITT3":{"d":"2026-07-10","q":1202907,"v":3906400.39,"pct":0.7633,"shares_out":157589984.0,"preco":3.2475,"dod_q":-39135,"dod_pct":-3.15,"nome":"VITTIA S.A."}};
+const COMPANY_NAMES = {"ABEV3":"AMBEV S.A.","AGRO3":"BRASILAGRO - CIA BRAS DE PROP AGRICOLAS","BEEF3":"MINERVA S.A.","CAML3":"CAMIL ALIMENTOS S.A.","JALL3":"JALLES MACHADO S.A.","MBRF3":"MARFRIG GLOBAL FOODS S.A.","MDIA3":"M.DIAS BRANCO S.A. IND COM DE ALIMENTOS","SLCE3":"SLC AGRICOLA S.A.","SMTO3":"SAO MARTINHO S.A.","SOJA3":"BOA SAFRA SEMENTES S.A.","TTEN3":"TRÊS TENTOS AGROINDUSTRIAL S/A","VITT3":"VITTIA S.A."};
+const LAST_UPDATE   = "2026-07-10";
+
+/* ── State ── */
+let SEL_TICKER = null, PERIOD = 'all', VIEW = 'pct', SORT_KEY = 'pct', SORT_DIR = -1;
+let CH = null;
+
+/* ── Formatting ── */
+const fmtInt = n => n==null ? '—' : Math.round(n).toLocaleString('en-US');
+const fmtPct = n => n==null ? '—' : n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+const fmtBRL = n => {
+  if(n==null) return '—';
+  const a=Math.abs(n);
+  if(a>=1e9) return 'R$ '+(n/1e9).toLocaleString('en-US',{maximumFractionDigits:2})+' bn';
+  if(a>=1e6) return 'R$ '+(n/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+' mm';
+  if(a>=1e3) return 'R$ '+(n/1e3).toLocaleString('en-US',{maximumFractionDigits:0})+' k';
+  return 'R$ '+fmtInt(n);
+};
+const fmtDate = s => {
+  if(!s) return '—';
+  const [y,m,d]=s.split('-');
+  return `${d}/${m}/${y}`;
+};
+
+/* ── Init ── */
+function init(){
+  const tickers = Object.keys(SI_LATEST).sort();
+  const sel = document.getElementById('sel-ticker');
+  if(!tickers.length){
+    document.getElementById('tbl-body').innerHTML =
+      '<tr><td class="empty" colspan="6">No short-interest data yet. It appears after the first daily run.</td></tr>';
+    document.getElementById('last-update').textContent = '—';
+    return;
+  }
+  sel.innerHTML = tickers.map(t=>`<option value="${t}">${t}</option>`).join('');
+  document.getElementById('last-update').textContent = fmtDate(LAST_UPDATE);
+  SEL_TICKER = defaultTicker(tickers);
+  sel.value = SEL_TICKER;
+  renderTable();
+  renderDetail();
+}
+
+function defaultTicker(tickers){
+  // default to the highest short interest (% of shares out)
+  return tickers.slice().sort((a,b)=>(SI_LATEST[b].pct||0)-(SI_LATEST[a].pct||0))[0];
+}
+
+/* ── Controls ── */
+function setTicker(t){ SEL_TICKER=t; document.getElementById('sel-ticker').value=t; renderTable(); renderDetail(); }
+function setPeriod(p,el){ PERIOD=p; segOn('seg-period',el); renderChart(); }
+function setView(v,el){ VIEW=v; segOn('seg-view',el); SORT_KEY=v; SORT_DIR=-1; renderTable(); renderChart(); }
+function segOn(id,el){ document.querySelectorAll('#'+id+' .seg-btn').forEach(b=>b.classList.remove('on')); el.classList.add('on'); }
+function sortBy(k){ if(SORT_KEY===k){SORT_DIR*=-1;} else {SORT_KEY=k;SORT_DIR=-1;} renderTable(); }
+
+/* ── Table ── */
+function renderTable(){
+  const tickers = Object.keys(SI_LATEST);
+  const rows = tickers.map(t=>({t, ...SI_LATEST[t]}));
+  const key = SORT_KEY;
+  rows.sort((a,b)=>{
+    let av,bv;
+    if(key==='qty'){av=a.q;bv=b.q;} else if(key==='vol'){av=a.v;bv=b.v;}
+    else if(key==='dod'){av=a.dod_q;bv=b.dod_q;} else {av=a.pct;bv=b.pct;}
+    return ((bv||0)-(av||0))*(SORT_DIR===-1?1:-1);
+  });
+  const maxPct = Math.max(...rows.map(r=>r.pct||0), 0.0001);
+
+  const arrow = k => SORT_KEY===k ? (SORT_DIR===-1?' ▾':' ▴') : '';
+  document.getElementById('tbl-head').innerHTML =
+    `<tr>
+      <th class="l" onclick="sortBy('tkr')">Ticker</th>
+      <th class="l">Company</th>
+      <th onclick="sortBy('pct')">% Shares Out${arrow('pct')}</th>
+      <th onclick="sortBy('qty')">Shares on Loan${arrow('qty')}</th>
+      <th onclick="sortBy('vol')">R$ on Loan${arrow('vol')}</th>
+      <th onclick="sortBy('dod')">DoD Δ (shares)${arrow('dod')}</th>
+    </tr>`;
+
+  document.getElementById('tbl-body').innerHTML = rows.map(r=>{
+    const w = ((r.pct||0)/maxPct*100).toFixed(1);
+    const dod = r.dod_q;
+    let dodCell='<span class="flat">—</span>';
+    if(dod!=null){
+      const cls = dod>0?'neg':(dod<0?'pos':'flat'); // more shorting = negative signal
+      const sign = dod>0?'+':'';
+      const pctTxt = r.dod_pct!=null ? ` (${sign}${r.dod_pct.toFixed(2)}%)` : '';
+      dodCell = `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
+    }
+    return `<tr class="${r.t===SEL_TICKER?'sel':''}" onclick="setTicker('${r.t}')">
+      <td class="l"><span class="tkr">${r.t}</span></td>
+      <td class="l cname">${r.nome||''}</td>
+      <td class="bar-cell"><div class="bar-fill" style="width:${w}%"></div><span>${fmtPct(r.pct)}</span></td>
+      <td>${fmtInt(r.q)}</td>
+      <td>${fmtBRL(r.v)}</td>
+      <td>${dodCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Detail (KPIs + DoD) ── */
+function renderDetail(){
+  const L = SI_LATEST[SEL_TICKER];
+  document.getElementById('hist-ticker').textContent = SEL_TICKER;
+  if(!L){ document.getElementById('kpi-row').innerHTML=''; return; }
+  document.getElementById('kpi-row').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Short Interest</div><div class="kpi-value">${fmtPct(L.pct)}<br><small>of shares out</small></div></div>
+    <div class="kpi"><div class="kpi-label">Shares on Loan</div><div class="kpi-value">${fmtInt(L.q)}</div></div>
+    <div class="kpi"><div class="kpi-label">Value on Loan</div><div class="kpi-value">${fmtBRL(L.v)}</div></div>
+    <div class="kpi"><div class="kpi-label">Shares Outstanding</div><div class="kpi-value">${fmtInt(L.shares_out)}</div></div>`;
+  const dod = L.dod_q;
+  const el = document.getElementById('dod-value');
+  if(dod==null){ el.innerHTML='<span class="flat">— (no prior snapshot yet)</span>'; }
+  else{
+    const cls = dod>0?'neg':(dod<0?'pos':'flat');
+    const sign = dod>0?'+':'';
+    const pctTxt = L.dod_pct!=null?` (${sign}${L.dod_pct.toFixed(2)}%)`:'';
+    el.innerHTML = `<span class="${cls}">${sign}${fmtInt(dod)}${pctTxt}</span>`;
+  }
+  renderChart();
+}
+
+/* ── History chart ── */
+function filterPeriod(rows){
+  if(PERIOD==='all'||!rows.length) return rows;
+  const last = new Date(rows[rows.length-1].d);
+  const cut = new Date(last);
+  cut.setMonth(cut.getMonth() - (PERIOD==='3m'?3:1));
+  return rows.filter(r=>new Date(r.d)>=cut);
+}
+
+function renderChart(){
+  const raw = SI_SERIES[SEL_TICKER] || [];
+  const rows = filterPeriod(raw);
+  const emptyEl = document.getElementById('hist-empty');
+  const canvas = document.getElementById('ch-hist');
+  if(rows.length < 2){
+    if(CH){ CH.destroy(); CH=null; }
+    canvas.style.display='none'; emptyEl.style.display='block';
+  } else {
+    canvas.style.display='block'; emptyEl.style.display='none';
+  }
+  const labels = rows.map(r=>r.d);
+  const key = VIEW==='qty'?'q':(VIEW==='vol'?'v':'pct');
+  const data = rows.map(r=>r[key]);
+  const label = VIEW==='qty'?'Shares on loan':(VIEW==='vol'?'R$ on loan':'% of shares out');
+  document.getElementById('hist-title').textContent =
+    ({pct:'Short Interest (% of Shares Out)',qty:'Shares on Loan',vol:'Value on Loan (R$)'})[VIEW];
+
+  if(rows.length < 2) return;
+  const cfg = {
+    type:'line',
+    data:{ labels, datasets:[{
+      label, data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
+      borderWidth:2, pointRadius: rows.length>60?0:2, pointHoverRadius:4,
+      fill:true, tension:.2,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:c=>{
+          const v=c.parsed.y;
+          return VIEW==='pct'?fmtPct(v):(VIEW==='vol'?fmtBRL(v):fmtInt(v)+' shares');
+        }}}},
+      scales:{
+        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, font:{size:10}, color:'#999' }, grid:{display:false} },
+        y:{ ticks:{ font:{size:10}, color:'#999', callback:v=>VIEW==='pct'?v+'%':(VIEW==='vol'?fmtBRL(v):fmtInt(v)) },
+            grid:{color:'#f0f0f0'} }
+      }
+    }
+  };
+  if(CH){ CH.destroy(); }
+  CH = new Chart(canvas.getContext('2d'), cfg);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

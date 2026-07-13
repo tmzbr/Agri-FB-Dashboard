@@ -1,0 +1,57 @@
+name: Update Short Interest DB (B3 securities lending)
+
+on:
+  schedule:
+    # 12:00 UTC (~09:00 BRT), Tue–Sat — captures each prior business day
+    - cron: "0 12 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Nº de pregões (dias corridos) a tentar preencher"
+        required: false
+        default: "7"
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: "Market Watch/Short Interest"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Run ingestion
+        run: |
+          BACKFILL="${{ github.event.inputs.backfill }}"
+          BACKFILL="${BACKFILL:-7}"
+          python short_interest.py --backfill "$BACKFILL"
+
+      - name: Commit DB + HTML
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Market Watch/Short Interest/short_interest.db"
+          [ -f "Market Watch/Short Interest/short_interest.html" ] && git add "Market Watch/Short Interest/short_interest.html"
+          if git diff --staged --quiet; then
+            echo "Sem mudanças."
+          else
+            git commit -m "auto: refresh short interest — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git fetch origin main
+            git rebase origin/main
+            git push origin main
+          fi
