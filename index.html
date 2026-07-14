@@ -483,23 +483,19 @@ function renderInviteMessage(name, email, isAdmin){
   if(isAdmin) msg += '\n\nNote: your password was set by the administrator.';
   return msg;
 }
-/* Shows a ready-to-copy welcome message with the dashboard link and login
-   email for a client, so the admin can paste it straight into an
-   email/WhatsApp without composing it by hand. Opened on demand (per-user
-   "Copy Invite" button) rather than automatically, so bulk-adding users
-   isn't interrupted by a popup. */
-function showInviteModal(name, email, isAdmin){
+/* Renders a ready-to-copy welcome message inline in the "Add New User" card,
+   right after a user is added — not a modal, so it never blocks the form and
+   adding the next user just overwrites this box. */
+function showInlineInvite(name, email, isAdmin){
+  const box = document.getElementById('nu-invite-box');
+  if(!box) return;
   const msg = renderInviteMessage(name, email, isAdmin);
-  openModal('Client Invite Message', `
-    <div class="info-box" style="margin-bottom:12px;">Copy the message below and send it to ${esc(name)}.</div>
+  box.innerHTML = `
+    <hr class="sep"/>
+    <div class="info-box" style="margin-bottom:12px;">${esc(name)} was added. Copy the message below and send it to them.</div>
     <textarea id="invite-msg" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" readonly>${esc(msg)}</textarea>
-    <button class="btn-primary" style="margin-top:14px;" onclick="copyInviteMessage()">&#128203; Copy Message</button>
-  `);
-}
-function showInviteModalFor(id){
-  const u = STATE.portalUsers.find(x=>x.id===id);
-  if(!u) return;
-  showInviteModal(u.display_name||u.email, u.email, !!u.is_admin);
+    <button class="btn-primary" style="margin-top:12px;" onclick="copyInviteMessage()">&#128203; Copy Message</button>
+  `;
 }
 function copyInviteMessage(){
   const ta = document.getElementById('invite-msg');
@@ -1188,7 +1184,6 @@ function buildPaneUsersTeam(){
           <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
       </td>
       <td class="usr-td usr-td-actions">
-        <button class="btn-outline" onclick="showInviteModalFor('${u.id}')" title="Show a copy-paste welcome message with this user's login email and the dashboard link">&#9993; Copy Invite</button>
         ${u.is_admin?`<button class="btn-outline" onclick="dbResetPassword('${u.id}')">Set password</button>`:''}
         ${protectedLast
           ?'<span style="font-size:11px;color:#ccc;">Protected</span>'
@@ -1257,12 +1252,13 @@ function buildPaneUsersTeam(){
             <input class="admin-input" id="nu-pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
           </div>
           <button class="btn-primary" onclick="dbAddUser()">Add to Portal</button>
+          <div id="nu-invite-box"></div>
         </div>
       </div>
       <div class="admin-section">
         <div class="admin-section-header">&#9993; &nbsp;Client Invite Message</div>
         <div class="admin-section-body">
-          <div class="info-box" style="margin-bottom:12px;">This is the copy-paste message shown when you click <strong>Copy Invite</strong> next to a user above. Use <code>{{name}}</code>, <code>{{email}}</code> and <code>{{link}}</code> anywhere you want that user's name, login email, or the dashboard link inserted.</div>
+          <div class="info-box" style="margin-bottom:12px;">This is the copy-paste message shown right after you add a user above. Use <code>{{name}}</code>, <code>{{email}}</code> and <code>{{link}}</code> anywhere you want that user's name, login email, or the dashboard link inserted.</div>
           <textarea id="team-invite-template" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="${esc(DEFAULT_INVITE_TEMPLATE)}">${esc(t.invite_template||DEFAULT_INVITE_TEMPLATE)}</textarea>
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
             <button class="btn-outline" onclick="document.getElementById('team-invite-template').value=DEFAULT_INVITE_TEMPLATE;">Reset to Default</button>
@@ -1552,6 +1548,7 @@ async function dbAddUser(){
       ? 'Admin created — they can sign in with email + password.'
       : 'User added — they can sign in right away with just their email.');
     renderContent();
+    showInlineInvite(name, email, isAdmin);
   }catch(e){ showToast('Error: '+e.message); }
   finally{ setLoading(false); }
 }
