@@ -393,7 +393,7 @@ function renderChart(){
     label, data:labels.map(()=>val), borderColor:color, borderWidth:1.25,
     borderDash:dash||[6,4], pointRadius:0, pointHoverRadius:0, fill:false, tension:0,
   });
-  const BK = '#1a1a1a', SD = '#aaaaaa';
+  const BK = '#1a1a1a', SD = '#777777';
   const DASH_WIDE = [10,6], DASH_DOT = [2,4];
 
   const cfg = {
@@ -433,9 +433,9 @@ function renderChart(){
 
   legendEl.innerHTML =
     `<span><i class="sw" style="border-color:#1a1a1a"></i>High ${metricFmt(ds.max,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#aaa;border-top-style:dotted"></i>+1σ ${metricFmt(ds.mean+ds.sd,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#777;border-top-style:dotted"></i>+1σ ${metricFmt(ds.mean+ds.sd,VIEW)}</span>`
    +`<span><i class="sw" style="border-color:#1a1a1a"></i>Average ${metricFmt(ds.mean,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#aaa;border-top-style:dotted"></i>−1σ ${metricFmt(ds.mean-ds.sd,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#777;border-top-style:dotted"></i>−1σ ${metricFmt(ds.mean-ds.sd,VIEW)}</span>`
    +`<span><i class="sw" style="border-color:#1a1a1a"></i>Low ${metricFmt(ds.min,VIEW)}</span>`;
 }
 
