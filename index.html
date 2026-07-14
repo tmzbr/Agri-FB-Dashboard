@@ -265,7 +265,7 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
   pointer-events:none;border:1px solid #2E2E2E;}
 .toast.show{opacity:1;transform:translateY(0);}
 /* ANALYTICS */
-.analytics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+.analytics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
 .analytics-kpi{background:white;border:1px solid var(--border);border-radius:8px;padding:18px 20px;}
 .analytics-kpi-val{font-size:28px;font-weight:700;color:var(--black);line-height:1;}
 .analytics-kpi-label{font-size:12px;color:var(--gray-mid);margin-top:6px;}
@@ -418,6 +418,10 @@ const STATE = {
   lastAccessLoading: false,
   analyticsPeriod: 30,
   analyticsRecentLimit: 20,
+  analyticsEvent: 'login',        // 'login' (dashboard access) | 'dash_open' (module access)
+  analyticsCountMode: 'total',    // 'total' | 'unique_users' | 'unique_clients'
+  analyticsGranularity: 'day',    // 'day' | 'week' | 'month'
+  analyticsTopBy: 'user',         // 'user' | 'client'
   // Loaded from Supabase:
   portalUsers: [],
   dashboards: [],
@@ -1117,6 +1121,66 @@ function deriveClient(email){
 function clientOf(u){
   const c=(u&&u.client!=null)?String(u.client).trim():'';
   return c || deriveClient(u&&u.email);
+}
+/* Client for a raw access-log email: looks up the live portal user (their
+   saved client override), falling back to the domain-derived guess for
+   emails that no longer match a current user (deleted/renamed accounts). */
+function emailToClient(email){
+  if(!email) return '';
+  const u=(STATE.portalUsers||[]).find(x=>x.email && x.email.toLowerCase()===String(email).toLowerCase());
+  return u ? clientOf(u) : deriveClient(email);
+}
+
+/* ── Time-bucketing helpers for the analytics trend chart ──
+   Keys are built from *local* calendar fields throughout (never toISOString,
+   which is UTC and would shift the date for positive-UTC-offset timezones). */
+function localDateKey(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function accessBucketKey(iso, gran){
+  const d=new Date(iso);
+  if(gran==='month') return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  if(gran==='week'){
+    const day=d.getDay(), diff=(day===0?-6:1-day);
+    return localDateKey(new Date(d.getFullYear(),d.getMonth(),d.getDate()+diff));
+  }
+  return localDateKey(d);
+}
+function accessBucketLabel(key, gran){
+  if(gran==='month'){
+    const [y,m]=key.split('-');
+    return new Date(+y,+m-1,1).toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+  }
+  const [y,m,day]=key.split('-');
+  return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+/* Ordered list of bucket keys spanning [startMs, endMs], inclusive, so empty
+   intervals still render as zero-bars instead of being skipped. */
+function enumerateBuckets(startMs, endMs, gran){
+  const keys=[];
+  if(gran==='month'){
+    let d=new Date(startMs); d=new Date(d.getFullYear(),d.getMonth(),1);
+    const end=new Date(endMs);
+    const endKey=end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0');
+    for(let guard=0; guard<600; guard++){
+      const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      keys.push(key);
+      if(key===endKey) break;
+      d.setMonth(d.getMonth()+1);
+    }
+  } else {
+    const step=gran==='week'?7:1;
+    let d=new Date(startMs);
+    if(gran==='week'){ const day=d.getDay(), diff=(day===0?-6:1-day); d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+diff); }
+    d.setHours(0,0,0,0);
+    const end=new Date(endMs); end.setHours(0,0,0,0);
+    for(let guard=0; d<=end && guard<1000; guard++){
+      keys.push(localDateKey(d));
+      d.setDate(d.getDate()+step);
+    }
+    if(!keys.length) keys.push(accessBucketKey(endMs,gran));
+  }
+  return keys.length>400 ? keys.slice(-400) : keys;   // defensive cap
 }
 
 /* Last access per user, from the admin-only user_last_access view. Loaded once,
@@ -1860,44 +1924,90 @@ async function buildPaneAnalytics(){
   const logins    = logs.filter(l=>l.event_type==='login');
   const dashOpens = logs.filter(l=>l.event_type==='dash_open');
 
-  // Unique active users
-  const activeUsers = new Set(logins.map(l=>l.user_email)).size;
+  // Unique active users / clients (based on logins = "accessed the dash")
+  const activeUsers   = new Set(logins.map(l=>l.user_email)).size;
+  const activeClients = new Set(logins.map(l=>emailToClient(l.user_email)).filter(Boolean)).size;
 
-  // Logins by user
+  // Logins / opens by user
   const loginsByUser = {};
   logins.forEach(l=>{ loginsByUser[l.user_email]=(loginsByUser[l.user_email]||0)+1; });
-
-  // Module (dashboard) opens by user
   const opensByUser = {};
   dashOpens.forEach(l=>{ opensByUser[l.user_email]=(opensByUser[l.user_email]||0)+1; });
 
-  // Dash opens by title
-  const opensByDash = {};
-  dashOpens.forEach(l=>{ opensByDash[l.dash_title]=(opensByDash[l.dash_title]||0)+1; });
+  // Logins / opens by client
+  const loginsByClient = {};
+  logins.forEach(l=>{ const c=emailToClient(l.user_email)||'Unknown'; loginsByClient[c]=(loginsByClient[c]||0)+1; });
+  const opensByClient = {};
+  dashOpens.forEach(l=>{ const c=emailToClient(l.user_email)||'Unknown'; opensByClient[c]=(opensByClient[c]||0)+1; });
 
-  // Logins by day. For "All", span from the earliest event (capped at 365 days).
-  let chartDays = days;
-  if(isAll){
-    const earliest = logs.reduce((m,l)=> l.created_at<m ? l.created_at : m, logs[0].created_at);
-    chartDays = Math.min(365, Math.max(1, Math.ceil((Date.now()-new Date(earliest).getTime())/864e5)+1));
-  }
-  const byDay = {};
-  for(let i=chartDays-1;i>=0;i--){
-    const d=new Date(Date.now()-i*864e5);
-    byDay[d.toLocaleDateString('en-US',{month:'short',day:'numeric'})]=0;
-  }
-  logins.forEach(l=>{
-    const day=new Date(l.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    if(byDay[day]!==undefined) byDay[day]++;
+  // Dash opens by title, with unique-user / unique-client counts per module
+  const dashStats = {};
+  dashOpens.forEach(l=>{
+    const t=l.dash_title||'Unknown';
+    if(!dashStats[t]) dashStats[t]={opens:0, users:new Set(), clients:new Set()};
+    dashStats[t].opens++;
+    if(l.user_email) dashStats[t].users.add(l.user_email.toLowerCase());
+    const c=emailToClient(l.user_email); if(c) dashStats[t].clients.add(c);
   });
 
-  // Top users table
-  const topUsers = Object.entries(loginsByUser)
-    .sort((a,b)=>b[1]-a[1]).slice(0,10);
+  /* ── Access Trend chart: event type / count mode / granularity are all
+     admin-configurable so the same chart can answer "how many users/clients
+     hit the dash (or a module) per day/week/month — total vs. deduped." ── */
+  const evt       = STATE.analyticsEvent === 'dash_open' ? 'dash_open' : 'login';
+  const countMode = ['total','unique_users','unique_clients'].includes(STATE.analyticsCountMode) ? STATE.analyticsCountMode : 'total';
+  const gran      = ['day','week','month'].includes(STATE.analyticsGranularity) ? STATE.analyticsGranularity : 'day';
+  const trendEvents = evt==='dash_open' ? dashOpens : logins;
+
+  const nowMs = Date.now();
+  let startMs;
+  if(isAll){
+    startMs = trendEvents.length
+      ? trendEvents.reduce((m,l)=>{ const t=new Date(l.created_at).getTime(); return t<m?t:m; }, new Date(trendEvents[0].created_at).getTime())
+      : nowMs;
+  } else {
+    startMs = nowMs - days*864e5;
+  }
+  const bucketKeys = enumerateBuckets(startMs, nowMs, gran);
+  const buckets = {};
+  bucketKeys.forEach(k=>{ buckets[k]={total:0, users:new Set(), clients:new Set()}; });
+  trendEvents.forEach(l=>{
+    const key=accessBucketKey(l.created_at, gran);
+    const b=buckets[key];
+    if(!b) return;
+    b.total++;
+    if(l.user_email) b.users.add(l.user_email.toLowerCase());
+    const c=emailToClient(l.user_email); if(c) b.clients.add(c);
+  });
+  const trendLabels = bucketKeys.map(k=>accessBucketLabel(k,gran));
+  const trendValues  = bucketKeys.map(k=>{
+    const b=buckets[k];
+    if(countMode==='unique_users')   return b.users.size;
+    if(countMode==='unique_clients') return b.clients.size;
+    return b.total;
+  });
+  const trendSeriesLabel = countMode==='unique_users' ? 'Unique Users' : countMode==='unique_clients' ? 'Unique Clients' : 'Accesses';
+
+  // Top list: switchable between Users and Clients
+  const topBy = STATE.analyticsTopBy === 'client' ? 'client' : 'user';
+  let topRows;
+  if(topBy==='user'){
+    topRows = Object.entries(loginsByUser).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([email,count],i)=>{
+      const u=STATE.portalUsers.find(x=>x.email===email);
+      const name=u?.display_name||email;
+      const opens=opensByUser[email]||0;
+      return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td><strong>${esc(name)}</strong><br><span style="font-size:11px;color:var(--gray-mid);">${esc(email)}</span></td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${opens}</td></tr>`;
+    }).join('');
+  } else {
+    topRows = Object.entries(loginsByClient).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([client,count],i)=>{
+      const opens=opensByClient[client]||0;
+      return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td><strong>${esc(client)}</strong></td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${opens}</td></tr>`;
+    }).join('');
+  }
 
   // Top dashboards table
-  const topDashes = Object.entries(opensByDash)
-    .sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const topDashRows = Object.entries(dashStats).sort((a,b)=>b[1].opens-a[1].opens).slice(0,10).map(([title,s],i)=>{
+    return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td>${esc(title)}</td><td style="text-align:right;font-weight:700;color:var(--orange);">${s.opens}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${s.users.size}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${s.clients.size}</td></tr>`;
+  }).join('');
 
   // Recent activity with configurable limit
   const recentLimit = STATE.analyticsRecentLimit || 20;
@@ -1909,16 +2019,14 @@ async function buildPaneAnalytics(){
     return `<button class="${STATE.analyticsPeriod===d?'active':''}" onclick="STATE.analyticsPeriod=${val};renderContent();">${lbl}</button>`;
   }).join('');
 
-  const topUserRows = topUsers.map(([email,count],i)=>{
-    const u=STATE.portalUsers.find(x=>x.email===email);
-    const name=u?.display_name||email;
-    const opens=opensByUser[email]||0;
-    return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td><strong>${esc(name)}</strong><br><span style="font-size:11px;color:var(--gray-mid);">${esc(email)}</span></td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${opens}</td></tr>`;
-  }).join('');
-
-  const topDashRows = topDashes.map(([title,count],i)=>{
-    return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td>${esc(title)}</td><td style="text-align:right;font-weight:700;color:var(--orange);">${count}</td></tr>`;
-  }).join('');
+  const eventBtns = [['login','Dashboard Access'],['dash_open','Module Access']].map(([v,l])=>
+    `<button class="${evt===v?'active':''}" onclick="STATE.analyticsEvent='${v}';renderContent();">${l}</button>`).join('');
+  const countBtns = [['total','Total'],['unique_users','Unique Users'],['unique_clients','Unique Clients']].map(([v,l])=>
+    `<button class="${countMode===v?'active':''}" onclick="STATE.analyticsCountMode='${v}';renderContent();">${l}</button>`).join('');
+  const granBtns = [['day','Day'],['week','Week'],['month','Month']].map(([v,l])=>
+    `<button class="${gran===v?'active':''}" onclick="STATE.analyticsGranularity='${v}';renderContent();">${l}</button>`).join('');
+  const topByBtns = [['user','Users'],['client','Clients']].map(([v,l])=>
+    `<button class="${topBy===v?'active':''}" onclick="STATE.analyticsTopBy='${v}';renderContent();">${l}</button>`).join('');
 
   const recentRows = recent.map(l=>{
     const icon = l.event_type==='login'?'&#128275;':'&#128200;';
@@ -1927,8 +2035,8 @@ async function buildPaneAnalytics(){
     return `<tr><td>${icon}</td><td>${esc(l.user_name||l.user_email)}</td><td>${label}</td><td style="color:var(--gray-mid);white-space:nowrap;">${time}</td></tr>`;
   }).join('');
 
-  const chartLabels = JSON.stringify(Object.keys(byDay));
-  const chartData   = JSON.stringify(Object.values(byDay));
+  const trendLabelsJson = JSON.stringify(trendLabels);
+  const trendValuesJson = JSON.stringify(trendValues);
 
   return `<div class="admin-panel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
@@ -1952,6 +2060,11 @@ async function buildPaneAnalytics(){
         <div class="analytics-kpi-sub">unique accounts</div>
       </div>
       <div class="analytics-kpi">
+        <div class="analytics-kpi-val">${activeClients}</div>
+        <div class="analytics-kpi-label">Active Clients</div>
+        <div class="analytics-kpi-sub">unique clients</div>
+      </div>
+      <div class="analytics-kpi">
         <div class="analytics-kpi-val">${dashOpens.length}</div>
         <div class="analytics-kpi-label">Dashboard Opens</div>
         <div class="analytics-kpi-sub">${isAll?'all time':'last '+days+' days'}</div>
@@ -1959,22 +2072,30 @@ async function buildPaneAnalytics(){
     </div>
 
     <div class="analytics-chart-card">
-      <div class="analytics-chart-title">Daily Logins</div>
-      <canvas id="loginChart" height="80"></canvas>
+      <div class="analytics-chart-title" style="flex-wrap:wrap;">
+        <span>Access Trend <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">${trendSeriesLabel} &middot; ${gran==='day'?'daily':gran==='week'?'weekly':'monthly'}</span></span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div class="analytics-period">${eventBtns}</div>
+          <div class="analytics-period">${countBtns}</div>
+          <div class="analytics-period">${granBtns}</div>
+        </div>
+      </div>
+      <canvas id="trendChart" height="80"></canvas>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
       <div class="analytics-chart-card" style="margin:0;">
         <div class="analytics-chart-title">
-          Top Users <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">logins &amp; modules opened</span>
+          <span>Top ${topBy==='user'?'Users':'Clients'} <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">dashboard access &amp; modules opened</span></span>
+          <div class="analytics-period">${topByBtns}</div>
         </div>
-        ${topUserRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>User</th><th style="text-align:right;">Logins</th><th style="text-align:right;">Modules</th></tr></thead><tbody>${topUserRows}</tbody></table>` : '<div class="analytics-empty">No login data</div>'}
+        ${topRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>${topBy==='user'?'User':'Client'}</th><th style="text-align:right;">Logins</th><th style="text-align:right;">Modules</th></tr></thead><tbody>${topRows}</tbody></table>` : '<div class="analytics-empty">No login data</div>'}
       </div>
       <div class="analytics-chart-card" style="margin:0;">
         <div class="analytics-chart-title">
           Top Dashboards <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">by opens</span>
         </div>
-        ${topDashRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>Dashboard</th><th style="text-align:right;">Opens</th></tr></thead><tbody>${topDashRows}</tbody></table>` : '<div class="analytics-empty">No dashboard opens yet</div>'}
+        ${topDashRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>Dashboard</th><th style="text-align:right;">Opens</th><th style="text-align:right;">Uniq. Users</th><th style="text-align:right;">Uniq. Clients</th></tr></thead><tbody>${topDashRows}</tbody></table>` : '<div class="analytics-empty">No dashboard opens yet</div>'}
       </div>
     </div>
 
@@ -1990,16 +2111,16 @@ async function buildPaneAnalytics(){
   </div>
   <script>
   (function(){
-    const ctx=document.getElementById('loginChart');
+    const ctx=document.getElementById('trendChart');
     if(!ctx||!window.Chart) return;
     if(ctx._chartInstance) ctx._chartInstance.destroy();
     ctx._chartInstance=new Chart(ctx,{
       type:'bar',
       data:{
-        labels:${chartLabels},
+        labels:${trendLabelsJson},
         datasets:[{
-          label:'Logins',
-          data:${chartData},
+          label:'${trendSeriesLabel}',
+          data:${trendValuesJson},
           backgroundColor:'rgba(255,85,0,.18)',
           borderColor:'#FF5500',
           borderWidth:2,
