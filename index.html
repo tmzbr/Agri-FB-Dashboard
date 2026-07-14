@@ -427,8 +427,20 @@ const STATE = {
     promo_image_url: '',
     promo_link_url: '',
     analysts: [],
+    invite_template: '',
   },
 };
+/* Default text for the client invite message, used until an admin
+   customizes it (or if the DB column is empty). Kept free of any
+   company/brand name — this dashboard is white-labeled per client. */
+const DEFAULT_INVITE_TEMPLATE = `Hi {{name}},
+
+You now have access to the dashboard.
+
+Link: {{link}}
+Login email: {{email}}
+
+No password is required — just enter the email above on the sign-in screen.`;
 window.__portalIsAdmin = () => !!STATE.currentUser?.is_admin;
 
 const SECTORS = [
@@ -454,6 +466,48 @@ const todayStr = () => new Date().toLocaleDateString('en-US',{weekday:'long',yea
 const greetWord = () => { const h=new Date().getHours(); return h<12?'Good morning':h<18?'Good afternoon':'Good evening'; };
 function showToast(msg,dur=2800){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur); }
 function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+function openModal(title, bodyHtml){
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('modal').classList.add('open');
+}
+/* Renders the admin-editable invite template ({{name}}/{{email}}/{{link}}
+   tokens) for one user, so it can be shown in the modal or copied. */
+function renderInviteMessage(name, email, isAdmin){
+  const link = window.location.origin;
+  const tpl = STATE.teamSettings.invite_template || DEFAULT_INVITE_TEMPLATE;
+  let msg = tpl
+    .replace(/\{\{\s*name\s*\}\}/gi, name)
+    .replace(/\{\{\s*email\s*\}\}/gi, email)
+    .replace(/\{\{\s*link\s*\}\}/gi, link);
+  if(isAdmin) msg += '\n\nNote: your password was set by the administrator.';
+  return msg;
+}
+/* Shows a ready-to-copy welcome message with the dashboard link and login
+   email for a client, so the admin can paste it straight into an
+   email/WhatsApp without composing it by hand. Opened on demand (per-user
+   "Copy Invite" button) rather than automatically, so bulk-adding users
+   isn't interrupted by a popup. */
+function showInviteModal(name, email, isAdmin){
+  const msg = renderInviteMessage(name, email, isAdmin);
+  openModal('Client Invite Message', `
+    <div class="info-box" style="margin-bottom:12px;">Copy the message below and send it to ${esc(name)}.</div>
+    <textarea id="invite-msg" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" readonly>${esc(msg)}</textarea>
+    <button class="btn-primary" style="margin-top:14px;" onclick="copyInviteMessage()">&#128203; Copy Message</button>
+  `);
+}
+function showInviteModalFor(id){
+  const u = STATE.portalUsers.find(x=>x.id===id);
+  if(!u) return;
+  showInviteModal(u.display_name||u.email, u.email, !!u.is_admin);
+}
+function copyInviteMessage(){
+  const ta = document.getElementById('invite-msg');
+  ta.select();
+  (navigator.clipboard?.writeText(ta.value) ?? Promise.reject())
+    .then(()=>showToast('Message copied!'))
+    .catch(()=>{ document.execCommand('copy'); showToast('Message copied!'); });
+}
 function setLoading(show, msg='Loading...'){
   const el=document.getElementById('loading-overlay');
   if(el) { el.style.display=show?'flex':'none'; document.getElementById('loading-text').textContent=msg; }
@@ -679,6 +733,7 @@ async function loadAllData(){
   // Ensure analysts is always array
   if(!STATE.teamSettings.analysts) STATE.teamSettings.analysts=[];
   if(typeof STATE.teamSettings.analysts==='string') STATE.teamSettings.analysts=JSON.parse(STATE.teamSettings.analysts);
+  if(!STATE.teamSettings.invite_template) STATE.teamSettings.invite_template=DEFAULT_INVITE_TEMPLATE;
 }
 
 function showLogin(){
@@ -1133,6 +1188,7 @@ function buildPaneUsersTeam(){
           <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
       </td>
       <td class="usr-td usr-td-actions">
+        <button class="btn-outline" onclick="showInviteModalFor('${u.id}')" title="Show a copy-paste welcome message with this user's login email and the dashboard link">&#9993; Copy Invite</button>
         ${u.is_admin?`<button class="btn-outline" onclick="dbResetPassword('${u.id}')">Set password</button>`:''}
         ${protectedLast
           ?'<span style="font-size:11px;color:#ccc;">Protected</span>'
@@ -1201,6 +1257,17 @@ function buildPaneUsersTeam(){
             <input class="admin-input" id="nu-pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
           </div>
           <button class="btn-primary" onclick="dbAddUser()">Add to Portal</button>
+        </div>
+      </div>
+      <div class="admin-section">
+        <div class="admin-section-header">&#9993; &nbsp;Client Invite Message</div>
+        <div class="admin-section-body">
+          <div class="info-box" style="margin-bottom:12px;">This is the copy-paste message shown when you click <strong>Copy Invite</strong> next to a user above. Use <code>{{name}}</code>, <code>{{email}}</code> and <code>{{link}}</code> anywhere you want that user's name, login email, or the dashboard link inserted.</div>
+          <textarea id="team-invite-template" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="${esc(DEFAULT_INVITE_TEMPLATE)}">${esc(t.invite_template||DEFAULT_INVITE_TEMPLATE)}</textarea>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn-outline" onclick="document.getElementById('team-invite-template').value=DEFAULT_INVITE_TEMPLATE;">Reset to Default</button>
+            <button class="btn-primary" onclick="dbSaveInviteTemplate()">Save Invite Message</button>
+          </div>
         </div>
       </div>
       <div class="admin-section">
@@ -1530,6 +1597,13 @@ async function dbSaveTeam(){
   if(error){ showToast('Error: '+error.message); return; }
   STATE.teamSettings.banner_title=title; STATE.teamSettings.banner_sub=sub;
   showToast('Team settings saved ✓'); renderSidebar();
+}
+async function dbSaveInviteTemplate(){
+  const tpl=document.getElementById('team-invite-template')?.value.trim() || DEFAULT_INVITE_TEMPLATE;
+  const {error}=await sb.from('team_settings').update({invite_template:tpl}).eq('id',1);
+  if(error){ showToast('Error: '+error.message); return; }
+  STATE.teamSettings.invite_template=tpl;
+  showToast('Invite message saved ✓');
 }
 
 /* Promo banner */
