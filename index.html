@@ -2024,7 +2024,7 @@ async function buildPaneAnalytics(){
     return `<button class="${STATE.analyticsPeriod===d?'active':''}" onclick="STATE.analyticsPeriod=${val};renderContent();">${lbl}</button>`;
   }).join('');
 
-  const eventBtns = [['login','Dashboard Access'],['dash_open','Module Access']].map(([v,l])=>
+  const eventBtns = [['login','Login'],['dash_open','Module']].map(([v,l])=>
     `<button class="${evt===v?'active':''}" onclick="STATE.analyticsEvent='${v}';renderContent();">${l}</button>`).join('');
   const countBtns = [['total','Total'],['unique_users','Unique Users'],['unique_clients','Unique Clients']].map(([v,l])=>
     `<button class="${countMode===v?'active':''}" onclick="STATE.analyticsCountMode='${v}';renderContent();">${l}</button>`).join('');
