@@ -483,9 +483,20 @@ function renderInviteMessage(name, email, isAdmin){
   if(isAdmin) msg += '\n\nNote: your password was set by the administrator.';
   return msg;
 }
+/* Turns *word* into bold for an on-screen preview (the same convention
+   WhatsApp uses), so admins get a WYSIWYG-ish look at how the message will
+   read once pasted, without changing the raw text that gets copied (the
+   asterisks stay in the copied text — WhatsApp renders them as bold itself). */
+function mdBoldPreview(text){
+  return esc(text)
+    .replace(/\*([^\n*]+)\*/g, '<b>$1</b>')
+    .replace(/\n/g, '<br>');
+}
 /* Renders a ready-to-copy welcome message inline in the "Add New User" card,
    right after a user is added — not a modal, so it never blocks the form and
-   adding the next user just overwrites this box. */
+   adding the next user just overwrites this box. Shown as a formatted
+   preview (bold applied) with the raw *text* kept in a hidden field for the
+   actual copy, so pasting into WhatsApp still renders the bold correctly. */
 function showInlineInvite(name, email, isAdmin){
   const box = document.getElementById('nu-invite-box');
   if(!box) return;
@@ -493,16 +504,16 @@ function showInlineInvite(name, email, isAdmin){
   box.innerHTML = `
     <hr class="sep"/>
     <div class="info-box" style="margin-bottom:12px;">${esc(name)} was added. Copy the message below and send it to them.</div>
-    <textarea id="invite-msg" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" readonly>${esc(msg)}</textarea>
+    <div class="admin-input" style="width:100%;min-height:150px;line-height:1.5;white-space:pre-wrap;">${mdBoldPreview(msg)}</div>
+    <textarea id="invite-msg" style="display:none;">${esc(msg)}</textarea>
     <button class="btn-primary" style="margin-top:12px;" onclick="copyInviteMessage()">&#128203; Copy Message</button>
   `;
 }
 function copyInviteMessage(){
   const ta = document.getElementById('invite-msg');
-  ta.select();
   (navigator.clipboard?.writeText(ta.value) ?? Promise.reject())
     .then(()=>showToast('Message copied!'))
-    .catch(()=>{ document.execCommand('copy'); showToast('Message copied!'); });
+    .catch(()=>{ ta.style.display=''; ta.select(); document.execCommand('copy'); ta.style.display='none'; showToast('Message copied!'); });
 }
 function setLoading(show, msg='Loading...'){
   const el=document.getElementById('loading-overlay');
@@ -1258,10 +1269,12 @@ function buildPaneUsersTeam(){
       <div class="admin-section">
         <div class="admin-section-header">&#9993; &nbsp;Client Invite Message</div>
         <div class="admin-section-body">
-          <div class="info-box" style="margin-bottom:12px;">This is the copy-paste message shown right after you add a user above. Use <code>{{name}}</code>, <code>{{email}}</code> and <code>{{link}}</code> anywhere you want that user's name, login email, or the dashboard link inserted.</div>
-          <textarea id="team-invite-template" class="admin-input" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="${esc(DEFAULT_INVITE_TEMPLATE)}">${esc(t.invite_template||DEFAULT_INVITE_TEMPLATE)}</textarea>
+          <div class="info-box" style="margin-bottom:12px;">This is the copy-paste message shown right after you add a user above. Use <code>{{name}}</code>, <code>{{email}}</code> and <code>{{link}}</code> anywhere you want that user's name, login email, or the dashboard link inserted. Wrap text in <code>*asterisks*</code> to make it bold (the preview below shows how it'll look; the asterisks themselves are kept when copying, since that's how WhatsApp renders bold).</div>
+          <textarea id="team-invite-template" class="admin-input" oninput="document.getElementById('team-invite-preview').innerHTML=mdBoldPreview(this.value)" style="width:100%;min-height:150px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="${esc(DEFAULT_INVITE_TEMPLATE)}">${esc(t.invite_template||DEFAULT_INVITE_TEMPLATE)}</textarea>
+          <label class="admin-label" style="margin-top:12px;">Preview</label>
+          <div id="team-invite-preview" class="admin-input" style="width:100%;min-height:100px;line-height:1.5;white-space:pre-wrap;">${mdBoldPreview(t.invite_template||DEFAULT_INVITE_TEMPLATE)}</div>
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-            <button class="btn-outline" onclick="document.getElementById('team-invite-template').value=DEFAULT_INVITE_TEMPLATE;">Reset to Default</button>
+            <button class="btn-outline" onclick="const ta=document.getElementById('team-invite-template'); ta.value=DEFAULT_INVITE_TEMPLATE; document.getElementById('team-invite-preview').innerHTML=mdBoldPreview(DEFAULT_INVITE_TEMPLATE);">Reset to Default</button>
             <button class="btn-primary" onclick="dbSaveInviteTemplate()">Save Invite Message</button>
           </div>
         </div>
