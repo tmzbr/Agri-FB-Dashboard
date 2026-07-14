@@ -739,10 +739,19 @@ async function loadAllData(){
     sb.from('team_settings').select('*').eq('id',1).single(),
     sb.from('portal_users').select('*'),
   ]);
-  // Merge Supabase dashboards with hardcoded static modules
+  // Merge Supabase dashboards with hardcoded static modules.
+  // The static fallback only applies for admins: admin reads bypass the
+  // "select_visible" RLS policy, so a missing id reliably means "not yet
+  // migrated to the DB". For everyone else, RLS silently omits rows the
+  // admin has hidden (visible_to_all=false) — treating "missing" as "not
+  // migrated" there would resurrect the hardcoded (often visible_to_all:
+  // true) copy and leak a dashboard an admin explicitly restricted.
   const supabaseDashes = dashRes.data || [];
-  const supabaseIds    = new Set(supabaseDashes.map(d => d.id));
-  const merged = [...supabaseDashes, ...STATIC_DASHBOARDS.filter(d => !supabaseIds.has(d.id))];
+  const isAdmin = STATE.currentUser?.is_admin;
+  const supabaseIds = new Set(supabaseDashes.map(d => d.id));
+  const merged = isAdmin
+    ? [...supabaseDashes, ...STATIC_DASHBOARDS.filter(d => !supabaseIds.has(d.id))]
+    : supabaseDashes;
   STATE.dashboards   = merged;
   if(teamRes.data)  STATE.teamSettings = teamRes.data;
   if(usersRes.data) STATE.portalUsers  = usersRes.data;
