@@ -393,7 +393,8 @@ function renderChart(){
     label, data:labels.map(()=>val), borderColor:color, borderWidth:1.25,
     borderDash:dash||[6,4], pointRadius:0, pointHoverRadius:0, fill:false, tension:0,
   });
-  const SD = '#3b7dd8';
+  const BK = '#1a1a1a', SD = '#aaaaaa';
+  const DASH_WIDE = [10,6], DASH_DOT = [2,4];
 
   const cfg = {
     type:'line',
@@ -401,11 +402,11 @@ function renderChart(){
       { label: VIEW_LABEL[VIEW], data, borderColor:'#FF5500', backgroundColor:'rgba(255,85,0,0.10)',
         borderWidth:2, pointRadius: rows.length>60?0:2, pointHoverRadius:4,
         fill:true, tension:.2, spanGaps:true },
-      refLine('High', ds.max, '#c0392b'),
-      refLine('+1σ', ds.mean+ds.sd, SD, [2,3]),
-      refLine('Average', ds.mean, '#888'),
-      refLine('−1σ', ds.mean-ds.sd, SD, [2,3]),
-      refLine('Low', ds.min, '#0a8f3c'),
+      refLine('High', ds.max, BK, DASH_WIDE),
+      refLine('+1σ', ds.mean+ds.sd, SD, DASH_DOT),
+      refLine('Average', ds.mean, BK, DASH_WIDE),
+      refLine('−1σ', ds.mean-ds.sd, SD, DASH_DOT),
+      refLine('Low', ds.min, BK, DASH_WIDE),
     ]},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -431,11 +432,11 @@ function renderChart(){
   CH = new Chart(canvas.getContext('2d'), cfg);
 
   legendEl.innerHTML =
-    `<span><i class="sw" style="border-color:#c0392b"></i>High ${metricFmt(ds.max,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#3b7dd8"></i>+1σ ${metricFmt(ds.mean+ds.sd,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#888"></i>Average ${metricFmt(ds.mean,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#3b7dd8"></i>−1σ ${metricFmt(ds.mean-ds.sd,VIEW)}</span>`
-   +`<span><i class="sw" style="border-color:#0a8f3c"></i>Low ${metricFmt(ds.min,VIEW)}</span>`;
+    `<span><i class="sw" style="border-color:#1a1a1a"></i>High ${metricFmt(ds.max,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#aaa;border-top-style:dotted"></i>+1σ ${metricFmt(ds.mean+ds.sd,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#1a1a1a"></i>Average ${metricFmt(ds.mean,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#aaa;border-top-style:dotted"></i>−1σ ${metricFmt(ds.mean-ds.sd,VIEW)}</span>`
+   +`<span><i class="sw" style="border-color:#1a1a1a"></i>Low ${metricFmt(ds.min,VIEW)}</span>`;
 }
 
 document.addEventListener('DOMContentLoaded', init);
