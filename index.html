@@ -284,6 +284,10 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
   background:white;cursor:pointer;color:var(--gray-mid);font-family:var(--font);transition:all .15s;}
 .analytics-period button.active{background:var(--orange);border-color:var(--orange);color:white;font-weight:600;}
 .analytics-empty{text-align:center;padding:32px 16px;color:var(--gray-mid);font-size:13px;}
+.analytics-toggle-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:14px 0 16px;padding-top:14px;border-top:1px solid var(--border);}
+.analytics-toggle-group{display:flex;flex-direction:column;gap:5px;}
+.analytics-toggle-label{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.4px;}
+.analytics-toggle-divider{width:1px;align-self:stretch;background:var(--border);}
 @media(max-width:860px){.analytics-grid{grid-template-columns:1fr 1fr;}}
 @media(max-width:860px){.sidebar{display:none;}.content-area{padding:20px 16px 32px;}}
 </style>
@@ -2070,11 +2074,22 @@ async function buildPaneAnalytics(){
     </div>
 
     <div class="analytics-chart-card">
-      <div class="analytics-chart-title" style="flex-wrap:wrap;">
+      <div class="analytics-chart-title">
         <span>Access Trend <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">${trendSeriesLabel} &middot; ${gran==='day'?'daily':gran==='week'?'weekly':'monthly'}</span></span>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      </div>
+      <div class="analytics-toggle-row">
+        <div class="analytics-toggle-group">
+          <div class="analytics-toggle-label">Access</div>
           <div class="analytics-period">${eventBtns}</div>
+        </div>
+        <div class="analytics-toggle-divider"></div>
+        <div class="analytics-toggle-group">
+          <div class="analytics-toggle-label">Count</div>
           <div class="analytics-period">${countBtns}</div>
+        </div>
+        <div class="analytics-toggle-divider"></div>
+        <div class="analytics-toggle-group">
+          <div class="analytics-toggle-label">Interval</div>
           <div class="analytics-period">${granBtns}</div>
         </div>
       </div>
