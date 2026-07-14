@@ -426,6 +426,7 @@ const STATE = {
   analyticsCountMode: 'total',    // 'total' | 'unique_users' | 'unique_clients'
   analyticsGranularity: 'day',    // 'day' | 'week' | 'month'
   analyticsTopBy: 'user',         // 'user' | 'client'
+  analyticsDashLimit: 10,         // 10 | 25 | 'all' — rows shown in Top Dashboards
   // Loaded from Supabase:
   portalUsers: [],
   dashboards: [],
@@ -2009,9 +2010,17 @@ async function buildPaneAnalytics(){
     }).join('');
   }
 
-  // Top dashboards table
-  const topDashRows = Object.entries(dashStats).sort((a,b)=>b[1].opens-a[1].opens).slice(0,10).map(([title,s],i)=>{
+  // Top dashboards table — configurable row count so restricted/low-traffic
+  // modules (e.g. Climate Monitor, Market Watch) aren't silently cut off at 10.
+  const dashLimit = STATE.analyticsDashLimit || 10;
+  const sortedDashStats = Object.entries(dashStats).sort((a,b)=>b[1].opens-a[1].opens);
+  const dashRowsShown = dashLimit==='all' ? sortedDashStats : sortedDashStats.slice(0,dashLimit);
+  const topDashRows = dashRowsShown.map(([title,s],i)=>{
     return `<tr><td style="color:var(--gray-mid);width:28px;">${i+1}</td><td>${esc(title)}</td><td style="text-align:right;font-weight:700;color:var(--orange);">${s.opens}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${s.users.size}</td><td style="text-align:right;font-weight:700;color:var(--gray-dark);">${s.clients.size}</td></tr>`;
+  }).join('');
+  const dashLimitBtns = [[10,'10'],[25,'25'],['all','All']].map(([v,l])=>{
+    const val = v==='all' ? "'all'" : v;
+    return `<button onclick="STATE.analyticsDashLimit=${val};renderContent();" style="padding:4px 10px;border:1px solid var(--border);border-radius:5px;font-size:11px;cursor:pointer;background:${dashLimit===v?'var(--orange)':'white'};color:${dashLimit===v?'white':'var(--gray-dark)'};font-weight:${dashLimit===v?'600':'400'};">${l}</button>`;
   }).join('');
 
   // Recent activity with configurable limit
@@ -2106,7 +2115,8 @@ async function buildPaneAnalytics(){
       </div>
       <div class="analytics-chart-card" style="margin:0;">
         <div class="analytics-chart-title">
-          Top Dashboards <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">by opens</span>
+          <span>Top Dashboards <span style="font-size:11px;color:var(--gray-mid);font-weight:400;">by opens</span></span>
+          <div style="display:flex;gap:6px;">${dashLimitBtns}</div>
         </div>
         ${topDashRows ? `<table class="analytics-table"><thead><tr><th>#</th><th>Dashboard</th><th style="text-align:right;">Opens</th><th style="text-align:right;">Uniq. Users</th><th style="text-align:right;">Uniq. Clients</th></tr></thead><tbody>${topDashRows}</tbody></table>` : '<div class="analytics-empty">No dashboard opens yet</div>'}
       </div>
