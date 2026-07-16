@@ -2710,84 +2710,78 @@ function buildClippingFullExport(sections, buckets) {
   const today    = new Date();
   const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
-  // Divider line
+  // Outlook-safe divider
   const divider =
-    `<table border="0" cellpadding="0" cellspacing="0" width="280" style="border-collapse:collapse;margin:4px 0;">` +
-    `<tr><td style="border-top:1px solid #333333;font-size:0;line-height:0;">&nbsp;</td></tr>` +
+    `<table border="0" cellpadding="0" cellspacing="0" width="280" style="border-collapse:collapse;margin:0;">` +
+    `<tr><td style="border-top:1px solid #333333;font-size:0;line-height:0;height:1px;">&nbsp;</td></tr>` +
     `</table>`;
 
-  // Single blank line — explicit 12pt height, mso-line-height-rule forces Outlook to respect it
-  const br = `<p style="margin:0;padding:0;mso-line-height-rule:exactly;line-height:12pt;font-size:1pt;font-family:Calibri,Arial,sans-serif;">&nbsp;</p>`;
+  // Single blank line that Outlook actually renders
+  // Using a table row with explicit height is the only reliable method
+  const br =
+    `<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">` +
+    `<tr><td style="font-size:10pt;line-height:10pt;height:10pt;mso-line-height-rule:exactly;">&nbsp;</td></tr>` +
+    `</table>`;
 
-  // Standard paragraph style — line-height in pt stops Outlook from multiplying it
-  const pStyle = `margin:0;padding:0;font-size:11pt;line-height:14pt;font-family:Calibri,Arial,sans-serif;mso-line-height-rule:exactly;`;
-
-  const orangeSection = txt =>
-    `<p style="margin:0;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};mso-line-height-rule:exactly;line-height:14pt;">` +
+  const orangeP = txt =>
+    `<p style="margin:0;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};mso-margin-top-alt:0;mso-margin-bottom-alt:0;">` +
     `<font color="${orange}"><b>${txt}</b></font></p>`;
 
-  const mainHeadline = txt =>
-    `<p style="margin:0;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;font-weight:bold;color:${orange};mso-line-height-rule:exactly;line-height:14pt;">` +
-    `<font color="${orange}"><b>${txt}</b></font></p>`;
+  const bodyP = txt =>
+    `<p style="margin:0;padding:0;font-family:Calibri,Arial,sans-serif;font-size:11pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;">${txt}</p>`;
 
-  const ulStyle = `margin:0 0 0 0;padding-left:20px;font-family:Calibri,Arial,sans-serif;font-size:11pt;mso-line-height-rule:exactly;line-height:14pt;`;
-  const liBold = txt =>
-    `<li style="margin:0;padding:0;mso-line-height-rule:exactly;line-height:14pt;">` +
-    `<span style="font-weight:bold;"><b>${txt}</b></span></li>`;
+  const ulStyle = `margin:0;padding:0 0 0 20px;font-family:Calibri,Arial,sans-serif;font-size:11pt;`;
+  const liBold  = txt => `<li style="margin:0;padding:0;"><b>${txt}</b></li>`;
 
   const topLink =
-    `<p style="margin:0;padding:0;font-size:10pt;mso-line-height-rule:exactly;line-height:13pt;font-family:Calibri,Arial,sans-serif;">` +
+    `<p style="margin:0;padding:0;font-size:10pt;font-family:Calibri,Arial,sans-serif;mso-margin-top-alt:0;mso-margin-bottom-alt:0;">` +
     `<a href="#top" style="color:${linkBlue};text-decoration:underline;">Top of the Agri, F&amp;B Daily News</a></p>`;
 
   let html = `<a name="top" id="top"></a>`;
 
   // 1. Header
-  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0;padding:0;mso-line-height-rule:exactly;line-height:15pt;font-family:Calibri,Arial,sans-serif;">` +
+  html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0;padding:0;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
           `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage \u2013 Daily News ***</b></p>`;
-  html += br; // blank line between header and TOC
+  html += br;
 
-  // 2. TOC — bold bullets
+  // 2. TOC
   sections.forEach(sec => {
-    html += orangeSection(escHtml(sec));
+    html += orangeP(escHtml(sec));
     html += `<ul style="${ulStyle}">`;
     buckets[sec].forEach(item => { html += liBold(escHtml(item.title)); });
     html += `</ul>`;
-    html += br; // blank line after each section (Agri→F&B→WtW)
+    html += br;
   });
 
   // 3. What to Watch
-  html += orangeSection("What to Watch | IBBA Agribusiness, Food &amp; Beverage Latest Reports");
+  html += orangeP("What to Watch | IBBA Agribusiness, Food &amp; Beverage Latest Reports");
   html += wtwBuildHtml();
+  html += br;
 
   // 4. Team signature
-  html += br;
-  html += `<p style="margin:0;padding:0;font-size:10pt;font-weight:bold;color:${orange};mso-line-height-rule:exactly;line-height:13pt;font-family:Calibri,Arial,sans-serif;">` +
+  html += `<p style="margin:0;padding:0;font-size:10pt;font-weight:bold;color:${orange};mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
           `<b><font color="${orange}">AGRIBUSINESS, FOOD &amp; BEVERAGE TEAM</font></b></p>`;
-
-  // Each analyst on their own block, separated by a br
-  const analystBold = (name, phone, mail) =>
-    `<p style="margin:0;padding:0;font-size:10pt;mso-line-height-rule:exactly;line-height:13pt;font-family:Calibri,Arial,sans-serif;">` +
-    `<b>${escHtml(name)}</b><br>` +
-    `<span style="color:${grey};">${escHtml(phone)}</span><br>` +
-    `<a href="mailto:${escHtml(mail)}" style="color:${linkBlue};">${escHtml(mail)}</a></p>`;
-  const analyst = (name, phone, mail) =>
-    `<p style="margin:0;padding:0;font-size:10pt;mso-line-height-rule:exactly;line-height:13pt;font-family:Calibri,Arial,sans-serif;">` +
-    `<span style="color:${grey};">${escHtml(name)}</span><br>` +
-    `<span style="color:${grey};">${escHtml(phone)}</span><br>` +
-    `<a href="mailto:${escHtml(mail)}" style="color:${linkBlue};">${escHtml(mail)}</a></p>`;
-
   html += br;
-  html += analystBold("Gustavo Troyano, CNPI", "+55-11-3073-3269", "gustavo.troyano@itaubba.com");
+  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
+          `<b>Gustavo Troyano, CNPI</b><br>` +
+          `<span style="color:${grey};">+55-11-3073-3269</span><br>` +
+          `<a href="mailto:gustavo.troyano@itaubba.com" style="color:${linkBlue};">gustavo.troyano@itaubba.com</a></p>`;
   html += br;
-  html += analyst("Bruno Tomazetto, CNPI", "+55-11-3073-3035", "bruno.tomazetto@itaubba.com");
+  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
+          `<span style="color:${grey};">Bruno Tomazetto, CNPI</span><br>` +
+          `<span style="color:${grey};">+55-11-3073-3035</span><br>` +
+          `<a href="mailto:bruno.tomazetto@itaubba.com" style="color:${linkBlue};">bruno.tomazetto@itaubba.com</a></p>`;
   html += br;
-  html += analyst("Ryu Matsuyama, CNPI",   "+55-11-3073-3047", "ryu.matsuyama@itaubba.com");
+  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
+          `<span style="color:${grey};">Ryu Matsuyama, CNPI</span><br>` +
+          `<span style="color:${grey};">+55-11-3073-3047</span><br>` +
+          `<a href="mailto:ryu.matsuyama@itaubba.com" style="color:${linkBlue};">ryu.matsuyama@itaubba.com</a></p>`;
 
   // 5. Main Headlines
   sections.forEach((sec, secIdx) => {
     if (secIdx === 0) { html += br; html += divider; }
     html += br;
-    html += mainHeadline(`Main Headlines \u2013 ${escHtml(sec)}`);
+    html += orangeP(`Main Headlines \u2013 ${escHtml(sec)}`);
     html += br;
     html += divider;
 
@@ -2797,17 +2791,17 @@ function buildClippingFullExport(sections, buckets) {
       const paras   = rawBody.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 40);
 
       html += br;
-      html += `<p style="${pStyle}font-weight:bold;"><b>${escHtml(item.title)}</b></p>`;
-      html += `<p style="${pStyle}font-size:10pt;line-height:13pt;">` +
+      html += `<p style="margin:0;padding:0;font-weight:bold;font-size:11pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;"><b>${escHtml(item.title)}</b></p>`;
+      html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
               `<b>Source:</b> <a href="${escHtml(item.url)}" target="_blank" style="color:${linkBlue};text-decoration:underline;">${escHtml(srcName)}</a></p>`;
       html += br;
       if (paras.length) {
         paras.forEach((para, i) => {
-          html += `<p style="${pStyle}">${escHtml(para)}</p>`;
+          html += `<p style="margin:0;padding:0;font-size:11pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">${escHtml(para)}</p>`;
           if (i < paras.length - 1) html += br;
         });
       } else {
-        html += `<p style="${pStyle}color:#9CA3AF;font-style:italic;">[Corpo não extraído — adicione manualmente]</p>`;
+        html += `<p style="margin:0;padding:0;font-size:10pt;color:#9CA3AF;font-style:italic;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">[Corpo não extraído — adicione manualmente]</p>`;
       }
       html += br;
       html += topLink;
@@ -2850,8 +2844,10 @@ function buildClippingFullExport(sections, buckets) {
   });
 
   const subject  = `Itaú BBA | Agribusiness, Food & Beverage \u2013 Daily News, ${dateLong}`;
-  const fullHtml = `<!doctype html><html><head><meta charset="utf-8"></head><body>` +
-    `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;max-width:700px;">${html}</div>` +
+  const fullHtml = `<!doctype html><html><head><meta charset="utf-8">` +
+    `<!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->` +
+    `</head><body style="margin:0;padding:0;">` +
+    `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;max-width:700px;margin:0;padding:0;">${html}</div>` +
     `</body></html>`;
 
   return { html, plain, fullHtml, subject };
@@ -2927,12 +2923,11 @@ function wtwBuildHtml() {
   const linkBlue = "#0563C1";
   const today = new Date();
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const ulStyle = `margin:0;padding-left:20px;font-family:Calibri,Arial,sans-serif;font-size:11pt;mso-line-height-rule:exactly;line-height:14pt;`;
+  const ulStyle = `margin:0;padding:0 0 0 20px;font-family:Calibri,Arial,sans-serif;font-size:11pt;`;
 
   if (!reports.length) {
     return `<ul style="${ulStyle}">` +
-           `<li style="margin:0;color:#9CA3AF;font-style:italic;">` +
-           `[Adicione os relatórios manualmente]</li></ul>`;
+           `<li style="margin:0;padding:0;color:#9CA3AF;font-style:italic;">[Adicione os relatórios manualmente]</li></ul>`;
   }
 
   let html = `<ul style="${ulStyle}">`;
@@ -2940,7 +2935,7 @@ function wtwBuildHtml() {
     const dateStr = r.date
       ? (() => { const d = new Date(r.date); return `${monthNames[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`; })()
       : `${monthNames[today.getMonth()]} ${String(today.getFullYear()).slice(2)}`;
-    html += `<li style="margin:0;padding:0;mso-line-height-rule:exactly;line-height:14pt;">` +
+    html += `<li style="margin:0;padding:0;">` +
             `<b>${escHtml(r.name)} (${dateStr}):</b> ` +
             `<a href="${escHtml(r.url)}" style="color:${linkBlue};text-decoration:underline;">${escHtml(r.title)}</a>` +
             `</li>`;
