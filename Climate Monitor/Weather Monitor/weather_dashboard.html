@@ -225,13 +225,13 @@ function setYrs(v){STATE.yrs=v;act("yrs",v);render();}
 function act(a,v){document.querySelectorAll(`[data-${a}]`).forEach(b=>b.classList.toggle("active",b.dataset[a]==String(v)));}
 function sortBy(k){if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}renderTable();}
 function selectEntity(id){STATE.entity=id;renderTable();renderChart();}
-function toggleEnso(){STATE.enso=STATE.enso==="all"?"off":"all";syncEnso();}
-function setEnsoPhase(ph){if(STATE.enso==="off")return;STATE.enso=STATE.enso===ph?"all":ph;syncEnso();}
+function toggleEnso(){STATE.enso=STATE.enso==="off"?"all":"off";syncEnso();}
+function setEnsoPhase(ph){if(STATE.enso==="off")return;let on=STATE.enso==="all"?["nino","nina"]:[STATE.enso];on=on.includes(ph)?on.filter(p=>p!==ph):on.concat(ph);STATE.enso=on.length===0?"off":on.length===2?"all":on[0];syncEnso();}
 function syncEnso(){const on=STATE.enso!=="off";
   document.getElementById("enso-btn").classList.toggle("active",on);
   ["enso-nino","enso-nina"].forEach(id=>document.getElementById(id).style.display=on?"":"none");
-  document.getElementById("enso-nino").classList.toggle("active",STATE.enso==="nino");
-  document.getElementById("enso-nina").classList.toggle("active",STATE.enso==="nina");
+  document.getElementById("enso-nino").classList.toggle("active",STATE.enso==="nino"||STATE.enso==="all");
+  document.getElementById("enso-nina").classList.toggle("active",STATE.enso==="nina"||STATE.enso==="all");
   renderChart();}
 
 /* ── SÉRIE (ano corrente, mensal/semanal) ── */
