@@ -32,27 +32,27 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install -r WASDE/requirements.txt
+        run: pip install -r Wasde/requirements.txt
 
       - name: Rodar atualizacao mensal
         if: github.event_name == 'schedule' || github.event.inputs.mode == 'monthly'
-        working-directory: WASDE
+        working-directory: Wasde
         run: python wasde.py monthly
 
       - name: Rodar backfill completo
         if: github.event.inputs.mode == 'backfill_full'
-        working-directory: WASDE
+        working-directory: Wasde
         run: python wasde.py backfill
 
       - name: Rodar backfill (so 2021+)
         if: github.event.inputs.mode == 'backfill_recent'
-        working-directory: WASDE
+        working-directory: Wasde
         run: python wasde.py backfill --skip-zips
 
       - name: Commitar banco atualizado
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add WASDE/wasde.db
+          git add Wasde/wasde.db
           git diff --cached --quiet || git commit -m "auto: refresh wasde.db — $(date -u +'%Y-%m-%d %H:%M') UTC"
           git push
