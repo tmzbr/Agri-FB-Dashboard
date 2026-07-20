@@ -58,6 +58,7 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── CHARTS ROW — FIX #2: taller charts ── */
 .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;
   padding:12px 16px 8px;flex-shrink:0;}
+.charts-row.single{grid-template-columns:1fr;} /* set by render() when delta-card is hidden */
 .chart-card{background:var(--white);border:1px solid var(--border);border-radius:8px;
   padding:14px 16px 10px;display:flex;flex-direction:column;}
 .chart-card-header{display:flex;justify-content:space-between;align-items:flex-start;
@@ -159,6 +160,43 @@ tr:hover td{background:#FFF8F5;}
 .note-bar{background:#FFFBF8;border-top:1px solid #FFD9C8;
   padding:5px 20px;font-size:10.5px;color:var(--gray-mid);flex-shrink:0;display:none;}
 .note-bar em{color:var(--orange);}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  /* stack the side-by-side chart pair */
+  .charts-row,.charts-row.single{grid-template-columns:1fr;padding-left:10px;padding-right:10px;}
+  .charts-row > *{min-width:0;}
+  .chart-card{padding:12px 12px 8px;}
+  .chart-card-header{flex-direction:column;align-items:stretch;gap:6px;}
+  .chart-stat{text-align:left;}
+  .chart-wrap{height:240px;}
+
+  /* top bar: let it breathe over two lines */
+  .top-bar{height:auto;padding:10px 12px;flex-wrap:wrap;gap:10px;}
+  .top-title{font-size:13.5px;}
+  .top-sub{font-size:10.5px;}
+  .top-latest{margin-left:0;width:100%;}
+
+  /* controls: wrap the groups instead of overflowing */
+  .controls-bar{height:auto;padding:8px 12px;flex-wrap:wrap;gap:8px;
+    justify-content:flex-start;}
+  .ctrl-group{flex-wrap:wrap;gap:6px;}
+  .view-btn,.controls-bar .tab-btn{padding:5px 10px;font-size:11.5px;}
+
+  /* weight panel sits beside the table on desktop — stack it above instead */
+  .bottom-row{grid-template-columns:1fr;}
+  /* `1fr` resolves to minmax(auto,1fr), so the table's min-width would otherwise
+     stretch the whole track; let items shrink and scroll inside .table-wrap */
+  .bottom-row > *{min-width:0;}
+  .weight-panel{border-right:none;border-bottom:1px solid var(--border);
+    padding:14px 12px 18px;}
+
+  /* table: scroll sideways rather than crushing every column */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:none;}
+  table{min-width:640px;}
+  .table-tabs{padding:8px 12px 0;overflow-x:auto;}
+  .note-bar{padding:6px 12px;}
+}
 </style>
 </head>
 <body>
@@ -600,7 +638,7 @@ function render() {
   if (currentTab === 'quarterly') {
     // Quarterly: both charts (ΔSpread×ΔGM correlation + Spread vs GM level).
     deltaCard.style.display = '';
-    chartsRow.style.gridTemplateColumns = '1fr 1fr';
+    chartsRow.classList.remove('single');
     const series  = computeSeries();
     const visible = filterByView(series);
     renderDeltaChart(visible, series);
@@ -612,7 +650,7 @@ function render() {
   } else {
     // Monthly / Weekly: spread line only (GM is quarterly-only); delta hidden, level full-width.
     deltaCard.style.display = 'none';
-    chartsRow.style.gridTemplateColumns = '1fr';
+    chartsRow.classList.add('single');
     const isMonth = currentTab === 'monthly';
     const key     = isMonth ? 'month' : 'week';
     const agg     = (isMonth ? computeMonthly() : computeWeekly());      // newest-first
