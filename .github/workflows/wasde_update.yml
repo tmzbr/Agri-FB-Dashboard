@@ -2,11 +2,12 @@ name: WASDE - Atualizacao mensal / Backfill
 
 on:
   schedule:
-    # WASDE sai entre dia 8 e 12 de cada mes (12:00 ET). Dois disparos (dia 11
-    # e 13) cobrem folga de feriado/atraso. Idempotente: se o mes ja foi
-    # processado, so atualiza os valores, nao duplica.
-    - cron: '0 15 11 * *'
-    - cron: '0 15 13 * *'
+    # Roda TODO DIA entre 8 e 15 de cada mes, as 15:00 UTC (12:00 em Brasilia).
+    # O WASDE normalmente sai entre dia 8-12; essa janela cobre folga de
+    # feriado/atraso. Se o relatorio do mes ainda nao saiu, o script detecta
+    # (404), loga como "not_found" e encerra sem erro -- so tenta de novo no
+    # dia seguinte. Se ja foi processado, e idempotente e nao faz nada.
+    - cron: '0 15 8-15 * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -22,6 +23,7 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     permissions:
       contents: write
     steps:
