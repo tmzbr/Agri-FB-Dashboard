@@ -71,8 +71,12 @@ HEADERS = {
     "Accept": "text/csv,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
 }
-MAX_RETRIES = 5
-BACKOFF_SECONDS = 10
+MAX_RETRIES = 3
+BACKOFF_SECONDS = 8
+# Pausa entre CADA requisicao (mesmo as que deram certo) durante o backfill,
+# pra evitar disparar rate-limit/anti-bot do usda.gov ao fazer muitas
+# chamadas em sequencia rapida.
+SLEEP_BETWEEN_MONTHS = 5
 
 
 # =============================================================================
@@ -96,10 +100,10 @@ CREATE TABLE IF NOT EXISTS wasde_facts (
     ingested_at     TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (wasde_number, commodity, region, market_year, attribute)
 );
-CREATE INDEX IF NOT EXISTS idx_wasde_commodity ON wasde_facts(commodity);
-CREATE INDEX IF NOT EXISTS idx_wasde_region ON wasde_facts(region);
-CREATE INDEX IF NOT EXISTS idx_wasde_marketyear ON wasde_facts(market_year);
 CREATE INDEX IF NOT EXISTS idx_wasde_number ON wasde_facts(wasde_number);
+-- (indices por commodity/region/market_year foram removidos: nesse volume de
+-- linhas (~100k) o SQLite escaneia rapido sem eles, e eles inflavam o .db em
+-- ~7MB por pouco ganho de performance)
 
 CREATE TABLE IF NOT EXISTS ingestion_log (
     year            INTEGER NOT NULL,
@@ -352,10 +356,18 @@ def _month_range(start_year, start_month, end_year, end_month):
             y += 1
 
 
-def cmd_backfill(skip_zips=False, only_year=None):
+def cmd_backfill(skip_zips=False, only_year=None, max_minutes=170):
+    """
+    max_minutes: orcamento de tempo do backfill. Ao atingir esse limite, para
+    de forma limpa (em vez de ser matado no meio pelo timeout do Actions job,
+    o que faria perder TODO o progresso porque o commit so roda depois do
+    script terminar). Como e idempotente, rodar de novo continua de onde
+    parou (already_ingested pula o que ja deu certo).
+    """
     ensure_schema()
     grand_total = 0
     failures = []
+    start_time = time.time()
 
     if not skip_zips:
         print("=" * 60)
@@ -374,6 +386,14 @@ def cmd_backfill(skip_zips=False, only_year=None):
     end_month = 12 if only_year else today.month
 
     for year, month in _month_range(start_year, 1, end_year, end_month):
+        elapsed_min = (time.time() - start_time) / 60
+        if elapsed_min > max_minutes:
+            print(f"\nORCAMENTO DE TEMPO ({max_minutes} min) atingido -- parando de forma limpa.")
+            print(f"Faltou processar a partir de {year}-{month:02d}. Rode 'backfill' de novo")
+            print("(vai pular automaticamente tudo que ja deu certo) pra continuar.")
+            failures.append((year, month, "orcamento de tempo atingido -- rode de novo"))
+            break
+
         if already_ingested(year, month):
             print(f"{year}-{month:02d}: ja processado, pulando")
             continue
@@ -385,6 +405,8 @@ def cmd_backfill(skip_zips=False, only_year=None):
         except Exception as e:
             print(f"  FALHOU: {e}")
             failures.append((year, month, str(e)))
+
+        time.sleep(SLEEP_BETWEEN_MONTHS)
 
     print("=" * 60)
     print(f"CONCLUIDO. Total de linhas gravadas nesta rodada: {grand_total}")
@@ -436,6 +458,8 @@ def main():
     p_backfill = sub.add_parser("backfill", help="busca todo o historico")
     p_backfill.add_argument("--skip-zips", action="store_true")
     p_backfill.add_argument("--only-year", type=int, default=None)
+    p_backfill.add_argument("--max-minutes", type=int, default=170,
+                             help="para de forma limpa apos esse tempo (default: 170min)")
 
     sub.add_parser("diagnostico", help="confere nomes de commodity/region no banco")
 
@@ -444,7 +468,7 @@ def main():
     if args.command == "monthly":
         cmd_monthly(args.year, args.month)
     elif args.command == "backfill":
-        cmd_backfill(skip_zips=args.skip_zips, only_year=args.only_year)
+        cmd_backfill(skip_zips=args.skip_zips, only_year=args.only_year, max_minutes=args.max_minutes)
     elif args.command == "diagnostico":
         cmd_diagnostico()
 
