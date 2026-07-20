@@ -451,6 +451,7 @@ Login email: {{email}}
 
 No password is required — just enter the email above on the sign-in screen.`;
 window.__portalIsAdmin = () => !!STATE.currentUser?.is_admin;
+window.__portalAccessToken = () => STATE.authSession?.access_token || null;
 
 const SECTORS = [
   { id:'agri',         label:'Agribusiness'                  },

@@ -846,6 +846,25 @@ function isAdminUser() {
   } catch (e) { return false; }
 }
 
+// The backend re-checks every write against this token (see app.py's
+// require_user/require_admin) — the data-admin-only hiding above is cosmetic,
+// this is the actual enforcement.
+function authToken() {
+  try {
+    const p = window.parent;
+    if (p && p !== window && typeof p.__portalAccessToken === 'function') {
+      return p.__portalAccessToken();
+    }
+  } catch (e) {}
+  return null;
+}
+function authHeaders(extra) {
+  const headers = Object.assign({}, extra || {});
+  const token = authToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  return headers;
+}
+
 function applyAdminVisibility() {
   const admin = isAdminUser();
   document.querySelectorAll('[data-admin-only]').forEach(el => {
@@ -1314,7 +1333,7 @@ async function fetchNews() {
   // report the real saved/fetched counts from last_result.
   let data;
   try {
-    const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST" });
+    const res = await fetch(API_BASE + "/api/news/fetch", { method: "POST", headers: authHeaders() });
     data = await res.json();
   } catch (e) {
     showToast("Erro de conexão", "danger");
@@ -1365,7 +1384,7 @@ async function fetchNews() {
 
 // ── News Actions ──────────────────────────────────────────────────────────────
 async function excludeNews(id) {
-  await fetch(API_BASE + `/api/news/${id}/exclude`, { method: "POST" });
+  await fetch(API_BASE + `/api/news/${id}/exclude`, { method: "POST", headers: authHeaders() });
   selectedItems.delete(id);
   const item = allNews.find(n => n.id === id);
   if (item) item.is_excluded = 1;
@@ -1381,13 +1400,13 @@ async function excludeNews(id) {
 }
 
 async function includeNews(id) {
-  await fetch(API_BASE + `/api/news/${id}/include`, { method: "POST" });
+  await fetch(API_BASE + `/api/news/${id}/include`, { method: "POST", headers: authHeaders() });
   loadNews();
 }
 
 async function deleteNews(id) {
   if (!confirm("Permanently delete this item?")) return;
-  await fetch(API_BASE + `/api/news/${id}`, { method: "DELETE" });
+  await fetch(API_BASE + `/api/news/${id}`, { method: "DELETE", headers: authHeaders() });
   selectedItems.delete(id);
   document.getElementById(`card-${id}`)?.remove();
   allNews = allNews.filter(n => n.id !== id);
@@ -1406,7 +1425,7 @@ async function addNews() {
   if (!title || !url) { showToast("Title and URL are required", "warning"); return; }
   const res = await fetch(API_BASE + "/api/news", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ title, url, group_id: groupId, source,
       published_at: date ? date + "T12:00:00" : undefined }),
   });
@@ -1855,7 +1874,7 @@ async function saveSettings() {
   for (const g of groupsConfig) {
     await fetch(API_BASE + `/api/groups/${g.id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ search_queries_pt: g.search_queries_pt, search_queries_en: g.search_queries_en }),
     });
   }
@@ -1886,7 +1905,7 @@ async function addExclusion() {
   const pattern = input.value.trim();
   if (!pattern) return;
   const res = await fetch(API_BASE + "/api/exclusions", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ pattern }),
   });
   const data = await res.json();
@@ -1894,7 +1913,7 @@ async function addExclusion() {
 }
 
 async function deleteExclusion(id) {
-  await fetch(API_BASE + `/api/exclusions/${id}`, { method: "DELETE" });
+  await fetch(API_BASE + `/api/exclusions/${id}`, { method: "DELETE", headers: authHeaders() });
   loadExclusions();
 }
 
@@ -2483,7 +2502,7 @@ async function scrapeAllViaGHA(items) {
   // Step 1: trigger
   const triggerRes = await fetch(API_BASE + "/api/scrape-trigger", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ items: items.map(i => ({ id: i.id, url: i.url, source: i.source || "" })) }),
     signal: AbortSignal.timeout(30000),
   });

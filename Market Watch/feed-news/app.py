@@ -2,11 +2,16 @@ import os
 import sys
 import json
 import ssl
+import time
 import threading
 import pg8000
+import urllib.request as ureq
+from functools import wraps
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
+import jwt as pyjwt
+from jwt import PyJWKClient
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -18,6 +23,12 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 DB_NAME     = os.environ.get("DB_NAME", "postgres")
 DB_PORT     = int(os.environ.get("DB_PORT", "5432"))
 
+# Same portal identity the Vercel middleware already verifies (see
+# middleware.js) — reused here so the write endpoints check identity
+# server-side instead of trusting the data-admin-only hiding in the UI.
+SUPABASE_URL              = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
 app = Flask(__name__)
 
 
@@ -25,8 +36,95 @@ app = Flask(__name__)
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
+
+
+# ── Auth ────────────────────────────────────────────────────────────────────
+# Mutating endpoints require a valid Supabase access token (the same one the
+# portal stores after login), passed as "Authorization: Bearer <token>". The
+# UI already hides admin-only buttons via data-admin-only in sector_news.html,
+# but that's cosmetic — this is the actual enforcement.
+
+_jwks_client = None
+
+def _get_jwks_client():
+    global _jwks_client
+    if _jwks_client is None:
+        _jwks_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
+
+
+def _verify_supabase_jwt(token):
+    """Returns the decoded payload for a valid, unexpired Supabase access
+    token, else None. Signature is checked against Supabase's public JWKS."""
+    try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+        payload = pyjwt.decode(token, signing_key.key, algorithms=["ES256"],
+                                options={"verify_aud": False})
+    except Exception:
+        return None
+    if payload.get("exp") and time.time() > payload["exp"]:
+        return None
+    return payload
+
+
+def _portal_user(email):
+    """Looks up is_admin/active for email via the Supabase REST API, using the
+    service-role key so it bypasses RLS. This call is server-to-server —
+    the key never reaches the browser."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    url = f"{SUPABASE_URL}/rest/v1/portal_users?select=is_admin,active&email=eq.{email.lower()}"
+    req = ureq.Request(url, headers={
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    })
+    try:
+        with ureq.urlopen(req, timeout=10) as resp:
+            rows = json.loads(resp.read())
+    except Exception:
+        return None
+    return rows[0] if rows else None
+
+
+def _authenticated_user():
+    """Verifies the bearer token on the current request and returns the
+    matching active portal_users row, or None."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    payload = _verify_supabase_jwt(auth[len("Bearer "):])
+    email = payload.get("email") if payload else None
+    if not email:
+        return None
+    user = _portal_user(email)
+    return user if user and user.get("active") else None
+
+
+def require_user(fn):
+    """Any signed-in, active portal user — for actions every client can
+    trigger (e.g. Refresh), just not the general public."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not _authenticated_user():
+            return jsonify({"error": "unauthorized"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def require_admin(fn):
+    """Signed-in AND is_admin — for the destructive/config actions the UI
+    already hides behind data-admin-only."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _authenticated_user()
+        if not user:
+            return jsonify({"error": "unauthorized"}), 401
+        if not user.get("is_admin"):
+            return jsonify({"error": "forbidden"}), 403
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 # ── Database ────────────────────────────────────────────────────────────────
@@ -214,6 +312,7 @@ def api_get_news():
 
 
 @app.route("/api/news/fetch", methods=["POST"])
+@require_user
 def api_fetch_news():
     """Kick off fetch in a background thread and return immediately.
     A full fetch can take 2-5 min (100+ queries + 12 direct feeds), which
@@ -237,6 +336,7 @@ def api_fetch_status():
 
 
 @app.route("/api/news", methods=["POST"])
+@require_admin
 def api_add_news():
     data = request.json or {}
     if not data.get("title") or not data.get("url") or not data.get("group_id"):
@@ -262,6 +362,7 @@ def api_add_news():
 
 
 @app.route("/api/news/<int:nid>/exclude", methods=["POST"])
+@require_admin
 def api_exclude(nid):
     conn = get_db()
     cur = conn.cursor()
@@ -273,6 +374,7 @@ def api_exclude(nid):
 
 
 @app.route("/api/news/<int:nid>/include", methods=["POST"])
+@require_admin
 def api_include(nid):
     conn = get_db()
     cur = conn.cursor()
@@ -284,6 +386,7 @@ def api_include(nid):
 
 
 @app.route("/api/news/<int:nid>", methods=["DELETE"])
+@require_admin
 def api_delete_news(nid):
     conn = get_db()
     cur = conn.cursor()
@@ -300,6 +403,7 @@ def api_get_groups():
 
 
 @app.route("/api/groups/<int:gid>", methods=["PUT"])
+@require_admin
 def api_update_group(gid):
     data = request.json or {}
     config = load_config()
@@ -326,6 +430,7 @@ def api_get_exclusions():
 
 
 @app.route("/api/exclusions", methods=["POST"])
+@require_admin
 def api_add_exclusion():
     data = request.json or {}
     pattern = (data.get("pattern") or "").strip()
@@ -349,6 +454,7 @@ def api_add_exclusion():
 
 
 @app.route("/api/exclusions/<int:eid>", methods=["DELETE"])
+@require_admin
 def api_delete_exclusion(eid):
     conn = get_db()
     cur = conn.cursor()
@@ -444,6 +550,7 @@ def _async_rescore():
 
 
 @app.route("/api/news/rescore", methods=["POST"])
+@require_admin
 def api_rescore():
     """Rescore all non-manually-added rows using current relevance_filter.py.
     Runs async in a background thread with batch commits (every 200 rows), so
@@ -471,6 +578,7 @@ def api_rescore_status():
 
 
 @app.route("/api/news/purge-blocked", methods=["POST"])
+@require_admin
 def api_purge_blocked():
     """Hard-delete rows whose source/url matches BLOCKED_SOURCES. One-shot
     cleanup after blocklist changes. Fetch path already skips these at insert,
@@ -551,6 +659,7 @@ def _init_scrape_table():
 
 
 @app.route("/api/scrape-trigger", methods=["POST"])
+@require_admin
 def api_scrape_trigger():
     """Dispara o GitHub Actions workflow com os itens a scraper."""
     import traceback
