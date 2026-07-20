@@ -290,6 +290,43 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .analytics-toggle-divider{width:1px;align-self:stretch;background:var(--border);}
 @media(max-width:860px){.analytics-grid{grid-template-columns:1fr 1fr;}}
 @media(max-width:860px){.sidebar{display:none;}.content-area{padding:20px 16px 32px;}}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  .top-nav{padding:0 12px;}
+  /* the 200px search + non-shrinking right group left the sector tabs ~74px;
+     shrink it so the tabs get usable room (they still scroll horizontally) */
+  .top-nav-right{gap:8px;min-width:0;}
+  .search-box{width:120px;}
+  .top-nav-tab{padding:0 13px;}
+  .content-area{padding:16px 12px 28px;}
+  .greeting{margin-bottom:18px;}
+  .greeting h1{font-size:18px;}
+  .section-header{flex-wrap:wrap;gap:8px;}
+
+  /* dash cards: give the title the full width instead of sharing the line
+     with the (nowrap) source, and drop the arrow — "Open →" is the real CTA */
+  .dash-card{padding:16px;gap:12px;}
+  .dash-card-icon{width:38px;height:38px;font-size:17px;}
+  .dash-card-top{flex-direction:column;gap:2px;}
+  .dash-card-source{white-space:normal;}
+  .dash-card-arrow{display:none;}
+
+  /* analytics: tighter KPI tiles, and tables scroll instead of crushing */
+  .analytics-grid{gap:10px;margin-bottom:18px;}
+  .analytics-kpi{padding:14px;}
+  .analytics-kpi-val{font-size:22px;}
+  .analytics-chart-card{padding:14px;overflow-x:auto;}
+  .analytics-chart-title{flex-wrap:wrap;gap:8px;}
+  .analytics-table{min-width:520px;}
+
+  /* settings/admin forms stack */
+  .form-grid{grid-template-columns:1fr;}
+  .settings-tabs-bar{overflow-x:auto;}
+  .modal{padding:20px;}
+  /* toast is position:fixed — pin both edges so it can't push the page sideways */
+  .toast{left:12px;right:12px;bottom:12px;text-align:center;}
+}
 </style>
 </head>
 <body>
