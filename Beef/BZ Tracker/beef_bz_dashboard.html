@@ -110,6 +110,36 @@ tr:hover td{background:#FFF8F5;}
   border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 #loading p{font-size:13px;color:var(--gray-mid);}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  /* stack the side-by-side chart pairs */
+  .charts-row,.refcharts-row{grid-template-columns:1fr;padding-left:10px;padding-right:10px;}
+  .season-section{padding-left:10px;padding-right:10px;}
+  .chart-card{padding:12px 12px 8px;}
+  /* card headers: title above legend/stat instead of squeezed beside it */
+  .chart-card-header{flex-direction:column;align-items:stretch;gap:6px;}
+  .chart-stat{text-align:left;}
+  /* charts need real height once they are full-width */
+  .chart-wrap{height:240px;}
+  .season-section .chart-wrap{height:260px;}
+  .refcharts-row .chart-wrap{height:240px;}
+
+  /* top bar: let it breathe over two lines */
+  .top-bar{height:auto;padding:10px 12px;flex-wrap:wrap;gap:10px;}
+  .top-title{font-size:13.5px;}
+  .top-sub{font-size:10.5px;}
+  .top-latest{margin-left:0;width:100%;}
+
+  /* controls: wrap the button groups instead of overflowing */
+  .controls-bar{height:auto;padding:8px 12px;flex-wrap:wrap;gap:8px;}
+  .view-btn,.tab-btn{padding:5px 10px;font-size:11.5px;}
+
+  /* table: scroll sideways rather than crushing every column */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:none;}
+  table{table-layout:auto;min-width:640px;}
+  .note-bar{padding:6px 12px;}
+}
 </style>
 </head>
 <body>
