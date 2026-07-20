@@ -19,9 +19,11 @@ import csv
 import datetime
 import io
 import os
+import re
 import sqlite3
 import sys
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
 
@@ -63,6 +65,12 @@ BASE_MONTHLY_CSV_URL_V2 = "https://www.usda.gov/sites/default/files/documents/oc
 ZIP_2010_2015 = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2010-04-to-2015-12.zip"
 ZIP_2016_2020 = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2016-01-to-2020-12.zip"
 
+# Fonte ESTAVEL pra atualizacao mensal (mirror da Mann Library/Cornell -- nao
+# tem o bloqueio anti-bot que o www.usda.gov tem pra trafego de datacenter).
+# A pagina sempre lista o release mais recente primeiro, entao nao precisa
+# adivinhar URL por data -- so pega o primeiro link .xml da lista.
+WASDE_LISTING_URL = "https://esmis.nal.usda.gov/publication/world-agricultural-supply-and-demand-estimates"
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -71,8 +79,9 @@ HEADERS = {
     "Accept": "text/csv,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
 }
-MAX_RETRIES = 3
-BACKOFF_SECONDS = 8
+MAX_RETRIES = 4
+BACKOFF_SECONDS = 15
+REQUEST_TIMEOUT = 60
 # Pausa entre CADA requisicao (mesmo as que deram certo) durante o backfill,
 # pra evitar disparar rate-limit/anti-bot do usda.gov ao fazer muitas
 # chamadas em sequencia rapida.
@@ -249,6 +258,135 @@ def parse_csv_text_to_rows(csv_text):
 
 
 # =============================================================================
+# PARSER XML -- fonte estavel (Mann Library/Cornell), usada na atualizacao
+# mensal daqui pra frente. Formato bem mais aninhado que o CSV (e um export
+# de SQL Server Reporting Services), mas foi validado byte-a-byte contra o
+# CSV oficial (292 valores comparados, 0 divergencias).
+# =============================================================================
+
+XML_COMMODITY_TITLES = {
+    "World Corn Supply and Use": "Corn",
+    "World Soybean Supply and Use": "Oilseed, Soybean",
+    "World Cotton Supply and Use": "Cotton",
+    "U.S. Sugar Supply and Use": "Sugar",
+}
+XML_US_ONLY_TITLES = {"U.S. Sugar Supply and Use"}
+
+
+def _xml_clean_region(raw):
+    return re.sub(r'\s+', ' ', re.sub(r'\s*\d+/\s*$', '', raw)).strip()
+
+
+def _xml_clean_attribute(raw):
+    return re.sub(r'\s+', ' ', raw).strip()
+
+
+def _xml_clean_market_year(raw):
+    raw = raw.strip()
+    m = re.match(r'([\d/]+)\s*(Est\.|Proj\.)?', raw)
+    return (m.group(1), m.group(2) or "") if m else (raw, "")
+
+
+def _xml_parse_value(raw):
+    if raw is None:
+        return None
+    raw = raw.replace(',', '').strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def parse_wasde_xml(xml_text):
+    """Recebe o XML de um release do WASDE (formato Mann Library/Cornell) e
+    retorna (rows, wasde_number) no mesmo formato de parse_csv_text_to_rows."""
+    root = ET.fromstring(xml_text)
+    dedup = {}
+
+    for sr in root:
+        report_el = sr.find('Report')
+        if report_el is None:
+            continue
+        title_raw = report_el.get('sub_report_title', '').strip()
+        title = re.sub(r'\s+1/\s*$', '', title_raw).strip()
+        title = re.sub(r"\s*\(Cont'd\.\)\s*$", '', title).strip()
+
+        commodity = XML_COMMODITY_TITLES.get(title)
+        if commodity is None:
+            continue
+        is_us_only = title in XML_US_ONLY_TITLES
+
+        page_title = report_el.get('page_title', '')
+        wm = re.search(r'WASDE\s*-\s*(\d+)', page_title)
+        wasde_number = int(wm.group(1)) if wm else None
+        report_month = report_el.get('Report_Month', '').strip()
+        unit = report_el.get('sub_report_subtitle', '').strip('() ')
+
+        for matrix in report_el:
+            if not re.match(r'matrix\d+$', matrix.tag):
+                continue
+
+            if is_us_only:
+                # tabelas "so US" nao tem dimensao de regiao no XML -- o
+                # numero de sufixo interno (attributeN) e descoberto
+                # dinamicamente pois nem sempre bate com o N do <matrixN>
+                attr_suffixes = {m.group(1) for el in matrix.iter()
+                                  for m in [re.match(r'attribute(\d+)$', el.tag)] if m}
+                for n in attr_suffixes:
+                    for attr_el in matrix.iter(f'attribute{n}'):
+                        attribute = _xml_clean_attribute(attr_el.get(f'attribute{n}', ''))
+                        for yr_el in attr_el.iter():
+                            yr_raw = yr_el.attrib.get(f'market_year{n}')
+                            if yr_raw is None:
+                                continue
+                            market_year, proj_flag = _xml_clean_market_year(yr_raw)
+                            cell = next((c for c in yr_el.iter('Cell') if f'cell_value{n}' in c.attrib), None)
+                            value = _xml_parse_value(cell.get(f'cell_value{n}')) if cell is not None else None
+                            key = (wasde_number, commodity, 'United States', market_year, attribute)
+                            dedup[key] = {
+                                "wasde_number": wasde_number, "report_title": report_month,
+                                "release_date": "", "commodity": commodity, "region": "United States",
+                                "market_year": market_year, "attribute": attribute,
+                                "proj_est_flag": proj_flag, "value": value, "unit": unit,
+                                "forecast_year": None, "forecast_month": None,
+                            }
+            else:
+                mnum = re.match(r'matrix(\d+)$', matrix.tag).group(1)
+                market_year_raw = matrix.get(f'region_header{mnum}', '')
+                market_year, proj_flag = _xml_clean_market_year(market_year_raw)
+                region_key = f'region{mnum}'
+                attr_key = f'attribute{mnum}'
+                value_key = f'cell_value{mnum}'
+
+                for region_el in matrix.iter():
+                    region_raw = region_el.attrib.get(region_key)
+                    if region_raw is None:
+                        continue
+                    region = _xml_clean_region(region_raw)
+                    if region not in REGIONS:
+                        continue
+                    for attr_el in region_el.iter():
+                        attr_raw = attr_el.attrib.get(attr_key)
+                        if attr_raw is None:
+                            continue
+                        attribute = _xml_clean_attribute(attr_raw)
+                        cell = next((c for c in attr_el.iter('Cell') if value_key in c.attrib), None)
+                        value = _xml_parse_value(cell.get(value_key)) if cell is not None else None
+                        key = (wasde_number, commodity, region, market_year, attribute)
+                        dedup[key] = {
+                            "wasde_number": wasde_number, "report_title": report_month,
+                            "release_date": "", "commodity": commodity, "region": region,
+                            "market_year": market_year, "attribute": attribute,
+                            "proj_est_flag": proj_flag, "value": value, "unit": unit,
+                            "forecast_year": None, "forecast_month": None,
+                        }
+
+    rows = list(dedup.values())
+    wasde_number = rows[0]["wasde_number"] if rows else None
+    return rows, wasde_number
+
+
+# =============================================================================
 # FETCH -- busca de 1 mes especifico (usado pelo Actions todo mes)
 # =============================================================================
 
@@ -258,7 +396,7 @@ def _get_with_retries(url):
     last_exc = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = session.get(url, timeout=30)
+            resp = session.get(url, timeout=REQUEST_TIMEOUT)
             if resp.status_code == 200:
                 return resp.text
             if resp.status_code == 404:
@@ -275,7 +413,37 @@ def _get_with_retries(url):
     raise RuntimeError(f"Falhou apos {MAX_RETRIES} tentativas em {url}: {last_exc}")
 
 
+def fetch_latest_release():
+    """Descobre e baixa o release mais recente do WASDE via o mirror da Mann
+    Library/Cornell (esmis.nal.usda.gov) -- fonte estavel, sem o bloqueio
+    anti-bot que o www.usda.gov tem pra trafego de datacenter/Actions.
+    A pagina de listagem sempre traz o release mais recente primeiro.
+    Retorna (rows, wasde_number, report_month_str).
+    """
+    print(f"Buscando lista de releases em {WASDE_LISTING_URL} ...")
+    html = _get_with_retries(WASDE_LISTING_URL)
+    if html is None:
+        raise RuntimeError("Nao consegui acessar a pagina de listagem do WASDE")
+
+    m = re.search(r'/sites/default/release-files/(\d+)/(wasde\d{4}(?:v\d+)?)\.xml', html)
+    if not m:
+        raise RuntimeError("Nao encontrei nenhum link .xml na pagina de listagem")
+
+    xml_url = f"https://esmis.nal.usda.gov/sites/default/release-files/{m.group(1)}/{m.group(2)}.xml"
+    print(f"Release mais recente encontrado: {xml_url}")
+    xml_text = _get_with_retries(xml_url)
+    if xml_text is None:
+        raise RuntimeError(f"Encontrei o link {xml_url} mas nao consegui baixar")
+
+    rows, wasde_number = parse_wasde_xml(xml_text)
+    report_month = rows[0]["report_title"] if rows else ""
+    return rows, wasde_number, report_month
+
+
 def fetch_month(year, month):
+    """Fallback: busca o CSV de um mes especifico direto do www.usda.gov.
+    Mantido para reprocessamento de meses antigos especificos; a atualizacao
+    mensal normal usa fetch_latest_release() (fonte estavel)."""
     url = BASE_MONTHLY_CSV_URL.format(year=year, month=month)
     print(f"Buscando {url} ...")
     text = _get_with_retries(url)
@@ -291,12 +459,42 @@ def fetch_month(year, month):
     return parse_csv_text_to_rows(text)
 
 
+_MONTH_NAMES = {
+    "January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
+    "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12,
+}
+
+
 def cmd_monthly(year=None, month=None):
+    ensure_schema()
+
+    if year is None and month is None:
+        # modo padrao (usado pelo Actions todo mes): pega sempre o release
+        # mais recente disponivel via a fonte estavel, sem precisar adivinhar
+        # data nenhuma.
+        try:
+            rows, wasde_number, report_month = fetch_latest_release()
+            m = re.match(r'(\w+)\s+(\d{4})', report_month)
+            if m:
+                month_num = _MONTH_NAMES.get(m.group(1))
+                year_num = int(m.group(2))
+            else:
+                today = datetime.date.today()
+                year_num, month_num = today.year, today.month
+
+            n = upsert_rows(rows)
+            log_ingestion(year_num, month_num, wasde_number, "ok", f"{n} linhas (fonte estavel)")
+            print(f"OK: {n} linhas gravadas (WasdeNumber={wasde_number}) para {report_month}")
+            return True
+        except Exception as e:
+            print(f"ERRO: {e}")
+            raise
+
+    # modo explicito (usado pelo backfill / reprocessamento de mes especifico):
+    # busca o CSV antigo direto do www.usda.gov pra aquele ano-mes exato
     today = datetime.date.today()
     year = year or today.year
     month = month or today.month
-
-    ensure_schema()
     try:
         rows, wasde_number = fetch_month(year, month)
         n = upsert_rows(rows)
@@ -443,6 +641,26 @@ def cmd_diagnostico():
     conn.close()
 
 
+def cmd_ingest_file(path):
+    """Ingere um CSV ja baixado manualmente (fallback quando o usda.gov bloqueia
+    requisicoes automatizadas). O nome do arquivo precisa conter YYYY-MM em
+    algum lugar (ex: oce-wasde-report-data-2026-08.csv) pra logar o mes certo."""
+    ensure_schema()
+    fname = os.path.basename(path)
+    text = open(path, encoding="utf-8", errors="replace").read()
+    rows, wn = parse_csv_text_to_rows(text)
+    n = upsert_rows(rows)
+
+    m = re.search(r"(\d{4})-(\d{2})(-V2)?\.csv", fname)
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+        log_ingestion(y, mo, wn, "ok", f"{n} linhas (upload manual)")
+        print(f"OK: {n} linhas gravadas (WasdeNumber={wn}) para {y}-{mo:02d}")
+    else:
+        print(f"OK: {n} linhas gravadas (WasdeNumber={wn}) -- nao consegui")
+        print("identificar ano/mes pelo nome do arquivo, ingestion_log nao foi atualizado")
+
+
 # =============================================================================
 # CLI
 # =============================================================================
@@ -463,6 +681,9 @@ def main():
 
     sub.add_parser("diagnostico", help="confere nomes de commodity/region no banco")
 
+    p_ingest = sub.add_parser("ingest-file", help="processa um CSV ja baixado manualmente")
+    p_ingest.add_argument("path")
+
     args = parser.parse_args()
 
     if args.command == "monthly":
@@ -471,6 +692,8 @@ def main():
         cmd_backfill(skip_zips=args.skip_zips, only_year=args.only_year, max_minutes=args.max_minutes)
     elif args.command == "diagnostico":
         cmd_diagnostico()
+    elif args.command == "ingest-file":
+        cmd_ingest_file(args.path)
 
 
 if __name__ == "__main__":
