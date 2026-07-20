@@ -1,0 +1,58 @@
+name: WASDE - Atualizacao mensal / Backfill
+
+on:
+  schedule:
+    # WASDE sai entre dia 8 e 12 de cada mes (12:00 ET). Dois disparos (dia 11
+    # e 13) cobrem folga de feriado/atraso. Idempotente: se o mes ja foi
+    # processado, so atualiza os valores, nao duplica.
+    - cron: '0 15 11 * *'
+    - cron: '0 15 13 * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "O que rodar"
+        required: true
+        default: "monthly"
+        type: choice
+        options:
+          - monthly            # busca so o mes atual
+          - backfill_full       # historico completo (zips 2010-2020 + meses individuais)
+          - backfill_recent      # so meses individuais 2021+ (sem baixar os zips)
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r WASDE/requirements.txt
+
+      - name: Rodar atualizacao mensal
+        if: github.event_name == 'schedule' || github.event.inputs.mode == 'monthly'
+        working-directory: WASDE
+        run: python wasde.py monthly
+
+      - name: Rodar backfill completo
+        if: github.event.inputs.mode == 'backfill_full'
+        working-directory: WASDE
+        run: python wasde.py backfill
+
+      - name: Rodar backfill (so 2021+)
+        if: github.event.inputs.mode == 'backfill_recent'
+        working-directory: WASDE
+        run: python wasde.py backfill --skip-zips
+
+      - name: Commitar banco atualizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add WASDE/wasde.db
+          git diff --cached --quiet || git commit -m "auto: refresh wasde.db — $(date -u +'%Y-%m-%d %H:%M') UTC"
+          git push
