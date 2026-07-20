@@ -343,6 +343,8 @@ def parse_wasde_xml(xml_text):
                             cell = next((c for c in yr_el.iter('Cell') if f'cell_value{n}' in c.attrib), None)
                             value = _xml_parse_value(cell.get(f'cell_value{n}')) if cell is not None else None
                             key = (wasde_number, commodity, 'United States', market_year, attribute)
+                            if value is None and key in dedup:
+                                continue
                             dedup[key] = {
                                 "wasde_number": wasde_number, "report_title": report_month,
                                 "release_date": "", "commodity": commodity, "region": "United States",
@@ -351,35 +353,41 @@ def parse_wasde_xml(xml_text):
                                 "forecast_year": None, "forecast_month": None,
                             }
             else:
-                mnum = re.match(r'matrix(\d+)$', matrix.tag).group(1)
-                market_year_raw = matrix.get(f'region_header{mnum}', '')
-                market_year, proj_flag = _xml_clean_market_year(market_year_raw)
-                region_key = f'region{mnum}'
-                attr_key = f'attribute{mnum}'
-                value_key = f'cell_value{mnum}'
+                # o sufixo interno (regionN/attributeN/cell_valueN) nem sempre
+                # bate com o numero da propria tag <matrixN> -- descobre
+                # dinamicamente escaneando por chaves 'regionN' de verdade,
+                # igual ja fazemos no ramo US-only acima.
+                region_ns = {mm.group(1) for el in matrix.iter() for k in el.attrib
+                             for mm in [re.match(r'region(\d+)$', k)] if mm}
+                for n in region_ns:
+                    market_year_raw = matrix.get(f'region_header{n}', '')
+                    market_year, proj_flag = _xml_clean_market_year(market_year_raw)
+                    region_key, attr_key, value_key = f'region{n}', f'attribute{n}', f'cell_value{n}'
 
-                for region_el in matrix.iter():
-                    region_raw = region_el.attrib.get(region_key)
-                    if region_raw is None:
-                        continue
-                    region = _xml_clean_region(region_raw)
-                    if region not in REGIONS:
-                        continue
-                    for attr_el in region_el.iter():
-                        attr_raw = attr_el.attrib.get(attr_key)
-                        if attr_raw is None:
+                    for region_el in matrix.iter():
+                        region_raw = region_el.attrib.get(region_key)
+                        if region_raw is None:
                             continue
-                        attribute = _xml_clean_attribute(attr_raw)
-                        cell = next((c for c in attr_el.iter('Cell') if value_key in c.attrib), None)
-                        value = _xml_parse_value(cell.get(value_key)) if cell is not None else None
-                        key = (wasde_number, commodity, region, market_year, attribute)
-                        dedup[key] = {
-                            "wasde_number": wasde_number, "report_title": report_month,
-                            "release_date": "", "commodity": commodity, "region": region,
-                            "market_year": market_year, "attribute": attribute,
-                            "proj_est_flag": proj_flag, "value": value, "unit": unit,
-                            "forecast_year": None, "forecast_month": None,
-                        }
+                        region = _xml_clean_region(region_raw)
+                        if region not in REGIONS:
+                            continue
+                        for attr_el in region_el.iter():
+                            attr_raw = attr_el.attrib.get(attr_key)
+                            if attr_raw is None:
+                                continue
+                            attribute = _xml_clean_attribute(attr_raw)
+                            cell = next((c for c in attr_el.iter('Cell') if value_key in c.attrib), None)
+                            value = _xml_parse_value(cell.get(value_key)) if cell is not None else None
+                            key = (wasde_number, commodity, region, market_year, attribute)
+                            if value is None and key in dedup:
+                                continue  # nao deixa uma celula "filler" sobrescrever um valor real ja achado
+                            dedup[key] = {
+                                "wasde_number": wasde_number, "report_title": report_month,
+                                "release_date": "", "commodity": commodity, "region": region,
+                                "market_year": market_year, "attribute": attribute,
+                                "proj_est_flag": proj_flag, "value": value, "unit": unit,
+                                "forecast_year": None, "forecast_month": None,
+                            }
 
     rows = list(dedup.values())
     wasde_number = rows[0]["wasde_number"] if rows else None
