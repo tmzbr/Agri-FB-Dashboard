@@ -58,7 +58,40 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 .spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 #loading p{font-size:13px;color:var(--gray-mid);}.err{color:var(--red);}
-@media(max-width:880px){.main{grid-template-columns:1fr;}}
+/* `1fr` resolves to minmax(auto,1fr); the nowrap table's min-content was
+   stretching the track and pushing the whole page sideways. Let the cards
+   shrink and scroll the table inside .table-wrap instead. */
+@media(max-width:880px){.main{grid-template-columns:1fr;}.main>*{min-width:0;}}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  .main{padding:10px 10px;gap:10px;}
+  /* top bar: let it breathe over two lines */
+  .top-bar{height:auto;padding:10px 12px;flex-wrap:wrap;gap:10px;}
+  .top-title{font-size:13.5px;}
+  .top-sub{font-size:10.5px;}
+  .top-latest{margin-left:0;width:100%;}
+  /* labels and button groups are flat siblings in a wrapping flex row, so a
+     label would trail at the end of the previous line — give each its own
+     line so it heads the group it describes */
+  .controls-bar{padding:8px 12px;gap:6px 8px;}
+  .controls-bar .view-label{flex:0 0 100%;margin-top:2px;}
+  .controls-bar .view-label:first-child{margin-top:0;}
+  .ctrl-sep{display:none;}
+  .view-btn{padding:5px 10px;font-size:11.5px;}
+
+  /* chart needs less forced height on a phone, legend/stats wrap */
+  .chart-wrap{min-height:320px;padding:10px 10px 6px;}
+  .chart-legend{padding:0 10px 10px;gap:10px;}
+  .stat-row{gap:14px;padding:8px 10px 12px;}
+  .stat .v{font-size:15px;}
+  .card-head{padding:10px 12px;}
+
+  /* table: scroll sideways rather than crushing every column */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:420px;}
+  table{min-width:560px;}
+  .note-bar{padding:6px 12px;}
+}
 </style>
 </head>
 <body>
