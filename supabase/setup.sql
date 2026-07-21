@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
--- Itaú BBA — Agribusiness, Food & Beverage Portal
+-- Agribusiness, Food & Beverage Portal
 -- FULL SETUP SCRIPT — run this in Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════════
 
@@ -33,7 +33,7 @@ create table if not exists public.dashboards (
 create table if not exists public.team_settings (
   id int primary key default 1,
   banner_title text default 'Agribusiness, Food & Beverage Coverage',
-  banner_sub text default 'Itaú BBA Equity Research',
+  banner_sub text default 'Equity Research',
   promo_image_url text default '',
   promo_link_url text default '',
   analysts jsonb default '[]'
@@ -155,7 +155,7 @@ insert into public.team_settings (id, banner_title, banner_sub, promo_image_url,
 values (
   1,
   'Agribusiness, Food & Beverage Coverage',
-  'Itaú BBA Equity Research',
+  'Equity Research',
   '', '',
   '[
     {"name":"Analyst One",  "role":"Head of Sector — Agribusiness, Food & Beverage","email":"analyst.one@example.com"},

@@ -474,6 +474,8 @@ const STATE = {
     promo_link_url: '',
     analysts: [],
     invite_template: '',
+    news_email_title: 'Agribusiness, Food & Beverage – Daily News',
+    news_email_signature: [],
   },
 };
 /* Default text for the client invite message, used until an admin
@@ -487,6 +489,9 @@ Link: {{link}}
 Login email: {{email}}
 
 No password is required — just enter the email above on the sign-in screen.`;
+/* Fallback title for the Sector News Daily News email. House-neutral on
+   purpose: the real one is typed by an admin and lives only in Supabase. */
+const DEFAULT_NEWS_EMAIL_TITLE = 'Agribusiness, Food & Beverage – Daily News';
 window.__portalIsAdmin = () => !!STATE.currentUser?.is_admin;
 window.__portalAccessToken = () => STATE.authSession?.access_token || null;
 
@@ -797,6 +802,10 @@ async function loadAllData(){
   if(!STATE.teamSettings.analysts) STATE.teamSettings.analysts=[];
   if(typeof STATE.teamSettings.analysts==='string') STATE.teamSettings.analysts=JSON.parse(STATE.teamSettings.analysts);
   if(!STATE.teamSettings.invite_template) STATE.teamSettings.invite_template=DEFAULT_INVITE_TEMPLATE;
+  // Same for the Daily News signature — jsonb, so it may arrive as a string.
+  if(!STATE.teamSettings.news_email_signature) STATE.teamSettings.news_email_signature=[];
+  if(typeof STATE.teamSettings.news_email_signature==='string') STATE.teamSettings.news_email_signature=JSON.parse(STATE.teamSettings.news_email_signature);
+  if(!STATE.teamSettings.news_email_title) STATE.teamSettings.news_email_title=DEFAULT_NEWS_EMAIL_TITLE;
 }
 
 function showLogin(){
@@ -1159,13 +1168,12 @@ function buildSettings(){
 }
 
 /* Derive the "Client" (owning house) from an email domain, as an initial
-   suggestion: the token after @ and before the first dot. itau.us / itaubba.com
-   map to the branded "Itaú BBA". Returns '' when it can't be derived. */
+   suggestion: the token after @ and before the first dot, capitalized.
+   Returns '' when it can't be derived. */
 function deriveClient(email){
   const at=String(email||'').toLowerCase().split('@');
   if(at.length<2) return '';
   const domain=at[1].trim();
-  if(domain==='itau.us'||domain==='itaubba.com') return 'Itaú BBA';
   const token=domain.split('.')[0];
   if(!token) return '';
   return token.charAt(0).toUpperCase()+token.slice(1);
@@ -1347,6 +1355,16 @@ function buildPaneUsersTeam(){
         <button class="btn-danger" onclick="removeAnalystLocal(${i})">Remove</button>
       </div>
     </div>`).join('');
+  const newsSig=Array.isArray(t.news_email_signature)?t.news_email_signature:[];
+  const sigRows=newsSig.map((s,i)=>`
+    <div class="admin-row" style="flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">
+        <input class="admin-input" style="flex:1 1 150px;margin:0;" value="${esc(s.name||'')}" placeholder="Name, credential" oninput="editNewsSigLocal(${i},'name',this.value)"/>
+        <input class="admin-input" style="flex:1 1 130px;margin:0;" value="${esc(s.phone||'')}" placeholder="Phone (optional)" oninput="editNewsSigLocal(${i},'phone',this.value)"/>
+        <input class="admin-input" style="flex:2 1 180px;margin:0;" value="${esc(s.email||'')}" placeholder="Email" oninput="editNewsSigLocal(${i},'email',this.value)"/>
+        <button class="btn-danger" onclick="removeNewsSigLocal(${i})">Remove</button>
+      </div>
+    </div>`).join('');
   const promoActive=!!t.promo_image_url;
   return `
     <div class="admin-panel">
@@ -1370,7 +1388,7 @@ function buildPaneUsersTeam(){
           <div class="info-box" style="margin-bottom:12px;"><strong>Regular users</strong> sign in with just their email — no password needed. <strong>Admins</strong> sign in with email + a password you set below. Everything is created here; no Supabase step required.</div>
           <div class="form-grid">
             <div><label class="admin-label">Display Name</label><input class="admin-input" id="nu-name" placeholder="Full Name"/></div>
-            <div><label class="admin-label">Client</label><input class="admin-input" id="nu-client" placeholder="e.g. Itaú BBA"/></div>
+            <div><label class="admin-label">Client</label><input class="admin-input" id="nu-client"/></div>
             <div><label class="admin-label">Corporate Email</label><input class="admin-input" id="nu-email" type="email" placeholder="name@corporateemail.com" onblur="const c=document.getElementById('nu-client'); if(c&&!c.value.trim()) c.value=deriveClient(this.value);"/></div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
@@ -1411,6 +1429,23 @@ function buildPaneUsersTeam(){
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
             <button class="btn-outline" onclick="addAnalystLocal()">+ Add Analyst</button>
             <button class="btn-primary" onclick="dbSaveTeam()">Save Team &amp; Sidebar</button>
+          </div>
+        </div>
+      </div>
+      <div class="admin-section">
+        <div class="admin-section-header">&#128231; &nbsp;Sector News &mdash; Daily News Email</div>
+        <div class="admin-section-body">
+          <div class="info-box">Applies to the Daily News draft generated by the <strong>Sector News</strong> module. Stored in Supabase and editable only here &mdash; nothing is hardcoded in the module.</div>
+          <label class="admin-label">Email Title</label>
+          <input class="admin-input" id="news-email-title" value="${esc(t.news_email_title||'')}" placeholder="Agribusiness, Food &amp; Beverage – Daily News"/>
+          <div style="font-size:11px;color:var(--gray-mid);margin:-8px 0 12px 0;">Used both as the subject line and as the centered <code>*** ... ***</code> header.</div>
+          <hr class="sep"/>
+          <div style="font-size:13px;font-weight:700;color:var(--black);margin-bottom:4px;">Footer Signature</div>
+          <div style="font-size:11px;color:var(--gray-mid);margin-bottom:12px;">Contacts listed under <strong>AGRIBUSINESS, FOOD &amp; BEVERAGE TEAM</strong> in the email. The first one renders with a bold name, the rest in grey. Type the name exactly as it should appear, including any credential suffix. No entries = header only.</div>
+          ${sigRows||'<div style="font-size:12px;color:var(--gray-mid);margin-bottom:10px;">No contacts — the email shows only the team header.</div>'}
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn-outline" onclick="addNewsSigLocal()">+ Add Contact</button>
+            <button class="btn-primary" onclick="dbSaveNewsEmail()">Save Daily News Settings</button>
           </div>
         </div>
       </div>
@@ -1726,6 +1761,27 @@ async function dbSaveTeam(){
   if(error){ showToast('Error: '+error.message); return; }
   STATE.teamSettings.banner_title=title; STATE.teamSettings.banner_sub=sub;
   showToast('Team settings saved ✓'); renderSidebar();
+}
+/* Sector News email — title + footer signature. The module reads both from
+   team_settings, so nothing about the sending house lives in its source.
+   Edits are local until "Save"; only then do they reach the database. */
+function editNewsSigLocal(i,f,v){ const sig=STATE.teamSettings.news_email_signature; if(sig[i]) sig[i][f]=v; }
+function removeNewsSigLocal(i){ STATE.teamSettings.news_email_signature.splice(i,1); renderContent(); showToast('Removed (unsaved — click Save).'); }
+function addNewsSigLocal(){ if(!STATE.teamSettings.news_email_signature) STATE.teamSettings.news_email_signature=[]; STATE.teamSettings.news_email_signature.push({name:'',phone:'',email:''}); renderContent(); }
+async function dbSaveNewsEmail(){
+  const title=document.getElementById('news-email-title')?.value.trim()||'';
+  // Drop blank rows, then reject anything left with a malformed address.
+  const sig=(STATE.teamSettings.news_email_signature||[])
+    .map(s=>({name:(s.name||'').trim(),phone:(s.phone||'').trim(),email:(s.email||'').trim()}))
+    .filter(s=>s.name||s.phone||s.email);
+  const bad=sig.find(s=>!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.email));
+  if(bad){ showToast(`Invalid email for "${bad.name||'(unnamed)'}".`); return; }
+  const {error}=await sb.from('team_settings').update({
+    news_email_title:title, news_email_signature:JSON.stringify(sig)
+  }).eq('id',1);
+  if(error){ showToast('Error: '+error.message); return; }
+  STATE.teamSettings.news_email_title=title; STATE.teamSettings.news_email_signature=sig;
+  showToast('Daily News settings saved ✓');
 }
 async function dbSaveInviteTemplate(){
   const tpl=document.getElementById('team-invite-template')?.value.trim() || DEFAULT_INVITE_TEMPLATE;

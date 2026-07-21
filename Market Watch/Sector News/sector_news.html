@@ -823,8 +823,38 @@ select.filter-input { padding-right: 28px !important; min-width: 80px; }
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const API_BASE = '__NEWS_API_URL__';
+
+/* ── Daily News email preferences ───────────────────────────────────────────
+   Title and footer contact are set by admins in the portal (Settings → Admin
+   Panel → Sector News) and stored in team_settings. They are read here, never
+   hardcoded, so the sending house's branding never lives in this file.
+   The fallbacks below are deliberately house-neutral: if the row can't be read
+   the export still works, it just carries no contact line. */
+const NEWS_PREFS = {
+  title:     'Agribusiness, Food & Beverage – Daily News',
+  signature: [],   // [{name, phone, email}] — first entry renders bold
+};
+
+async function loadNewsPrefs(){
+  try {
+    // Same origin as the portal, so supabase-js picks up the signed-in session
+    // from localStorage; team_settings is readable by any authenticated user.
+    const sb = supabase.createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__');
+    const { data, error } = await sb.from('team_settings')
+      .select('news_email_title, news_email_signature').eq('id', 1).single();
+    if (error || !data) return;
+    if (data.news_email_title && data.news_email_title.trim())
+      NEWS_PREFS.title = data.news_email_title.trim();
+    let sig = data.news_email_signature || [];
+    if (typeof sig === 'string') sig = JSON.parse(sig);
+    NEWS_PREFS.signature = Array.isArray(sig) ? sig : [];
+  } catch (e) {
+    console.warn('Daily News prefs unavailable, using defaults:', e);
+  }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let allNews = [];
@@ -874,6 +904,7 @@ function applyAdminVisibility() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
+  loadNewsPrefs();   // fire-and-forget: only needed once the user opens Export
   const today = new Date().toISOString().split("T")[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
   document.getElementById("add-date").value = today;
@@ -1473,7 +1504,7 @@ function openExportModal() {
   );
   const today = new Date();
   const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const subject  = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+  const subject  = `${NEWS_PREFS.title}, ${dateLong}`;
   const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
   exportState = { sections, buckets, subject, dateLong };
 
@@ -1545,7 +1576,7 @@ function buildExportHtmlPlain() {
   let html = "";
   html += `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">`;
   html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 18px 0;">`
-        + `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</b></p>`;
+        + `<b>*** ${escHtml(NEWS_PREFS.title)} ***</b></p>`;
 
   sections.forEach(sec => {
     html += orangeHeader(escHtml(sec));
@@ -1574,7 +1605,7 @@ function buildExportHtmlPlain() {
   });
   html += `</div>`;
 
-  let plain = `*** Itaú BBA | Agribusiness, Food & Beverage - Daily News ***\n\n`;
+  let plain = `*** ${NEWS_PREFS.title} ***\n\n`;
   sections.forEach(sec => {
     plain += `${sec}\n`;
     buckets[sec].forEach(item => { plain += `  - ${item.title}\n`; });
@@ -1605,7 +1636,7 @@ function renderExportPreview() {
 
   let preview = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">`;
   preview += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0 0 12px 0;">`
-          + `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage – Daily News ***</b></p>`;
+          + `<b>*** ${escHtml(NEWS_PREFS.title)} ***</b></p>`;
   preview += `<p style="font-size:11px;color:#6B7280;margin:0 0 14px 0;text-align:center;">`
           + `Use ↑ ↓ to reorder · × to remove · top = shown first in email</p>`;
 
@@ -2610,7 +2641,7 @@ function buildClippingExportModal(items, scrapeResults) {
 
   const today   = new Date();
   const dateLong = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const subject = `Itaú BBA | Agribusiness, Food & Beverage – Daily News, ${dateLong}`;
+  const subject = `${NEWS_PREFS.title}, ${dateLong}`;
   const sections = ["Agribusiness", "Food & Beverage"].filter(s => buckets[s].length);
 
   exportState = { sections, buckets, subject, dateLong };
@@ -2760,7 +2791,7 @@ function buildClippingFullExport(sections, buckets) {
 
   // 1. Header
   html += `<p style="text-align:center;font-weight:bold;font-size:12pt;margin:0;padding:0;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
-          `<b>*** Itaú BBA | Agribusiness, Food &amp; Beverage \u2013 Daily News ***</b></p>`;
+          `<b>*** ${escHtml(NEWS_PREFS.title)} ***</b></p>`;
   html += br;
 
   // 2. TOC
@@ -2777,24 +2808,25 @@ function buildClippingFullExport(sections, buckets) {
   html += wtwBuildHtml();
   html += br;
 
-  // 4. Team signature
+  // 4. Team signature — cabeçalho + contatos definidos pelos admins no portal
+  // (Settings → Admin Panel → Sector News). Layout preservado do original: o
+  // primeiro contato sai com o nome em negrito, os demais em cinza; telefone
+  // em cinza e e-mail como link azul. Lista vazia = só o cabeçalho.
   html += `<p style="margin:0;padding:0;font-size:10pt;font-weight:bold;color:${orange};mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
           `<b><font color="${orange}">AGRIBUSINESS, FOOD &amp; BEVERAGE TEAM</font></b></p>`;
-  html += br;
-  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
-          `<b>Gustavo Troyano, CNPI</b><br>` +
-          `<span style="color:${grey};">+55-11-3073-3269</span><br>` +
-          `<a href="mailto:gustavo.troyano@itaubba.com" style="color:${linkBlue};">gustavo.troyano@itaubba.com</a></p>`;
-  html += br;
-  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
-          `<span style="color:${grey};">Bruno Tomazetto, CNPI</span><br>` +
-          `<span style="color:${grey};">+55-11-3073-3035</span><br>` +
-          `<a href="mailto:bruno.tomazetto@itaubba.com" style="color:${linkBlue};">bruno.tomazetto@itaubba.com</a></p>`;
-  html += br;
-  html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
-          `<span style="color:${grey};">Ryu Matsuyama, CNPI</span><br>` +
-          `<span style="color:${grey};">+55-11-3073-3047</span><br>` +
-          `<a href="mailto:ryu.matsuyama@itaubba.com" style="color:${linkBlue};">ryu.matsuyama@itaubba.com</a></p>`;
+  NEWS_PREFS.signature.forEach((c, i) => {
+    const nm = (c.name || "").trim(), ph = (c.phone || "").trim(), em = (c.email || "").trim();
+    if (!nm && !ph && !em) return;
+    html += br;
+    const nameHtml = i === 0
+      ? `<b>${escHtml(nm)}</b>`
+      : `<span style="color:${grey};">${escHtml(nm)}</span>`;
+    html += `<p style="margin:0;padding:0;font-size:10pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;">` +
+            (nm ? `${nameHtml}<br>` : ``) +
+            (ph ? `<span style="color:${grey};">${escHtml(ph)}</span><br>` : ``) +
+            (em ? `<a href="mailto:${escHtml(em)}" style="color:${linkBlue};">${escHtml(em)}</a>` : ``) +
+            `</p>`;
+  });
 
   // 5. Main Headlines
   sections.forEach((sec, secIdx) => {
@@ -2830,7 +2862,7 @@ function buildClippingFullExport(sections, buckets) {
   });
 
   // Plain text
-  let plain = `*** Itaú BBA | Agribusiness, Food & Beverage \u2013 Daily News ***\n\n`;
+  let plain = `*** ${NEWS_PREFS.title} ***\n\n`;
   sections.forEach(sec => {
     plain += `${sec}\n`;
     buckets[sec].forEach(item => { plain += `  \u2022 ${item.title}\n`; });
@@ -2849,9 +2881,13 @@ function buildClippingFullExport(sections, buckets) {
     plain += `  [Adicione os relatórios manualmente]\n`;
   }
   plain += `\nAGRIBUSINESS, FOOD & BEVERAGE TEAM\n`;
-  plain += `Gustavo Troyano, CNPI \u2014 gustavo.troyano@itaubba.com\n`;
-  plain += `Bruno Tomazetto, CNPI \u2014 bruno.tomazetto@itaubba.com\n`;
-  plain += `Ryu Matsuyama, CNPI \u2014 ryu.matsuyama@itaubba.com\n\n`;
+  // Texto puro segue o original: "Nome — email", uma linha por contato.
+  NEWS_PREFS.signature.forEach(c => {
+    const nm = (c.name || "").trim(), em = (c.email || "").trim();
+    if (nm && em)      plain += `${nm} — ${em}\n`;
+    else if (nm || em) plain += `${nm || em}\n`;
+  });
+  plain += `\n`;
   plain += `${"─".repeat(40)}\n\n`;
   sections.forEach(sec => {
     plain += `Main Headlines \u2013 ${sec}\n${"─".repeat(40)}\n\n`;
@@ -2862,7 +2898,7 @@ function buildClippingFullExport(sections, buckets) {
     });
   });
 
-  const subject  = `Itaú BBA | Agribusiness, Food & Beverage \u2013 Daily News, ${dateLong}`;
+  const subject  = `${NEWS_PREFS.title}, ${dateLong}`;
   const fullHtml = `<!doctype html><html><head><meta charset="utf-8">` +
     `<!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->` +
     `</head><body style="margin:0;padding:0;">` +

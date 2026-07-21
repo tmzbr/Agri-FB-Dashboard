@@ -2,7 +2,7 @@
 generate_wpi.py
 ---------------
 Weekly Protein Intake — PPT Generator
-Itaú BBA · Food & Beverage Team
+Agribusiness, F&B DataHouse · Food & Beverage Team
 
 Usage:
     python generate_wpi.py --week 129 --date "June 26, 2026"
