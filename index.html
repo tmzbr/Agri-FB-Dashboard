@@ -1288,6 +1288,8 @@ function buildPaneUsersTeam(){
   const displayUsers = showAll ? sortedUsers : sortedUsers.slice(0, USERS_PREVIEW);
   const hiddenCount = STATE.portalUsers.length - USERS_PREVIEW;
   const arrow = (k)=> sort.key===k ? (sort.dir==='asc'?' &#9650;':' &#9660;') : '';
+  const uniqueUsers = new Set(STATE.portalUsers.map(u=>(u.email||'').toLowerCase()).filter(Boolean)).size;
+  const uniqueClients = new Set(STATE.portalUsers.map(u=>clientOf(u).trim().toLowerCase()).filter(Boolean)).size;
   const th = (k,label,style='')=>`<th class="usr-th" style="${style}" onclick="setUserSort('${k}')">${label}<span class="usr-arrow">${arrow(k)}</span></th>`;
   const rowsHtml=displayUsers.map((u)=>{
     const protectedLast = u.is_admin && STATE.portalUsers.filter(x=>x.is_admin&&x.active).length<=1;
@@ -1325,8 +1327,8 @@ function buildPaneUsersTeam(){
     <div class="usr-table-wrap">
       <table class="usr-table">
         <thead><tr>
-          ${th('name','Name','text-align:left;')}
-          ${th('client','Client','text-align:left;')}
+          ${th('name',`Name <span style="color:var(--gray-mid);font-weight:600;">(${uniqueUsers})</span>`,'text-align:left;')}
+          ${th('client',`Client <span style="color:var(--gray-mid);font-weight:600;">(${uniqueClients})</span>`,'text-align:left;')}
           ${th('email','Email','text-align:left;')}
           ${th('status','Active','text-align:center;')}
           ${th('role','Admin','text-align:center;')}
