@@ -139,7 +139,7 @@ const AREA_YIELD_CONFIG = {
 let db;
 let commodity = COMMODITIES[0].key;
 let tableCountries = new Set(['World','Brazil','United States','China']);
-let tableMode = 'complete';
+let tableMode = 'simplified';
 let chartYear = null;
 let chartMeasure = 'stock_to_use';
 let ayMeasure = 'area';
@@ -244,15 +244,15 @@ function buildLayout(){
         <span class="card-stat" id="tblUnit" style="margin-right:auto;margin-left:10px;"></span>
         <div class="hdr-ctrl-group">
           <div class="toggle-group" id="tblModeToggle">
-            <button class="tog-btn active" data-mode="complete">Complete</button>
-            <button class="tog-btn" data-mode="simplified">Simplified</button>
+            <button class="tog-btn" data-mode="complete">Complete</button>
+            <button class="tog-btn active" data-mode="simplified">Simplified</button>
           </div>
           <div class="ddown" id="ddTblCountries">
             <button class="ddown-btn" type="button"><span id="ddTblCountriesLabel">Countries</span><span class="ddown-arrow">▾</span></button>
             <div class="ddown-panel hidden" id="ddTblCountriesPanel"></div>
           </div>
           <div class="ddown" id="ddYearsRange">
-            <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">Full history</span><span class="ddown-arrow">▾</span></button>
+            <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">5 years</span><span class="ddown-arrow">▾</span></button>
             <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
           </div>
         </div>
@@ -365,6 +365,7 @@ function buildLayout(){
       btn.parentElement.querySelectorAll('.tog-btn').forEach(b=>b.classList.toggle('active', b===btn));
       renderTable();
       renderSTUTrend();
+      renderPriceChart();
       if(chartMeasure === 'stock_to_use') renderRevisionChart();
     };
   });
@@ -387,7 +388,7 @@ const YEARS_RANGE_OPTIONS = [
   {key:'3', label:'3 years'}, {key:'5', label:'5 years'},
   {key:'10', label:'10 years'}, {key:'full', label:'Full history'},
 ];
-let tableYearsRange = 'full';
+let tableYearsRange = '5';
 let stuCountry = 'World';
 
 function toggleDdown(panelId){
