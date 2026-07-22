@@ -577,6 +577,13 @@ async function init(){
   setLoading(true, 'Connecting...');
   // Check existing session
   sb.auth.onAuthStateChange((event, session) => {
+    // Keep the in-memory session in step with the refreshed one. supabase-js
+    // rotates the access token roughly hourly and hands back a NEW session
+    // object; without this, STATE.authSession keeps serving the token captured
+    // at page load, and __portalAccessToken() hands modules an expired one —
+    // which the news backend rejects (require_admin → 401), silently degrading
+    // the Daily News export to feed snippets instead of scraped bodies.
+    STATE.authSession = session || null;
     if (session) setAuthCookie(session);
     else clearAuthCookie();
   });
