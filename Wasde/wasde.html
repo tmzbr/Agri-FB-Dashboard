@@ -75,6 +75,7 @@ tr.grp td:first-child{background:#FFFAF5;padding-top:9px;}
 tr.subgrp td:first-child{padding-left:10px;font-weight:700;color:var(--bk);padding-top:6px;}
 tr.sub td:first-child{padding-left:24px;font-weight:400;color:var(--bk);}
 tr.metric td{font-weight:700;}
+tr.stu-row td{font-weight:700;color:var(--or);}
 tr.metric td:first-child{background:var(--wh);}
 
 .src{font-size:9px;color:#BBB;margin-top:10px;}
@@ -587,7 +588,7 @@ function renderTable(){
   rows += `<tr class="metric"><td>Ending Stocks</td>${rowCellsMeasure(worldRegion, 'ending_stocks')}</tr>`;
 
   const stuCells = years.map(yr => { const v = latestValue(commodity, worldRegion, yr, 'stock_to_use'); return `<td>${v!=null?(v.toFixed(1)+'%'):'—'}</td>`; }).join('');
-  rows += `<tr class="metric"><td>Stock-to-Use</td>${stuCells}</tr>`;
+  rows += `<tr class="stu-row"><td>Stock-to-Use</td>${stuCells}</tr>`;
 
   document.getElementById('tblBody').innerHTML = rows || `<tr><td colspan="${years.length+1}">Select at least one country</td></tr>`;
 }
@@ -621,8 +622,8 @@ function renderRevisionChart(){
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
-      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
-               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+      scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
     }
   });
 }
@@ -663,8 +664,8 @@ function renderAYChart(){
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
       scales:{
-        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
-        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:`Area Harvested (${areaUnit})`,font:{size:9},color:'#888'}},
+        x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Area Harvested (${areaUnit})`,font:{size:9},color:'#000'}},
         y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Yield (${yieldUnit})`,font:{size:9},color:'#FF5500'}},
       }
     }
@@ -702,8 +703,8 @@ function renderEIChart(){
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333', filter: item => item.text !== 'Zero'}},
         tooltip:{filter: ctx => ctx.dataset.label !== 'Zero', callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{
-        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
-        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:`Exports / Imports (${unit})`,font:{size:9},color:'#888'}},
+        x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Exports / Imports (${unit})`,font:{size:9},color:'#000'}},
         y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Net (${unit})`,font:{size:9},color:'#FF5500'}},
       }
     }
@@ -740,8 +741,8 @@ function renderPriceChart(){
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
       scales:{
-        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
-        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:stuLabel,font:{size:9},color:'#888'}},
+        x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:stuLabel,font:{size:9},color:'#000'}},
         y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Avg. Farm Price (${priceUnit})`,font:{size:9},color:'#FF5500'}},
       }
     }
@@ -775,8 +776,8 @@ function renderPriceRevisionChart(){
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
-      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
-               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+      scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
     }
   });
 }
@@ -809,8 +810,8 @@ function renderAYRevisionChart(){
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
-      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
-               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+      scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
     }
   });
 }
@@ -831,8 +832,8 @@ function renderTradeRevisionChart(){
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
-      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
-               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+      scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
     }
   });
 }
@@ -932,8 +933,8 @@ function renderBridgeChart(){
           return `${Math.abs(v[1]-v[0]).toFixed(1)} ${unit}`;
         }}} },
       scales:{
-        x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
-        y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}},
+        x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
+        y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}},
       }
     }
   });
@@ -993,8 +994,8 @@ function renderSTUTrend(){
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
         tooltip:{callbacks:{label: ctx => ctx.dataset.yAxisID==='y1' ? `${stuLabel}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'}%` : `Surplus/Deficit: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{
-        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
-        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:'Surplus/Deficit',font:{size:9},color:'#888'}},
+        x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:'Surplus/Deficit',font:{size:9},color:'#000'}},
         y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:stuLabel,font:{size:9},color:'#FF5500'}},
       }
     }
