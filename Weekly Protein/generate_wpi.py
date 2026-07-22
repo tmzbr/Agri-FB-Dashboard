@@ -52,7 +52,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 TEMPLATE   = os.path.join(os.path.dirname(__file__), 'FOOD_AND_BEVERAGE_WPI.pptx')
 OUTPUT_DIR = os.path.dirname(__file__)
-GITHUB_BASE = "https://raw.githubusercontent.com/brunotomazetto/Agri-FB-Dashboard/main"
+GITHUB_BASE = "https://raw.githubusercontent.com/tmzbr/Agri-FB-Dashboard/main"
 
 DB_URLS = {
     'beef_bz':    f"{GITHUB_BASE}/Beef/BZ%20Tracker/beef_bz.db",

@@ -621,7 +621,11 @@ def api_purge_blocked():
 #
 # Secrets necessários no Render (Environment):
 #   GH_TOKEN      — GitHub Personal Access Token com permissão workflow
-#   GH_OWNER      — seu usuário GitHub (ex: brunotomazetto)
+#   GH_OWNER      — seu usuário GitHub (ex: tmzbr). Precisa ser o nome
+#                   canônico atual: a API do GitHub responde 301 para donos
+#                   renomeados, e o urllib rebaixa o POST para GET ao seguir o
+#                   redirect — o dispatch vira um no-op silencioso e o job fica
+#                   pendente até o frontend estourar o timeout.
 #   GH_REPO       — nome do repo (ex: Agri-FB-Dashboard)
 #   BACKEND_SECRET — string aleatória para autenticar callback do worker
 

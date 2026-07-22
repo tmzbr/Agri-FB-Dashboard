@@ -161,7 +161,9 @@ html,body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:var(--gra
 <div class="toast" id="toast"></div>
 
 <script>
-const REPO   = 'brunotomazetto/Agri-FB-Dashboard';
+// Precisa ser o dono canônico atual: a API do GitHub responde 301 para donos
+// renomeados, e um POST que segue 301 vira GET — o dispatch falha em silêncio.
+const REPO   = 'tmzbr/Agri-FB-Dashboard';
 const WORKFLOW = 'generate_wpi_ppt.yml';
 // Folder inside the repo where generate_wpi.py lives
 const PPT_PATH = 'Weekly Protein/output/WPI_latest.pptx';
