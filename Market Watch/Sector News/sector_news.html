@@ -838,11 +838,23 @@ const NEWS_PREFS = {
   signature: [],   // [{name, phone, email}] — first entry renders bold
 };
 
+let _newsPrefsLoaded = false;
+
 async function loadNewsPrefs(){
+  if (_newsPrefsLoaded) return;   // já carregado com sucesso; nada a refazer
   try {
-    // Same origin as the portal, so supabase-js picks up the signed-in session
-    // from localStorage; team_settings is readable by any authenticated user.
-    const sb = supabase.createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__');
+    // Read-only client, fully isolated from the portal's session: same origin
+    // means we'd otherwise share localStorage with the parent's client, and two
+    // clients refreshing the same token can invalidate each other's session —
+    // which would break authToken() and every authenticated call in this
+    // module. So: no persistence, no refresh, no URL detection. The user's JWT
+    // is borrowed from the portal just for this request, so RLS still sees an
+    // authenticated user on team_settings.
+    const token = authToken();
+    const sb = supabase.createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__', {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: token ? { headers: { Authorization: 'Bearer ' + token } } : {},
+    });
     const { data, error } = await sb.from('team_settings')
       .select('news_email_title, news_email_signature').eq('id', 1).single();
     if (error || !data) return;
@@ -851,6 +863,7 @@ async function loadNewsPrefs(){
     let sig = data.news_email_signature || [];
     if (typeof sig === 'string') sig = JSON.parse(sig);
     NEWS_PREFS.signature = Array.isArray(sig) ? sig : [];
+    _newsPrefsLoaded = true;
   } catch (e) {
     console.warn('Daily News prefs unavailable, using defaults:', e);
   }
@@ -1526,6 +1539,9 @@ function openExportModal() {
 }
 
 async function _runExportScraping(items, sections, buckets) {
+  // Garante as prefs antes de montar o e-mail. No DOMContentLoaded o portal pai
+  // pode ainda não ter sessão, e sem token o read cai no fallback silencioso.
+  await loadNewsPrefs();
   try {
     const { mode, results } = await scrapeAllViaGHA(items);
 
@@ -2582,6 +2598,7 @@ async function scrapeAllViaGHA(items) {
 async function generateClipping() {
   const items = Array.from(clippingSelected.values());
   if (!items.length) return;
+  await loadNewsPrefs();   // idem: título e assinatura vêm do portal
 
   const btn = document.getElementById("btn-generate-clipping");
   const statusEl = document.getElementById("clipping-scrape-status");
