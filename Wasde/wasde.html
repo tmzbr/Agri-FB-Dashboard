@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>WASDE Supply &amp; Demand Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --or:#FF5500;--bk:#333333;--gy:#888888;
+  --bg:#F4F4F4;--bd:#E5E5E5;--wh:#FFFFFF;
+  --gr:#27AE60;--rd:#C0392B;
+  --font:'Segoe UI',Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);background:var(--bg);color:var(--bk);font-size:12px;}
+
+.hdr{background:var(--wh);border-bottom:3px solid var(--or);padding:13px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.hdr-title{font-size:14px;font-weight:700;color:var(--or);}
+.hdr-sub{font-size:10px;color:var(--gy);margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:14px;}
+.hdr-updated{font-size:10px;color:var(--gy);}
+.cmdty-select{border:1px solid var(--bd);border-radius:4px;padding:7px 12px;font-size:12px;font-weight:700;font-family:var(--font);color:var(--or);background:var(--wh);cursor:pointer;}
+
+.content{padding:16px 24px;display:flex;flex-direction:column;gap:14px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+.card{background:var(--wh);border:1px solid var(--bd);border-radius:6px;padding:16px;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--or);flex-wrap:wrap;gap:8px;}
+.card-title{font-size:12px;font-weight:700;color:var(--bk);}
+.card-stat{font-size:10px;color:var(--gy);}
+canvas{max-height:220px;}
+
+.yr-select{border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:11px;font-family:var(--font);color:var(--bk);background:var(--wh);}
+.toggle-group{display:flex;border:1px solid var(--bd);border-radius:4px;overflow:hidden;}
+.tog-btn{padding:4px 11px;font-size:10.5px;font-weight:600;cursor:pointer;background:var(--wh);color:var(--gy);border:none;font-family:var(--font);transition:all .15s;}
+.tog-btn.active{background:var(--or);color:var(--wh);}
+.hdr-ctrl-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+
+.chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.chip{padding:5px 11px;border-radius:4px;border:1px solid var(--bd);cursor:pointer;font-size:10.5px;font-weight:600;color:var(--gy);background:var(--wh);user-select:none;display:flex;align-items:center;gap:5px;transition:all .12s;}
+.chip.active{background:var(--or);color:var(--wh);border-color:var(--or);}
+.chip-swatch{width:8px;height:8px;border-radius:2px;background:currentColor;opacity:.7;}
+
+.cp-label{font-size:9.5px;font-weight:700;color:var(--gy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;}
+.check-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bd);}
+.check-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--bk);cursor:pointer;user-select:none;}
+.check-item input{accent-color:var(--or);cursor:pointer;width:13px;height:13px;}
+.check-swatch{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+
+.ddown{position:relative;display:inline-block;}
+.ddown-btn{border:1px solid var(--bd);border-radius:4px;padding:6px 10px;font-size:11px;font-family:var(--font);background:var(--wh);color:var(--bk);cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.ddown-btn:hover{border-color:var(--gy);}
+.ddown-arrow{font-size:8px;color:var(--gy);}
+.ddown-panel{position:absolute;top:100%;right:0;margin-top:4px;background:var(--wh);border:1px solid var(--bd);border-radius:5px;box-shadow:0 3px 12px rgba(0,0,0,.1);padding:7px;z-index:20;min-width:170px;max-height:260px;overflow-y:auto;}
+.ddown-panel.hidden{display:none;}
+.ddown-item{display:flex;align-items:center;gap:8px;padding:6px 6px;font-size:11.5px;color:var(--bk);cursor:pointer;border-radius:3px;white-space:nowrap;}
+.ddown-item:hover{background:#FFF5EC;}
+.ddown-item input{accent-color:var(--or);cursor:pointer;width:13px;height:13px;flex-shrink:0;}
+.ddown-item.radio-item{}
+.ddown-swatch{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+
+.tbl-wrap{overflow-x:auto;}
+table{border-collapse:collapse;font-size:11px;width:100%;}
+thead th{padding:6px 9px;text-align:right;color:var(--gy);font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.3px;border-bottom:2px solid var(--or);white-space:nowrap;position:sticky;top:0;background:var(--wh);}
+thead th:first-child{text-align:left;position:sticky;left:0;z-index:2;background:var(--wh);}
+tbody tr{border-bottom:1px solid var(--bd);}
+tbody tr:hover td{background:#FFF5EC;}
+tbody td{padding:6px 9px;text-align:right;white-space:nowrap;}
+tbody td:first-child{text-align:left;font-weight:600;position:sticky;left:0;background:var(--wh);}
+tbody tr:hover td:first-child{background:#FFF5EC;}
+tr.grp td{font-weight:700;color:var(--or);background:#FFFAF5;}
+tr.grp td:first-child{background:#FFFAF5;padding-top:9px;}
+tr.subgrp td:first-child{padding-left:10px;font-weight:700;color:var(--bk);padding-top:6px;}
+tr.sub td:first-child{padding-left:24px;font-weight:400;color:var(--bk);}
+tr.metric td{font-weight:700;}
+tr.metric td:first-child{background:var(--wh);}
+
+.src{font-size:9px;color:#BBB;margin-top:10px;}
+.loading{text-align:center;padding:60px 24px;color:var(--gy);}
+.spinner{width:26px;height:26px;border:3px solid var(--bd);border-top-color:var(--or);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.error-box{background:#FFF8F8;border:1px solid #FFCCCC;border-radius:6px;padding:16px;color:var(--rd);margin:24px;font-size:12px;line-height:1.8;}
+
+@media(max-width:768px){
+  .row2{grid-template-columns:1fr;gap:12px;}
+  .content{padding:12px;gap:12px;}
+  .card{padding:12px;}
+  .hdr{padding:11px 12px;flex-direction:column;align-items:flex-start;}
+  table{min-width:560px;}
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-title">WASDE Supply &amp; Demand Tracker</div>
+    <div class="hdr-sub">Monthly forecast revisions — USDA WASDE, as reported at time of release</div>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-updated" id="last-upd">—</span>
+    <select class="cmdty-select" id="commoditySelect"></select>
+  </div>
+</div>
+
+<div id="root"><div class="loading"><div class="spinner"></div>Loading wasde.db…</div></div>
+
+<script>
+// ══ CONFIG ═══════════════════════════════════════════════════════════════════
+const COMMODITIES = [
+  {key:'Oilseed, Soybean', label:'Soybean'},
+  {key:'Corn', label:'Corn'},
+  {key:'Cotton', label:'Cotton'},
+];
+const CMDTY_CONFIG = {
+  'Corn':               {supply:['Beginning Stocks','Production','Imports'], demand:['Domestic Total','Exports'], directTotals:false},
+  'Oilseed, Soybean':   {supply:['Beginning Stocks','Production','Imports'], demand:['Domestic Total','Exports'], directTotals:false},
+  'Cotton':             {supply:['Beginning Stocks','Production','Imports'], demand:['Domestic Use','Exports'],   directTotals:false},
+};
+const REGION_ORDER = ['World','United States','Brazil','Argentina','China','India','Pakistan','European Union','Others'];
+const OTHER_COUNTRIES = ['United States','Brazil','Argentina','China','India','Pakistan','European Union'];
+const REGION_COLORS = {
+  'World':'#333333','United States':'#FF5500','Brazil':'#27AE60','Argentina':'#7EA8D8',
+  'China':'#C0392B','India':'#9B7FC7','Pakistan':'#C9A227','European Union':'#5F9EA0','Others':'#B0B0B0',
+};
+const MEASURE_LABELS = {supply:'Supply', demand:'Demand', ending_stocks:'Ending Stocks', stock_to_use:'Stock-to-Use (%)', production:'Production', area:'Area Harvested', yield:'Yield'};
+
+// componentes de Area/Yield -- Cotton usa nomes diferentes de Corn/Soybean
+const AREA_YIELD_CONFIG = {
+  'Corn':               {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre']},
+  'Oilseed, Soybean':   {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre']},
+  'Cotton':             {production:['Production'], area:['Harvested'],       yield:['Yield per Harvested Acre']},
+};
+
+// ══ STATE ════════════════════════════════════════════════════════════════════
+let db;
+let commodity = COMMODITIES[0].key;
+let tableCountries = new Set(['World','Brazil','United States','China']);
+let tableMode = 'complete';
+let chartYear = null;
+let chartMeasure = 'stock_to_use';
+let ayMeasure = 'area';
+let tradeMeasure = 'exports';
+let chartRevision, chartSTU, chartAY, chartAYRevision, chartEI, chartTradeRevision, chartPrice, chartPriceRevision, chartBridge;
+
+function q(sql, params=[]){
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const out = [];
+  while(stmt.step()) out.push(stmt.getAsObject());
+  stmt.free();
+  return out;
+}
+
+// ══ DATA HELPERS ═════════════════════════════════════════════════════════════
+function measureSeries(cmdty, region, myYear, attrs){
+  if(!attrs.length) return [];
+  const ph = attrs.map(()=>'?').join(',');
+  return q(`
+    SELECT wasde_number, report_title, SUM(value) as value
+    FROM wasde_facts
+    WHERE commodity=? AND region=? AND market_year=? AND attribute IN (${ph})
+    GROUP BY wasde_number, report_title
+    ORDER BY wasde_number
+  `, [cmdty, region, myYear, ...attrs]);
+}
+function stockToUseSeries(cmdty, region, myYear){
+  const cfg = CMDTY_CONFIG[cmdty];
+  const domesticAttr = cfg.demand[0];
+  const rawSeries = (attrs) => region==='Others' ? othersSeriesRaw(cmdty, myYear, attrs) : measureSeries(cmdty, region, myYear, attrs);
+
+  const esS = rawSeries(['Ending Stocks']);
+  const domS = rawSeries([domesticAttr]);
+  const domMap = {}; domS.forEach(r=>domMap[r.wasde_number]=r.value);
+
+  let demandMap = domMap;
+  if(tableMode !== 'simplified'){
+    const expS = rawSeries(['Exports']);
+    const expMap = {}; expS.forEach(r=>expMap[r.wasde_number]=r.value);
+    demandMap = {};
+    domS.forEach(r => {
+      const e = expMap[r.wasde_number];
+      demandMap[r.wasde_number] = (r.value!=null && e!=null) ? r.value+e : null;
+    });
+  }
+
+  return esS.map(r => ({wasde_number:r.wasde_number, report_title:r.report_title,
+    value:(r.value!=null && demandMap[r.wasde_number]) ? (r.value/demandMap[r.wasde_number])*100 : null}));
+}
+function attrsForMeasure(cmdty, meas){
+  const cfg = CMDTY_CONFIG[cmdty];
+  if(meas === 'supply') return cfg.supply;
+  if(meas === 'demand') return cfg.demand;
+  if(meas === 'ending_stocks') return ['Ending Stocks'];
+  if(meas === 'stock_to_use' && cfg.directTotals) return cfg.stockToUseAttr;
+  return null;
+}
+function seriesForRegion(cmdty, region, myYear, meas){
+  const cfg = CMDTY_CONFIG[cmdty];
+  if(meas === 'stock_to_use' && !cfg.directTotals){
+    return stockToUseSeries(cmdty, region, myYear);
+  }
+  return measureSeries(cmdty, region, myYear, attrsForMeasure(cmdty, meas));
+}
+function othersSeries(cmdty, myYear, meas){
+  const world = seriesForRegion(cmdty, 'World', myYear, meas);
+  const countrySeries = OTHER_COUNTRIES.map(c => seriesForRegion(cmdty, c, myYear, meas));
+  return world.map(w => {
+    let sum = 0;
+    countrySeries.forEach(cs => { const m = cs.find(r=>r.wasde_number===w.wasde_number); if(m && m.value!=null) sum += m.value; });
+    return {wasde_number:w.wasde_number, report_title:w.report_title, value: w.value - sum};
+  });
+}
+function getSeries(cmdty, region, myYear, meas){
+  return region==='Others' ? othersSeries(cmdty, myYear, meas) : seriesForRegion(cmdty, region, myYear, meas);
+}
+function getUnit(cmdty, attrs){
+  if(!attrs || !attrs.length) return '%';
+  const r = q(`SELECT unit FROM wasde_facts WHERE commodity=? AND attribute=? AND unit!='' LIMIT 1`, [cmdty, attrs[0]]);
+  return r.length ? r[0].unit : '';
+}
+// safra mais recente cujo ultimo status (proj_est_flag) esta vazio == "realizado"
+function findClosedYear(cmdty){
+  const region = 'World';
+  const years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region=? ORDER BY market_year DESC`, [cmdty, region]).map(r=>r.market_year);
+  for(const yr of years){
+    const maxwn = q(`SELECT MAX(wasde_number) as wn FROM wasde_facts WHERE commodity=? AND region=? AND market_year=?`, [cmdty, region, yr])[0]?.wn;
+    const flag = q(`SELECT proj_est_flag FROM wasde_facts WHERE commodity=? AND region=? AND market_year=? AND wasde_number=? AND attribute='Production'`, [cmdty, region, yr, maxwn]);
+    if(flag.length && flag[0].proj_est_flag === '') return yr;
+  }
+  return years[0];
+}
+
+// ══ LAYOUT ═══════════════════════════════════════════════════════════════════
+function buildLayout(){
+  document.getElementById('root').innerHTML = `
+  <div class="content">
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title" id="tblTitle">Supply &amp; Demand Summary</span>
+        <span class="card-stat" id="tblUnit" style="margin-right:auto;margin-left:10px;"></span>
+        <div class="hdr-ctrl-group">
+          <div class="toggle-group" id="tblModeToggle">
+            <button class="tog-btn active" data-mode="complete">Complete</button>
+            <button class="tog-btn" data-mode="simplified">Simplified</button>
+          </div>
+          <div class="ddown" id="ddTblCountries">
+            <button class="ddown-btn" type="button"><span id="ddTblCountriesLabel">Countries</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddTblCountriesPanel"></div>
+          </div>
+          <div class="ddown" id="ddYearsRange">
+            <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">Full history</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap"><table><thead><tr id="tblHeadRow"></tr></thead><tbody id="tblBody"></tbody></table></div>
+      <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries.</div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Stock-to-Use — Historical Trend</span>
+          <div class="ddown" id="ddStuCountry">
+            <button class="ddown-btn" type="button"><span id="ddStuCountryLabel">World</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddStuCountryPanel"></div>
+          </div>
+        </div>
+        <canvas id="chartSTU"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Monthly Revision History - Stock-to-Use</span>
+          <div class="hdr-ctrl-group">
+            <select class="yr-select" id="chartYearSelect"></select>
+            <div class="ddown" id="ddChartMeasure">
+              <button class="ddown-btn" type="button"><span id="ddChartMeasureLabel">S:U</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddChartMeasurePanel"></div>
+            </div>
+          </div>
+        </div>
+        <canvas id="chartRevision"></canvas>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Avg. Farm Price (US) vs. Global Stock-to-Use</span>
+          <span class="card-stat">United States only</span>
+        </div>
+        <canvas id="chartPrice"></canvas>
+        <div class="src" id="priceNote"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Monthly Revision History — Avg. Farm Price</span>
+          <span class="card-stat">United States only</span>
+        </div>
+        <canvas id="chartPriceRevision"></canvas>
+        <div class="src" id="priceRevNote"></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Exports / Imports / Net Trade</span>
+          <span class="card-stat" id="eiLinkedNote">Linked to Stock-to-Use country</span>
+        </div>
+        <canvas id="chartEI"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Monthly Revision History — Trade</span>
+          <div class="ddown" id="ddTradeMeasure">
+            <button class="ddown-btn" type="button"><span id="ddTradeMeasureLabel">Exports</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddTradeMeasurePanel"></div>
+          </div>
+        </div>
+        <canvas id="chartTradeRevision"></canvas>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Area Harvested &amp; Yield</span>
+          <span class="card-stat" id="ayLinkedNote">Linked to Stock-to-Use country</span>
+        </div>
+        <canvas id="chartAY"></canvas>
+        <div class="src" id="ayNote"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Monthly Revision History — Area / Yield / Production</span>
+          <div class="ddown" id="ddAyMeasure">
+            <button class="ddown-btn" type="button"><span id="ddAyMeasureLabel">Area Harvested</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddAyMeasurePanel"></div>
+          </div>
+        </div>
+        <canvas id="chartAYRevision"></canvas>
+        <div class="src" id="ayRevNote"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Supply &amp; Demand Bridge</span>
+        <span class="card-stat" id="bridgeLinkedNote">Linked to Stock-to-Use country &amp; Monthly Revision market year</span>
+      </div>
+      <canvas id="chartBridge"></canvas>
+      <div class="src" id="bridgeNote"></div>
+    </div>
+
+  </div>`;
+
+  document.getElementById('tblModeToggle').querySelectorAll('.tog-btn').forEach(btn=>{
+    btn.onclick = () => {
+      tableMode = btn.dataset.mode;
+      btn.parentElement.querySelectorAll('.tog-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      renderTable();
+      renderSTUTrend();
+      if(chartMeasure === 'stock_to_use') renderRevisionChart();
+    };
+  });
+
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.ddown-panel').forEach(p => {
+      if(!p.parentElement.contains(e.target)) p.classList.add('hidden');
+    });
+  });
+}
+
+function buildCommoditySelect(){
+  const sel = document.getElementById('commoditySelect');
+  sel.innerHTML = COMMODITIES.map(c=>`<option value="${c.key}">${c.label}</option>`).join('');
+  sel.value = commodity;
+  sel.onchange = () => { commodity = sel.value; onCommodityChange(); };
+}
+
+const YEARS_RANGE_OPTIONS = [
+  {key:'3', label:'3 years'}, {key:'5', label:'5 years'},
+  {key:'10', label:'10 years'}, {key:'full', label:'Full history'},
+];
+let tableYearsRange = 'full';
+let stuCountry = 'World';
+
+function toggleDdown(panelId){
+  const panel = document.getElementById(panelId);
+  const wasHidden = panel.classList.contains('hidden');
+  document.querySelectorAll('.ddown-panel').forEach(p=>p.classList.add('hidden'));
+  if(wasHidden) panel.classList.remove('hidden');
+}
+
+// ── dropdown multi-select generico (checkbox) ──
+function buildMultiDropdown(btnId, panelId, labelId, labelPrefix, options, selectedSet, onChange){
+  document.getElementById(btnId).querySelector('.ddown-btn').onclick = (e) => { e.stopPropagation(); toggleDdown(panelId); };
+  const panel = document.getElementById(panelId);
+  panel.innerHTML = options.map(r => `
+    <label class="ddown-item">
+      <input type="checkbox" data-val="${r}" ${selectedSet.has(r)?'checked':''}>
+      <span class="ddown-swatch" style="background:${REGION_COLORS[r]||'#999'}"></span>${r}
+    </label>`).join('');
+  panel.querySelectorAll('input').forEach(inp=>{
+    inp.onchange = () => {
+      const v = inp.dataset.val;
+      if(inp.checked) selectedSet.add(v); else selectedSet.delete(v);
+      updateDdownLabel(labelId, labelPrefix, selectedSet.size);
+      onChange();
+    };
+  });
+  updateDdownLabel(labelId, labelPrefix, selectedSet.size);
+}
+function updateDdownLabel(labelId, prefix, count){
+  document.getElementById(labelId).textContent = `${prefix} (${count})`;
+}
+
+// ── dropdown single-select generico (radio-like, fecha ao escolher) ──
+function buildSingleDropdown(btnId, panelId, labelId, options, currentKey, onChange){
+  document.getElementById(btnId).querySelector('.ddown-btn').onclick = (e) => { e.stopPropagation(); toggleDdown(panelId); };
+  const panel = document.getElementById(panelId);
+  panel.innerHTML = options.map(o => `
+    <div class="ddown-item radio-item" data-key="${o.key}">${o.label}</div>`).join('');
+  panel.querySelectorAll('.ddown-item').forEach(item=>{
+    item.onclick = () => {
+      document.getElementById(labelId).textContent = options.find(o=>o.key===item.dataset.key).label;
+      panel.classList.add('hidden');
+      onChange(item.dataset.key);
+    };
+  });
+  document.getElementById(labelId).textContent = options.find(o=>o.key===currentKey)?.label || options[0].label;
+}
+
+function buildTableCountryDropdown(){
+  const regions = REGION_ORDER;
+  buildMultiDropdown('ddTblCountries', 'ddTblCountriesPanel', 'ddTblCountriesLabel', 'Countries', regions, tableCountries, renderTable);
+}
+function buildYearsRangeDropdown(){
+  buildSingleDropdown('ddYearsRange', 'ddYearsRangePanel', 'ddYearsRangeLabel', YEARS_RANGE_OPTIONS, tableYearsRange, (key) => { tableYearsRange = key; renderTable(); renderSTUTrend(); renderAYChart(); renderEIChart(); });
+}
+
+function buildChartMeasureDropdown(){
+  const opts = [{key:'supply',label:'Supply'},{key:'demand',label:'Demand'},{key:'ending_stocks',label:'Stocks'},{key:'stock_to_use',label:'S:U'}];
+  buildSingleDropdown('ddChartMeasure', 'ddChartMeasurePanel', 'ddChartMeasureLabel', opts, chartMeasure, (key) => { chartMeasure = key; renderRevisionChart(); });
+}
+function buildStuCountryDropdown(){
+  const regions = REGION_ORDER;
+  const opts = regions.map(r=>({key:r, label:r}));
+  if(!regions.includes(stuCountry)) stuCountry = 'World';
+  buildSingleDropdown('ddStuCountry', 'ddStuCountryPanel', 'ddStuCountryLabel', opts, stuCountry, (key) => { stuCountry = key; renderSTUTrend(); renderAYChart(); renderAYRevisionChart(); renderRevisionChart(); renderEIChart(); renderTradeRevisionChart(); renderBridgeChart(); });
+}
+function buildAyDropdowns(){
+  const measOpts = [{key:'area',label:'Area Harvested'},{key:'yield',label:'Yield'},{key:'production',label:'Production'}];
+  buildSingleDropdown('ddAyMeasure', 'ddAyMeasurePanel', 'ddAyMeasureLabel', measOpts, ayMeasure, (key) => { ayMeasure = key; renderAYRevisionChart(); });
+}
+function buildTradeMeasureDropdown(){
+  const opts = [{key:'exports',label:'Exports'},{key:'imports',label:'Imports'},{key:'net',label:'Net Trade'}];
+  buildSingleDropdown('ddTradeMeasure', 'ddTradeMeasurePanel', 'ddTradeMeasureLabel', opts, tradeMeasure, (key) => { tradeMeasure = key; renderTradeRevisionChart(); });
+}
+
+function onCommodityChange(){
+  const years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? ORDER BY market_year DESC`, [commodity]).map(r=>r.market_year);
+
+  const cSel = document.getElementById('chartYearSelect');
+  const yearOptsHtml = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  cSel.innerHTML = yearOptsHtml;
+  chartYear = years[0];
+  cSel.value = chartYear;
+  cSel.onchange = () => {
+    chartYear = cSel.value;
+    renderRevisionChart(); renderAYRevisionChart(); renderTradeRevisionChart(); renderPriceRevisionChart(); renderBridgeChart();
+  };
+
+  buildTableCountryDropdown();
+  buildYearsRangeDropdown();
+  buildChartMeasureDropdown();
+  buildStuCountryDropdown();
+  buildAyDropdowns();
+  buildTradeMeasureDropdown();
+
+  renderTable();
+  renderRevisionChart();
+  renderSTUTrend();
+  renderAYChart();
+  renderAYRevisionChart();
+  renderEIChart();
+  renderTradeRevisionChart();
+  renderPriceChart();
+  renderPriceRevisionChart();
+  renderBridgeChart();
+}
+
+function latestRaw(cmdty, region, yr, attrs){
+  const s = measureSeries(cmdty, region, yr, attrs).filter(r=>r.value!=null);
+  return s.length ? s[s.length-1].value : null;
+}
+function othersRawLatest(cmdty, yr, attrs){
+  const world = latestRaw(cmdty, 'World', yr, attrs);
+  if(world==null) return null;
+  let sum = 0;
+  OTHER_COUNTRIES.forEach(c => { const v = latestRaw(cmdty, c, yr, attrs); if(v!=null) sum += v; });
+  return world - sum;
+}
+function othersSeriesRaw(cmdty, yr, attrs){
+  const world = measureSeries(cmdty, 'World', yr, attrs);
+  const countrySeries = OTHER_COUNTRIES.map(c => measureSeries(cmdty, c, yr, attrs));
+  return world.map(w => {
+    let sum = 0;
+    countrySeries.forEach(cs => { const m = cs.find(r=>r.wasde_number===w.wasde_number); if(m && m.value!=null) sum += m.value; });
+    return {wasde_number:w.wasde_number, report_title:w.report_title, value: w.value - sum};
+  });
+}
+function tradeMonthlySeries(cmdty, region, yr, measure){
+  const rawSeries = (attrs) => region==='Others' ? othersSeriesRaw(cmdty, yr, attrs) : measureSeries(cmdty, region, yr, attrs);
+  if(measure === 'exports') return rawSeries(['Exports']);
+  if(measure === 'imports') return rawSeries(['Imports']);
+  const exp = rawSeries(['Exports']);
+  const imp = rawSeries(['Imports']);
+  const impMap = {}; imp.forEach(r=>impMap[r.wasde_number]=r.value);
+  return exp.map(r => ({wasde_number:r.wasde_number, report_title:r.report_title,
+    value:(r.value!=null && impMap[r.wasde_number]!=null) ? r.value-impMap[r.wasde_number] : null}));
+}
+
+// ══ TABLE (year-over-year, latest reading per market year) ═════════════════════
+function latestValue(cmdty, region, myYear, meas){
+  const s = getSeries(cmdty, region, myYear, meas).filter(r=>r.value!=null);
+  return s.length ? s[s.length-1].value : null;
+}
+
+function latestValueRaw(cmdty, region, yr, attrs){
+  return region==='Others' ? othersRawLatest(cmdty, yr, attrs) : latestRaw(cmdty, region, yr, attrs);
+}
+
+function renderTable(){
+  const cfg = CMDTY_CONFIG[commodity];
+  document.getElementById('tblTitle').textContent = `Supply & Demand Summary — ${COMMODITIES.find(c=>c.key===commodity).label}`;
+  document.getElementById('tblUnit').textContent = `${getUnit(commodity, ['Production'])} (Stock-to-Use in %)`;
+
+  const worldRegion = 'World';
+  const selectedRegions = REGION_ORDER.filter(r => tableCountries.has(r));
+  const domesticAttr = cfg.directTotals ? cfg.demand[0] : cfg.demand[0]; // 'Domestic Total'/'Domestic Use'/'Total Use'
+
+  let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region=? ORDER BY market_year ASC`, [commodity, worldRegion]).map(r=>r.market_year);
+  if(tableYearsRange !== 'full'){
+    const n = parseInt(tableYearsRange, 10);
+    years = years.slice(-n);
+  }
+
+  document.getElementById('tblHeadRow').innerHTML = `<th>Country</th>` + years.map(y=>`<th>${y}</th>`).join('');
+
+  function rowCellsMeasure(region, meas){
+    return years.map(yr => { const v = latestValue(commodity, region, yr, meas); return `<td>${v!=null?v.toFixed(1):'—'}</td>`; }).join('');
+  }
+  function rowCellsRaw(region, attrs){
+    return years.map(yr => { const v = latestValueRaw(commodity, region, yr, attrs); return `<td>${v!=null?v.toFixed(1):'—'}</td>`; }).join('');
+  }
+  function countryBreakdown(attrs, cssClass){
+    return selectedRegions.map(r => `<tr class="${cssClass}${r==='World'?' metric':''}"><td>${r}</td>${rowCellsRaw(r, attrs)}</tr>`).join('');
+  }
+
+  let rows = '';
+
+  if(tableMode === 'simplified'){
+    rows += `<tr class="grp"><td>Production</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown(['Production'], 'sub');
+
+    rows += `<tr class="grp"><td>Domestic Consumption</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown([domesticAttr], 'sub');
+  } else {
+    rows += `<tr class="grp"><td>Supply</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += `<tr class="subgrp"><td>Production</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown(['Production'], 'sub');
+    rows += `<tr class="subgrp"><td>Imports</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown(['Imports'], 'sub');
+
+    rows += `<tr class="grp"><td>Demand</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += `<tr class="subgrp"><td>Domestic Use</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown([domesticAttr], 'sub');
+    rows += `<tr class="subgrp"><td>Exports</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown(['Exports'], 'sub');
+  }
+
+  rows += `<tr class="metric"><td>Ending Stocks</td>${rowCellsMeasure(worldRegion, 'ending_stocks')}</tr>`;
+
+  const stuCells = years.map(yr => { const v = latestValue(commodity, worldRegion, yr, 'stock_to_use'); return `<td>${v!=null?(v.toFixed(1)+'%'):'—'}</td>`; }).join('');
+  rows += `<tr class="metric"><td>Stock-to-Use</td>${stuCells}</tr>`;
+
+  document.getElementById('tblBody').innerHTML = rows || `<tr><td colspan="${years.length+1}">Select at least one country</td></tr>`;
+}
+
+// ══ REVISION CHART ═══════════════════════════════════════════════════════════
+function renderRevisionChart(){
+  const region = stuCountry;
+  const regions = [region];
+  const attrs = attrsForMeasure(commodity, chartMeasure);
+  const unit = chartMeasure==='stock_to_use' ? '%' : getUnit(commodity, attrs || CMDTY_CONFIG[commodity].supply);
+
+  let labels = [];
+  const datasets = regions.map(r => {
+    const s = getSeries(commodity, r, chartYear, chartMeasure);
+    if(s.length > labels.length) labels = s.map(x=>x.report_title);
+    return {region:r, s};
+  });
+
+  const chartDatasets = datasets.filter(d=>d.s.length).map(d => ({
+    label: d.region,
+    data: labels.map(lab => { const m = d.s.find(x=>x.report_title===lab); return m ? m.value : null; }),
+    borderColor: '#FF5500', backgroundColor: '#FF5500',
+    borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true,
+  }));
+
+  if(chartRevision) chartRevision.destroy();
+  chartRevision = new Chart(document.getElementById('chartRevision'), {
+    type:'line',
+    data:{labels: labels.map(l=>l.replace(' 20',"'")), datasets: chartDatasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
+        tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
+      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
+               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+    }
+  });
+}
+
+function renderAYChart(){
+  const ayCfg = AREA_YIELD_CONFIG[commodity];
+  const region = stuCountry;
+  let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
+  if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
+
+  document.getElementById('ayLinkedNote').textContent = `Linked to Stock-to-Use country: ${region}`;
+
+  const note = document.getElementById('ayNote');
+  if(!ayCfg.area.length){
+    if(chartAY) chartAY.destroy();
+    note.textContent = `No Area Harvested / Yield data available for ${commodity}.`;
+    return;
+  }
+  if(region !== 'United States'){
+    note.textContent = `Note: Area Harvested / Yield are only published by USDA for United States — not broken out by other countries. Switch the Stock-to-Use country to "United States" to see this chart.`;
+  } else { note.textContent = ''; }
+
+  const areaUnit = getUnit(commodity, ayCfg.area);
+  const yieldUnit = getUnit(commodity, ayCfg.yield);
+  const getV = (yr, attrs) => region==='Others' ? othersRawLatest(commodity, yr, attrs) : latestRaw(commodity, region, yr, attrs);
+  const points = years.map(yr => ({year: yr, area: getV(yr, ayCfg.area), yld: getV(yr, ayCfg.yield)}));
+
+  if(chartAY) chartAY.destroy();
+  chartAY = new Chart(document.getElementById('chartAY'), {
+    data:{ labels: points.map(p=>p.year), datasets:[
+      { type:'bar', label:`Area Harvested (${areaUnit})`, data: points.map(p=>p.area),
+        backgroundColor:'#333333', yAxisID:'y', order:2 },
+      { type:'line', label:`Yield (${yieldUnit})`, data: points.map(p=>p.yld),
+        borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true, yAxisID:'y1', order:1 },
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
+        tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
+      scales:{
+        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
+        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:`Area Harvested (${areaUnit})`,font:{size:9},color:'#888'}},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Yield (${yieldUnit})`,font:{size:9},color:'#FF5500'}},
+      }
+    }
+  });
+}
+
+function renderEIChart(){
+  const region = stuCountry;
+  document.getElementById('eiLinkedNote').textContent = `Linked to Stock-to-Use country: ${region}`;
+  let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
+  if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
+
+  const getV = (yr, attr) => region==='Others' ? othersRawLatest(commodity, yr, [attr]) : latestRaw(commodity, region, yr, [attr]);
+  const points = years.map(yr => {
+    const exp = getV(yr, 'Exports');
+    const imp = getV(yr, 'Imports');
+    return {year: yr, exp, imp, net: (exp!=null && imp!=null) ? exp-imp : null};
+  });
+  const unit = getUnit(commodity, ['Exports']);
+
+  if(chartEI) chartEI.destroy();
+  chartEI = new Chart(document.getElementById('chartEI'), {
+    data:{ labels: points.map(p=>p.year), datasets:[
+      { type:'bar', label:'Exports', data: points.map(p=>p.exp),
+        backgroundColor:'#333333', yAxisID:'y', order:2 },
+      { type:'bar', label:'Imports', data: points.map(p=>p.imp),
+        backgroundColor:'#999999', yAxisID:'y', order:2 },
+      { type:'line', label:'Net (Exports − Imports)', data: points.map(p=>p.net),
+        borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true, yAxisID:'y1', order:1 },
+      { type:'line', label:'Zero', data: points.map(()=>0),
+        borderColor:'#000000', borderWidth:1, borderDash:[4,3], pointRadius:0, yAxisID:'y1', order:0 },
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333', filter: item => item.text !== 'Zero'}},
+        tooltip:{filter: ctx => ctx.dataset.label !== 'Zero', callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
+      scales:{
+        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
+        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:`Exports / Imports (${unit})`,font:{size:9},color:'#888'}},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Net (${unit})`,font:{size:9},color:'#FF5500'}},
+      }
+    }
+  });
+}
+
+function renderPriceChart(){
+  const region = 'United States';
+  const years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
+
+  const note = document.getElementById('priceNote');
+  note.textContent = `Avg. Farm Price (United States) vs. Stock-to-Use (World) — fixed regions, independent of other filters on this page.`;
+
+  const priceUnit = getUnit(commodity, ['Avg. Farm Price']);
+  const stuLabel = 'Stock-to-Use %';
+
+  const points = years.map(yr => {
+    const price = region==='Others' ? othersRawLatest(commodity, yr, ['Avg. Farm Price']) : latestRaw(commodity, region, yr, ['Avg. Farm Price']);
+    const stuSeries = stockToUseSeriesForChart('World', yr);
+    const stu = stuSeries.length ? stuSeries[stuSeries.length-1].value : null;
+    return {year: yr, price, stu};
+  });
+
+  if(chartPrice) chartPrice.destroy();
+  chartPrice = new Chart(document.getElementById('chartPrice'), {
+    data:{ labels: points.map(p=>p.year), datasets:[
+      { type:'line', label:stuLabel, data: points.map(p=>p.stu),
+        borderColor:'#333333', backgroundColor:'#333333', borderWidth:2, pointRadius:2.5, tension:.2, spanGaps:true, yAxisID:'y', order:1 },
+      { type:'line', label:`Avg. Farm Price (${priceUnit})`, data: points.map(p=>p.price),
+        borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true, yAxisID:'y1', order:1 },
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
+        tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
+      scales:{
+        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
+        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:stuLabel,font:{size:9},color:'#888'}},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Avg. Farm Price (${priceUnit})`,font:{size:9},color:'#FF5500'}},
+      }
+    }
+  });
+}
+// helper: pega a serie de stock-to-use (respeitando tableMode) pra um wrapper generico usado no grafico de preco
+function stockToUseSeriesForChart(region, yr){
+  const cfg = CMDTY_CONFIG[commodity];
+  if(cfg.directTotals){
+    const r = measureSeries(commodity, region, yr, cfg.stockToUseAttr);
+    return r.filter(x=>x.value!=null);
+  }
+  return stockToUseSeries(commodity, region, yr).filter(x=>x.value!=null);
+}
+
+function renderPriceRevisionChart(){
+  const region = 'United States';
+  const note = document.getElementById('priceRevNote');
+  note.textContent = `Always shows United States (only country with Avg. Farm Price data).`;
+
+  const s = measureSeries(commodity, region, chartYear, ['Avg. Farm Price']);
+  const unit = getUnit(commodity, ['Avg. Farm Price']);
+
+  if(chartPriceRevision) chartPriceRevision.destroy();
+  chartPriceRevision = new Chart(document.getElementById('chartPriceRevision'), {
+    type:'line',
+    data:{ labels: s.map(r=>r.report_title.replace(' 20',"'")), datasets:[{
+      label: `Avg. Farm Price — ${region}`, data: s.map(r=>r.value),
+      borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
+      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
+               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+    }
+  });
+}
+
+function renderAYRevisionChart(){
+  const ayCfg = AREA_YIELD_CONFIG[commodity];
+  const attrs = ayCfg[ayMeasure];
+  const region = stuCountry;
+  const note = document.getElementById('ayRevNote');
+
+  if(!attrs || !attrs.length){
+    if(chartAYRevision) chartAYRevision.destroy();
+    note.textContent = `No ${MEASURE_LABELS[ayMeasure]} data available for ${commodity}.`;
+    return;
+  }
+  if(region !== 'United States'){
+    note.textContent = `Note: Area Harvested / Yield / Production breakdown by month is only published by USDA for United States.`;
+  } else { note.textContent = ''; }
+
+  const unit = getUnit(commodity, attrs);
+  const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs);
+
+  if(chartAYRevision) chartAYRevision.destroy();
+  chartAYRevision = new Chart(document.getElementById('chartAYRevision'), {
+    type:'line',
+    data:{ labels: s.map(r=>r.report_title.replace(' 20',"'")), datasets:[{
+      label: `${MEASURE_LABELS[ayMeasure]} — ${region}`, data: s.map(r=>r.value),
+      borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
+      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
+               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+    }
+  });
+}
+
+function renderTradeRevisionChart(){
+  const region = stuCountry;
+  const s = tradeMonthlySeries(commodity, region, chartYear, tradeMeasure);
+  const unit = getUnit(commodity, ['Exports']);
+  const measLabel = {exports:'Exports', imports:'Imports', net:'Net (Exports − Imports)'}[tradeMeasure];
+
+  if(chartTradeRevision) chartTradeRevision.destroy();
+  chartTradeRevision = new Chart(document.getElementById('chartTradeRevision'), {
+    type:'line',
+    data:{ labels: s.map(r=>r.report_title.replace(' 20',"'")), datasets:[{
+      label: `${measLabel} — ${region}`, data: s.map(r=>r.value),
+      borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:3, tension:.2, spanGaps:true,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
+      scales:{ x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
+               y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}} }
+    }
+  });
+}
+
+const CORN_BUSHELS_PER_MT = 39.368; // fator padrao de conversao USDA p/ milho
+
+function renderBridgeChart(){
+  const region = stuCountry;
+  const yr = chartYear;
+  const note = document.getElementById('bridgeNote');
+  note.textContent = '';
+
+  const getV = (attr, forceRegion) => {
+    const r = forceRegion || region;
+    return r==='Others' ? othersRawLatest(commodity, yr, [attr]) : latestRaw(commodity, r, yr, [attr]);
+  };
+
+  const bs = getV('Beginning Stocks');
+  const prod = getV('Production');
+  const imp = getV('Imports');
+  const es = getV('Ending Stocks');
+  const supply = (bs!=null && prod!=null && imp!=null) ? bs+prod+imp : null;
+
+  let demandParts = [];
+
+  if(commodity === 'Oilseed, Soybean'){
+    const crush = getV('Domestic Crush');
+    const domTotal = getV('Domestic Total');
+    const exports = getV('Exports');
+    const other = (domTotal!=null && crush!=null) ? domTotal-crush : null;
+    demandParts = [
+      {label:'Exports', value: exports},
+      {label:'Domestic Crush', value: crush},
+      {label:'Other Dom. Cons.', value: other},
+    ];
+  } else if(commodity === 'Corn'){
+    const exports = getV('Exports');
+    if(region === 'United States'){
+      const feedBu = getV('Feed and Residual', 'United States');
+      const fsiBu = getV('Food, Seed & Industrial', 'United States');
+      demandParts = [
+        {label:'Exports', value: exports},
+        {label:'Feed & Residual', value: feedBu!=null ? feedBu/CORN_BUSHELS_PER_MT : null},
+        {label:'Food, Seed & Industrial', value: fsiBu!=null ? fsiBu/CORN_BUSHELS_PER_MT : null},
+      ];
+    } else {
+      note.textContent = `Feed & Residual / Food, Seed & Industrial breakdown is only published by USDA for United States — showing Domestic Total instead for ${region}.`;
+      demandParts = [
+        {label:'Exports', value: exports},
+        {label:'Domestic Total', value: getV('Domestic Total')},
+      ];
+    }
+  } else if(commodity === 'Cotton'){
+    demandParts = [
+      {label:'Exports', value: getV('Exports')},
+      {label:'Domestic Use', value: getV('Domestic Use')},
+      {label:'Loss', value: getV('Loss')},
+    ];
+  }
+
+  const demand = demandParts.every(p=>p.value!=null) ? demandParts.reduce((s,p)=>s+p.value,0) : null;
+  const unit = getUnit(commodity, ['Production']);
+
+  const categories = ['Beginning\nStocks', 'Production', 'Imports', ...demandParts.map(p=>p.label), 'Ending\nStocks'];
+  const isAnchor = (i) => i===0 || i===(categories.length-1);
+
+  const barRanges = [];
+  barRanges.push(bs!=null ? [0, bs] : [null,null]);
+  barRanges.push((bs!=null && prod!=null) ? [bs, bs+prod] : [null,null]);
+  barRanges.push((bs!=null && prod!=null && imp!=null) ? [bs+prod, bs+prod+imp] : [null,null]);
+
+  let running = supply;
+  demandParts.forEach(p => {
+    if(running==null || p.value==null){ barRanges.push([null,null]); running = null; return; }
+    barRanges.push([running - p.value, running]);
+    running -= p.value;
+  });
+  barRanges.push(es!=null ? [0, es] : [null,null]);
+
+  const isSupplySide = (i) => i===1 || i===2; // Production, Imports
+  const colors = categories.map((c,i) => isAnchor(i) ? '#FF5500' : (isSupplySide(i) ? '#333333' : '#999999'));
+
+  if(chartBridge) chartBridge.destroy();
+  chartBridge = new Chart(document.getElementById('chartBridge'), {
+    type:'bar',
+    data:{ labels: categories, datasets:[{
+      label: `${commodity} — ${region} — MY ${yr}`,
+      data: barRanges,
+      backgroundColor: colors,
+      borderRadius: 2,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{callbacks:{label: ctx => {
+          const v = ctx.raw; if(!v || v[0]==null) return 'No data';
+          return `${Math.abs(v[1]-v[0]).toFixed(1)} ${unit}`;
+        }}} },
+      scales:{
+        x:{ticks:{font:{size:9},color:'#888'}, grid:{display:false}},
+        y:{ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#888'}},
+      }
+    }
+  });
+
+  const legendText = 'Orange = Beginning/Ending Stocks · Dark gray = Supply components (Production, Imports) · Light gray = Demand components';
+  note.textContent = note.textContent ? `${note.textContent} ${legendText}` : legendText;
+}
+
+function renderSTUTrend(){
+  const cfg = CMDTY_CONFIG[commodity];
+  const region = stuCountry;
+  let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region=? ORDER BY market_year ASC`, [commodity, region]).map(r=>r.market_year);
+  if(tableYearsRange !== 'full'){
+    const n = parseInt(tableYearsRange, 10);
+    years = years.slice(-n);
+  }
+  const domesticAttr = cfg.directTotals ? null : cfg.demand[0];
+  const stuIsRatio = cfg.directTotals; // reservado p/ commodities com ratio oficial direto da USDA (nenhuma no momento)
+
+  const points = years.map(yr => {
+    let stuVal;
+    if(stuIsRatio){
+      const maxWn = q(`SELECT MAX(wasde_number) as wn FROM wasde_facts WHERE commodity=? AND region=? AND market_year=?`, [commodity, region, yr])[0]?.wn;
+      if(!maxWn){ stuVal = null; }
+      else {
+        const r = q(`SELECT value FROM wasde_facts WHERE commodity=? AND region=? AND market_year=? AND attribute=? AND wasde_number=?`, [commodity, region, yr, cfg.stockToUseAttr[0], maxWn]);
+        stuVal = r.length ? r[0].value : null;
+      }
+    } else {
+      const s = stockToUseSeries(commodity, region, yr).filter(r=>r.value!=null);
+      stuVal = s.length ? s[s.length-1].value : null;
+    }
+
+    let surplus = null;
+    if(domesticAttr){
+      const prod = region==='Others' ? othersRawLatest(commodity, yr, ['Production']) : latestRaw(commodity, region, yr, ['Production']);
+      const dom = region==='Others' ? othersRawLatest(commodity, yr, [domesticAttr]) : latestRaw(commodity, region, yr, [domesticAttr]);
+      if(prod!=null && dom!=null) surplus = prod - dom;
+    }
+
+    return {year: yr, stu: stuVal, surplus};
+  });
+
+  const unit = getUnit(commodity, ['Production']);
+  const stuLabel = 'Stock-to-Use %';
+
+  if(chartSTU) chartSTU.destroy();
+  chartSTU = new Chart(document.getElementById('chartSTU'), {
+    data:{ labels: points.map(p=>p.year), datasets:[
+      { type:'bar', label:`Surplus/Deficit (${unit})`, data: points.map(p=>p.surplus),
+        backgroundColor: points.map(p=>p.surplus>=0?'#333333':'#C0392B'), yAxisID:'y', order:2 },
+      { type:'line', label:stuLabel, data: points.map(p=>p.stu),
+        borderColor:'#FF5500', backgroundColor:'#FF5500', borderWidth:2.5, pointRadius:2.5, tension:.2, spanGaps:true, yAxisID:'y1', order:1 },
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
+        tooltip:{callbacks:{label: ctx => ctx.dataset.yAxisID==='y1' ? `${stuLabel}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'}%` : `Surplus/Deficit: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
+      scales:{
+        x:{ticks:{font:{size:9},color:'#888', maxRotation:60, minRotation:60}, grid:{display:false}},
+        y:{position:'left', ticks:{font:{size:9},color:'#888'}, grid:{color:'#EEE'}, title:{display:true,text:'Surplus/Deficit',font:{size:9},color:'#888'}},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:stuLabel,font:{size:9},color:'#FF5500'}},
+      }
+    }
+  });
+}
+
+// ══ INIT ═════════════════════════════════════════════════════════════════════
+async function init(){
+  try{
+    const SQL = await initSqlJs({locateFile:f=>`https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`});
+    const resp = await fetch('./wasde.db');
+    if(!resp.ok) throw new Error(`wasde.db not found (HTTP ${resp.status}). Run wasde.py backfill first, then commit wasde.db.`);
+    db = new SQL.Database(new Uint8Array(await resp.arrayBuffer()));
+
+    const lastRow = q(`SELECT MAX(wasde_number) as wn FROM wasde_facts`)[0];
+    const titleRow = q(`SELECT report_title FROM wasde_facts WHERE wasde_number=? LIMIT 1`, [lastRow.wn])[0];
+    document.getElementById('last-upd').textContent = titleRow ? `Latest: ${titleRow.report_title}` : '';
+
+    buildLayout();
+    buildCommoditySelect();
+    onCommodityChange();
+  }catch(e){
+    document.getElementById('root').innerHTML = `<div class="error-box">
+      <strong>⚠ ${e.message}</strong><br><br>
+      1. Run <code>python wasde.py backfill</code> (or <code>monthly</code>)<br>
+      2. Commit <code>wasde.db</code> to <code>Wasde/</code> on GitHub<br>
+      3. Reload this page
+    </div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
