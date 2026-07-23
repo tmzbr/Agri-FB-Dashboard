@@ -19,6 +19,7 @@ on:
           - monthly            # busca so o mes atual
           - backfill_full       # historico completo (zips 2010-2020 + meses individuais)
           - backfill_recent      # so meses individuais 2021+ (sem baixar os zips)
+          - wap_backfill_recent  # so o WAP (Area Harvested/Yield por pais), sem mexer no WASDE
 
 jobs:
   update:
@@ -34,12 +35,18 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install -r Wasde/requirements.txt
+        run: pip install requests pdfplumber
 
-      - name: Rodar atualizacao mensal
+      - name: Rodar atualizacao mensal (WASDE)
         if: github.event_name == 'schedule' || github.event.inputs.mode == 'monthly'
         working-directory: Wasde
         run: python wasde.py monthly
+
+      - name: Rodar atualizacao mensal (WAP -- Area Harvested/Yield por pais)
+        if: github.event_name == 'schedule' || github.event.inputs.mode == 'monthly'
+        working-directory: Wasde
+        run: python wasde.py wap-monthly
+        continue-on-error: true
 
       - name: Rodar backfill completo
         if: github.event.inputs.mode == 'backfill_full'
@@ -50,6 +57,11 @@ jobs:
         if: github.event.inputs.mode == 'backfill_recent'
         working-directory: Wasde
         run: python wasde.py backfill --skip-zips
+
+      - name: Rodar backfill do WAP
+        if: github.event.inputs.mode == 'wap_backfill_recent'
+        working-directory: Wasde
+        run: python wasde.py wap-backfill --max-minutes 170
 
       - name: Commitar banco atualizado
         run: |
