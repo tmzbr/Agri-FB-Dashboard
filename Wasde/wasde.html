@@ -236,8 +236,12 @@ function worldStockToUseSeries(cmdty, myYear){
 }
 function attrsForMeasure(cmdty, meas){
   const cfg = CMDTY_CONFIG[cmdty];
-  if(meas === 'supply') return cfg.supply;
-  if(meas === 'demand') return cfg.demand;
+  // Aqui em "Monthly Revision History", Supply e Demand mostram so o componente
+  // principal (Production / Domestic Consumption) -- nao o total com
+  // Beginning Stocks+Imports ou +Exports. O total continua disponivel na
+  // tabela S&D Summary e no S&D Bridge.
+  if(meas === 'supply') return ['Production'];
+  if(meas === 'demand') return [cfg.demand[0]];
   if(meas === 'ending_stocks') return ['Ending Stocks'];
   if(meas === 'stock_to_use' && cfg.directTotals) return cfg.stockToUseAttr;
   return null;
