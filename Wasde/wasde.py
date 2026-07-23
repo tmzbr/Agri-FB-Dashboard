@@ -28,6 +28,7 @@ import zipfile
 from contextlib import contextmanager
 
 import requests
+import pdfplumber
 
 
 # =============================================================================
@@ -39,7 +40,6 @@ COMMODITIES = [
     "Corn",
     "Oilseed, Soybean",   # soja em grao (nao inclui farelo/oleo)
     "Cotton",
-    "Sugar",
 ]
 
 # Nomes exatos como aparecem na coluna "Region" do CSV do WASDE
@@ -103,11 +103,11 @@ CREATE TABLE IF NOT EXISTS wasde_facts (
     attribute       TEXT    NOT NULL,
     proj_est_flag   TEXT,
     value           REAL,
-    unit            TEXT,
+    unit            TEXT NOT NULL DEFAULT '',
     forecast_year   INTEGER,
     forecast_month  INTEGER,
     ingested_at     TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (wasde_number, commodity, region, market_year, attribute)
+    PRIMARY KEY (wasde_number, commodity, region, market_year, attribute, unit)
 );
 CREATE INDEX IF NOT EXISTS idx_wasde_number ON wasde_facts(wasde_number);
 -- (indices por commodity/region/market_year foram removidos: nesse volume de
@@ -141,6 +141,7 @@ SELECT
         SELECT SUM(w2.value) FROM wasde_facts w2
         WHERE w2.wasde_number = w.wasde_number AND w2.commodity = w.commodity
           AND w2.market_year = w.market_year AND w2.attribute = w.attribute
+          AND w2.unit = w.unit
           AND w2.region IN ({others_regions})
     ), 0)) AS value,
     w.unit, w.forecast_year, w.forecast_month
@@ -182,9 +183,9 @@ def upsert_rows(rows):
                 :market_year, :attribute, :proj_est_flag, :value, :unit,
                 :forecast_year, :forecast_month
             )
-            ON CONFLICT(wasde_number, commodity, region, market_year, attribute)
+            ON CONFLICT(wasde_number, commodity, region, market_year, attribute, unit)
             DO UPDATE SET
-                value = excluded.value, unit = excluded.unit,
+                value = excluded.value,
                 proj_est_flag = excluded.proj_est_flag,
                 release_date = excluded.release_date,
                 report_title = excluded.report_title,
@@ -216,6 +217,52 @@ def already_ingested(year, month):
         return row is not None and row[0] == "ok"
 
 
+# =============================================================================
+# NORMALIZACAO DE ATRIBUTOS -- o WASDE mudou grafia/capitalizacao de alguns
+# nomes de atributo ao longo dos 16+ anos de historico (ex: "Ending Stocks"
+# vs "Ending stocks", "Production" vs "Production 2/"). Isso normaliza tudo
+# pra um nome canonico, senao a mesma serie historica "quebra" visualmente
+# nos anos que mudaram a grafia.
+# =============================================================================
+
+CANONICAL_ATTRIBUTES = {
+    "area harvested": "Area Harvested", "area planted": "Area Planted",
+    "avg. farm price": "Avg. Farm Price", "avg. farm price - high": "Avg. Farm Price - High",
+    "avg. farm price - low": "Avg. Farm Price - Low",
+    "beginning stocks": "Beginning Stocks", "ccc inventory": "CCC Inventory",
+    "domestic feed": "Domestic Feed", "domestic total": "Domestic Total", "domestic, total": "Domestic, Total",
+    "domestic use": "Domestic Use", "domestic crush": "Domestic Crush",
+    "ending stocks": "Ending Stocks", "ethanol & by-products": "Ethanol & By-products",
+    "ethanol for fuel": "Ethanol for Fuel",
+    "exports": "Exports", "exports, total": "Exports, Total", "exports - other": "Exports - Other",
+    "feed and residual": "Feed and Residual", "food, seed & industrial": "Food, Seed & Industrial",
+    "free stocks": "Free Stocks", "imports": "Imports", "imports - other": "Imports - Other",
+    "outstanding loans": "Outstanding Loans", "production": "Production",
+    "supply, total": "Supply, Total", "total supply": "Total Supply",
+    "use, total": "Use, Total", "total use": "Total Use",
+    "yield per harvested acre": "Yield per Harvested Acre",
+    "crushings": "Crushings", "residual": "Residual", "seed": "Seed",
+    "harvested": "Harvested", "planted": "Planted", "output": "Output",
+    "loss": "Loss", "trade": "Trade", "unaccounted": "Unaccounted",
+    "deliveries": "Deliveries",
+    "florida": "Florida", "food": "Food", "hawaii": "Hawaii",
+    "high-tier tariff/other": "High-tier Tariff/Other", "louisiana": "Louisiana",
+    "mexico": "Mexico", "miscellaneous": "Miscellaneous", "non-program": "Non-program",
+    "other": "Other", "other program": "Other Program", "stocks to use ratio": "Stocks to Use Ratio",
+    "trq": "TRQ", "texas": "Texas",
+}
+
+
+def normalize_attribute(raw):
+    if raw is None:
+        return raw
+    s = raw.strip()
+    s = re.sub(r'\s+\d+/\s*$', '', s)   # "X 2/" -> "X"
+    s = re.sub(r'\s*/\d+\s*$', '', s)   # "X /2" -> "X"
+    s = re.sub(r'\s+', ' ', s).strip()
+    return CANONICAL_ATTRIBUTES.get(s.lower(), s)
+
+
 def parse_csv_text_to_rows(csv_text):
     reader = csv.DictReader(io.StringIO(csv_text))
     rows = []
@@ -241,12 +288,12 @@ def parse_csv_text_to_rows(csv_text):
 
         rows.append({
             "wasde_number": wn,
-            "report_title": (r.get("ReportTitle") or "").strip(),
+            "report_title": (r.get("ReportDate") or "").strip(),
             "release_date": (r.get("ReleaseDate") or "").strip(),
             "commodity": commodity,
             "region": region,
             "market_year": (r.get("MarketYear") or "").strip(),
-            "attribute": (r.get("Attribute") or "").strip(),
+            "attribute": normalize_attribute((r.get("Attribute") or "").strip()),
             "proj_est_flag": (r.get("ProjEstFlag") or "").strip(),
             "value": value,
             "unit": (r.get("Unit") or "").strip(),
@@ -268,9 +315,8 @@ XML_COMMODITY_TITLES = {
     "World Corn Supply and Use": "Corn",
     "World Soybean Supply and Use": "Oilseed, Soybean",
     "World Cotton Supply and Use": "Cotton",
-    "U.S. Sugar Supply and Use": "Sugar",
 }
-XML_US_ONLY_TITLES = {"U.S. Sugar Supply and Use"}
+XML_US_ONLY_TITLES = set()  # nenhuma commodity atual usa o parsing "so US" (era so o Sugar)
 
 
 def _xml_clean_region(raw):
@@ -278,7 +324,7 @@ def _xml_clean_region(raw):
 
 
 def _xml_clean_attribute(raw):
-    return re.sub(r'\s+', ' ', raw).strip()
+    return normalize_attribute(re.sub(r'\s+', ' ', raw).strip())
 
 
 def _xml_clean_market_year(raw):
@@ -643,7 +689,7 @@ def cmd_diagnostico():
 
     print("\nSe algo esperado nao aparecer marcado [OK], o nome pode ter mudado")
     print("de grafia em algum ano -- confira com uma query tipo:")
-    print("  SELECT DISTINCT commodity FROM wasde_facts WHERE commodity LIKE '%Sugar%';")
+    print("  SELECT DISTINCT commodity FROM wasde_facts WHERE commodity LIKE '%Corn%';")
     print("e ajuste as listas COMMODITIES/REGIONS no topo deste arquivo.")
 
     conn.close()
@@ -670,6 +716,239 @@ def cmd_ingest_file(path):
 
 
 # =============================================================================
+# WAP (World Agricultural Production) -- fonte complementar pra Area Harvested
+# e Yield por pais (o WASDE so tem isso pra United States). O WAP e um circular
+# mensal do FAS, publicado no MESMO dia do WASDE, arquivado no mesmo mirror
+# estavel (Mann Library/Cornell). So existe em PDF, entao usamos pdfplumber
+# pra extrair as tabelas de Area/Yield/Production por pais.
+# =============================================================================
+
+WAP_LISTING_URL = "https://esmis.nal.usda.gov/publication/world-agricultural-production"
+WAP_CURRENT_URL = "https://apps.fas.usda.gov/psdonline/circulars/production.pdf"
+WAP_TABLE_TITLES = {
+    "Corn": "Corn Area, Yield, and Production",
+    "Oilseed, Soybean": "Soybean Area, Yield, and Production",
+    "Cotton": "Cotton Area, Yield, and Production",
+}
+WAP_YIELD_UNIT = {
+    "Corn": "Metric Tons per Hectare",
+    "Oilseed, Soybean": "Metric Tons per Hectare",
+    "Cotton": "Kilograms per Hectare",
+}
+WAP_ROW_RE = re.compile(r'^([A-Za-z][A-Za-z ,\.\-]*?)\s+((?:-?[\d,]+(?:\.\d+)?\s+){9,15}-?[\d,]+(?:\.\d+)?)$')
+
+
+def _wap_extract_years(text):
+    """Acha os 2 rotulos de safra (prelim + atual) no cabecalho da tabela."""
+    lines = text.split("\n")
+    prelim_year, current_year = None, None
+    for line in lines[:8]:
+        matches = re.findall(r'\d{4}/\d{2}', line)
+        if len(matches) >= 2 and current_year is None and "Proj." in "".join(lines[:5]):
+            # linha tipo "2023/24 2024/25 Jul Aug ..." -> prelim = 2o valor distinto
+            uniq = list(dict.fromkeys(matches))
+            if len(uniq) >= 2:
+                prelim_year = uniq[1]
+        if "Proj." in line:
+            m2 = re.findall(r'\d{4}/\d{2}', line)
+            if m2:
+                current_year = list(dict.fromkeys(m2))[0]
+    return prelim_year, current_year
+
+
+def parse_wap_pdf(pdf_bytes, report_title):
+    """Extrai Area Harvested e Yield (World + paises rastreados) das tabelas
+    de Corn/Soybean/Cotton de um PDF do WAP. Retorna lista de rows no mesmo
+    formato usado por upsert_rows (sem wasde_number ainda -- isso e resolvido
+    depois via lookup no proprio wasde_facts pelo report_title)."""
+    rows = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            commodity = None
+            for cmdty, title in WAP_TABLE_TITLES.items():
+                if title in text:
+                    commodity = cmdty
+                    break
+            if commodity is None:
+                continue
+
+            prelim_year, current_year = _wap_extract_years(text)
+            if not current_year:
+                continue
+
+            for line in text.split("\n"):
+                line = line.strip()
+                m = WAP_ROW_RE.match(line)
+                if not m:
+                    continue
+                region = m.group(1).strip()
+                if region not in REGIONS:
+                    continue
+                nums_raw = m.group(2).split()
+                if len(nums_raw) == 16:
+                    prelim_idx, current_idx = 1, 3
+                elif len(nums_raw) == 11:
+                    # maio: safra nova so tem 1 coluna (sem par mes-anterior/atual)
+                    prelim_idx, current_idx = 1, 2
+                else:
+                    continue
+                nums = [float(x.replace(",", "")) for x in nums_raw]
+                n_cols = 4 if len(nums_raw) == 16 else 3
+
+                yield_unit = WAP_YIELD_UNIT[commodity]
+                for col_idx, market_year in [(prelim_idx, prelim_year), (current_idx, current_year)]:
+                    if not market_year:
+                        continue
+                    area_v = nums[col_idx]
+                    yield_v = nums[col_idx + n_cols]
+                    rows.append({
+                        "report_title": report_title, "release_date": "",
+                        "commodity": commodity, "region": region, "market_year": market_year,
+                        "attribute": "Area Harvested", "proj_est_flag": "",
+                        "value": area_v, "unit": "Million Hectares",
+                        "forecast_year": None, "forecast_month": None,
+                    })
+                    rows.append({
+                        "report_title": report_title, "release_date": "",
+                        "commodity": commodity, "region": region, "market_year": market_year,
+                        "attribute": "Yield per Harvested Acre", "proj_est_flag": "",
+                        "value": yield_v, "unit": yield_unit,
+                        "forecast_year": None, "forecast_month": None,
+                    })
+    return rows
+
+
+def fetch_wap_releases_page(page_num=None):
+    """Baixa uma pagina da listagem do WAP e retorna [(pdf_url, date_str), ...]
+    em ordem (mais recente primeiro na pagina 0), sem duplicatas."""
+    url = WAP_LISTING_URL if page_num is None else f"{WAP_LISTING_URL}?page={page_num}"
+    html = _get_with_retries(url)
+    if html is None:
+        return []
+    out = []
+    seen = set()
+    for row in re.findall(r'<tr>.*?</tr>', html, re.DOTALL):
+        dm = re.search(r'datetime="(\d{4}-\d{2}-\d{2})T', row)
+        hm = re.search(r'<a href="(/sites/default/release-files/[^"]+\.pdf)"', row)
+        if not dm or not hm:
+            continue
+        iso_date = dm.group(1)
+        if iso_date in seen:
+            continue
+        seen.add(iso_date)
+        dt = datetime.datetime.strptime(iso_date, "%Y-%m-%d")
+        out.append((f"https://esmis.nal.usda.gov{hm.group(1)}", dt.strftime("%b %d %Y")))
+    return out
+
+
+def _wap_date_to_report_title(date_str):
+    """'Aug 12 2025' -> 'August 2025'"""
+    dt = datetime.datetime.strptime(date_str, "%b %d %Y")
+    return dt.strftime("%B %Y")
+
+
+def cmd_wap_ingest_release(pdf_url, report_title):
+    print(f"  Baixando {pdf_url} ...")
+    resp_text = None
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    r = session.get(pdf_url, timeout=60)
+    if r.status_code != 200:
+        print(f"  ERRO: HTTP {r.status_code}")
+        return 0
+    rows = parse_wap_pdf(r.content, report_title)
+
+    # resolve o wasde_number correspondente via o proprio wasde_facts (WAP e
+    # WASDE saem no mesmo dia, entao devem compartilhar o mesmo numero)
+    with get_conn() as conn:
+        wn_row = conn.execute(
+            "SELECT DISTINCT wasde_number FROM wasde_facts WHERE report_title=? LIMIT 1", (report_title,)
+        ).fetchone()
+    wasde_number = wn_row[0] if wn_row else None
+    if wasde_number is None:
+        print(f"  AVISO: nao achei WasdeNumber pra '{report_title}' no wasde_facts -- pulando")
+        return 0
+
+    for row in rows:
+        row["wasde_number"] = wasde_number
+    n = upsert_rows(rows)
+    print(f"  OK: {n} linhas (WasdeNumber={wasde_number}, {report_title})")
+    return n
+
+
+def _wap_report_title_from_pdf_text(text):
+    """Acha 'Month Year' logo apos 'Circular Series' / 'WAP MM-YY' no topo do PDF."""
+    m = re.search(r'Circular Series\s*\n?\s*WAP\s*[\d-]+\s*\n?\s*([A-Za-z]+ \d{4})', text)
+    return m.group(1) if m else None
+
+
+def cmd_wap_monthly():
+    """Busca o release mais recente do WAP direto da URL 'atual' (que a propria
+    USDA mantem sempre com o mes mais novo -- diferente do mirror da Cornell,
+    que fica alguns meses atrasado)."""
+    ensure_schema()
+    print(f"Buscando {WAP_CURRENT_URL} ...")
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    r = session.get(WAP_CURRENT_URL, timeout=60)
+    if r.status_code != 200:
+        print(f"ERRO: HTTP {r.status_code}")
+        return
+    with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+        first_page_text = pdf.pages[0].extract_text() or ""
+    report_title = _wap_report_title_from_pdf_text(first_page_text)
+    if not report_title:
+        print("ERRO: nao consegui identificar o mes do relatorio no PDF")
+        return
+    print(f"Release atual do WAP: {report_title}")
+
+    rows = parse_wap_pdf(r.content, report_title)
+    with get_conn() as conn:
+        wn_row = conn.execute(
+            "SELECT DISTINCT wasde_number FROM wasde_facts WHERE report_title=? LIMIT 1", (report_title,)
+        ).fetchone()
+    wasde_number = wn_row[0] if wn_row else None
+    if wasde_number is None:
+        print(f"AVISO: nao achei WasdeNumber pra '{report_title}' no wasde_facts ainda")
+        print("(rode 'python wasde.py monthly' primeiro nesse mes, pra ter o WASDE gravado)")
+        return
+    for row in rows:
+        row["wasde_number"] = wasde_number
+    n = upsert_rows(rows)
+    print(f"OK: {n} linhas (WasdeNumber={wasde_number}, {report_title})")
+
+
+def cmd_wap_backfill(max_pages=30, max_minutes=170, start_page=0):
+    ensure_schema()
+    start_time = time.time()
+    total = 0
+    page = start_page
+    while page < start_page + max_pages:
+        elapsed = (time.time() - start_time) / 60
+        if elapsed > max_minutes:
+            print(f"Orcamento de tempo ({max_minutes}min) atingido na pagina {page}. Rode de novo pra continuar.")
+            break
+        releases = fetch_wap_releases_page(page)
+        if not releases:
+            print(f"Pagina {page}: vazia, parando.")
+            break
+        print(f"--- Pagina {page}: {len(releases)} releases ---")
+        for pdf_url, date_str in releases:
+            report_title = _wap_date_to_report_title(date_str)
+            dt = datetime.datetime.strptime(date_str, "%b %d %Y")
+            if dt.year < 2010 or (dt.year == 2010 and dt.month < 4):
+                print(f"{report_title}: antes de abr/2010, parando backfill.")
+                return
+            print(f"{report_title}:")
+            n = cmd_wap_ingest_release(pdf_url, report_title)
+            total += n
+            time.sleep(1.5)
+        page += 1
+    print(f"CONCLUIDO. Total de linhas gravadas: {total}")
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -692,6 +971,12 @@ def main():
     p_ingest = sub.add_parser("ingest-file", help="processa um CSV ja baixado manualmente")
     p_ingest.add_argument("path")
 
+    sub.add_parser("wap-monthly", help="busca o release mais recente do WAP (Area Harvested/Yield por pais)")
+    p_wap_backfill = sub.add_parser("wap-backfill", help="busca todo o historico do WAP desde abr/2010")
+    p_wap_backfill.add_argument("--max-pages", type=int, default=30)
+    p_wap_backfill.add_argument("--max-minutes", type=int, default=170)
+    p_wap_backfill.add_argument("--start-page", type=int, default=0)
+
     args = parser.parse_args()
 
     if args.command == "monthly":
@@ -702,6 +987,10 @@ def main():
         cmd_diagnostico()
     elif args.command == "ingest-file":
         cmd_ingest_file(args.path)
+    elif args.command == "wap-monthly":
+        cmd_wap_monthly()
+    elif args.command == "wap-backfill":
+        cmd_wap_backfill(max_pages=args.max_pages, max_minutes=args.max_minutes, start_page=args.start_page)
 
 
 if __name__ == "__main__":
