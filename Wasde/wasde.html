@@ -19,7 +19,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--bk);font-size:12px
 .hdr{background:var(--wh);border-bottom:3px solid var(--or);padding:13px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .hdr-title{font-size:14px;font-weight:700;color:var(--or);}
 .hdr-sub{font-size:10px;color:var(--gy);margin-top:2px;}
-.hdr-right{display:flex;align-items:center;gap:14px;}
+.hdr-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .hdr-updated{font-size:10px;color:var(--gy);}
 .cmdty-select{border:1px solid var(--bd);border-radius:4px;padding:7px 12px;font-size:12px;font-weight:700;font-family:var(--font);color:var(--or);background:var(--wh);cursor:pointer;}
 
@@ -37,14 +37,15 @@ canvas{max-height:220px;}
 .tog-btn{padding:4px 11px;font-size:10.5px;font-weight:600;cursor:pointer;background:var(--wh);color:var(--gy);border:none;font-family:var(--font);transition:all .15s;}
 .tog-btn.active{background:var(--or);color:var(--wh);}
 .hdr-ctrl-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.hdr-filter-btn{gap:8px;}
+.hdr-filter-tag{font-size:9px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.3px;padding-right:8px;border-right:1px solid var(--bd);}
 .hdr-region-btn{border-color:var(--or);gap:8px;}
 .hdr-region-tag{font-size:9px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.3px;padding-right:8px;border-right:1px solid var(--bd);}
+.hdr-filter-item{display:flex;align-items:center;gap:8px;border:1px solid var(--bd);border-radius:4px;padding:6px 10px;background:var(--wh);}
 
-.filter-row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.filter-bar{background:var(--wh);border:1px solid var(--bd);border-radius:6px;padding:11px 16px 11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:relative;overflow:hidden;}
-.filter-bar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--or);}
-.filter-bar-title{font-size:9.5px;font-weight:700;color:var(--bk);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;padding-left:6px;}
-.filter-bar-hint{font-size:9.5px;color:var(--gy);margin-left:auto;white-space:nowrap;}
+.info-badge{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--gy);color:#fff;font-size:9px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;cursor:default;position:relative;flex-shrink:0;}
+.info-badge .info-tooltip{display:none;position:absolute;top:130%;right:0;background:var(--bk);color:#fff;font-size:10.5px;font-weight:400;font-style:normal;font-family:var(--font);padding:8px 10px;border-radius:5px;width:190px;line-height:1.4;z-index:30;text-transform:none;letter-spacing:normal;box-shadow:0 3px 12px rgba(0,0,0,.15);}
+.info-badge:hover .info-tooltip, .info-badge:focus .info-tooltip{display:block;}
 
 .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
 .chip{padding:5px 11px;border-radius:4px;border:1px solid var(--bd);cursor:pointer;font-size:10.5px;font-weight:600;color:var(--gy);background:var(--wh);user-select:none;display:flex;align-items:center;gap:5px;transition:all .12s;}
@@ -94,7 +95,6 @@ tr.metric td:first-child{background:var(--wh);}
 
 @media(max-width:768px){
   .row2{grid-template-columns:1fr;gap:12px;}
-  .filter-row2{grid-template-columns:1fr;gap:8px;}
   .content{padding:12px;gap:12px;}
   .card{padding:12px;}
   .hdr{padding:11px 12px;flex-direction:column;align-items:flex-start;}
@@ -111,11 +111,20 @@ tr.metric td:first-child{background:var(--wh);}
   </div>
   <div class="hdr-right">
     <span class="hdr-updated" id="last-upd">—</span>
+    <select class="cmdty-select" id="commoditySelect"></select>
+    <div class="ddown" id="ddYearsRange">
+      <button class="ddown-btn hdr-filter-btn" type="button"><span class="hdr-filter-tag">Period</span><span id="ddYearsRangeLabel">5 years</span><span class="ddown-arrow">▾</span></button>
+      <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
+    </div>
     <div class="ddown" id="ddStuCountry">
-      <button class="ddown-btn hdr-region-btn" type="button"><span class="hdr-region-tag">Region</span><span id="ddStuCountryLabel">World</span><span class="ddown-arrow">▾</span></button>
+      <button class="ddown-btn hdr-filter-btn" type="button"><span class="hdr-filter-tag">Region</span><span id="ddStuCountryLabel">World</span><span class="ddown-arrow">▾</span></button>
       <div class="ddown-panel hidden" id="ddStuCountryPanel"></div>
     </div>
-    <select class="cmdty-select" id="commoditySelect"></select>
+    <div class="hdr-filter-item">
+      <span class="hdr-filter-tag">Harvest Year</span>
+      <select class="yr-select" id="chartYearSelect"></select>
+      <span class="info-badge" tabindex="0">i<span class="info-tooltip">Only affects the Monthly Revision History charts on the right.</span></span>
+    </div>
   </div>
 </div>
 
@@ -275,21 +284,6 @@ function buildLayout(){
       <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries.</div>
     </div>
 
-    <div class="filter-row2">
-      <div class="filter-bar">
-        <span class="filter-bar-title">Period</span>
-        <div class="ddown" id="ddYearsRange">
-          <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">5 years</span><span class="ddown-arrow">▾</span></button>
-          <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
-        </div>
-        <span class="filter-bar-hint">Applies to the charts on the left</span>
-      </div>
-      <div class="filter-bar">
-        <span class="filter-bar-title">Market Year</span>
-        <select class="yr-select" id="chartYearSelect"></select>
-        <span class="filter-bar-hint">Applies to the charts on the right</span>
-      </div>
-    </div>
 
     <div class="row2">
       <div class="card">
@@ -376,7 +370,7 @@ function buildLayout(){
     <div class="card">
       <div class="card-hdr">
         <span class="card-title">Supply &amp; Demand Bridge</span>
-        <span class="card-stat" id="bridgeLinkedNote">Linked to Region (header) &amp; Market Year filter</span>
+        <span class="card-stat" id="bridgeLinkedNote">Linked to Region (header) &amp; Harvest Year filter</span>
       </div>
       <canvas id="chartBridge"></canvas>
       <div class="src" id="bridgeNote"></div>
