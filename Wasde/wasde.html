@@ -159,9 +159,9 @@ const MEASURE_LABELS = {supply:'Supply', demand:'Demand', ending_stocks:'Ending 
 // A versao "nativa" do WASDE (Acres/Bushels/Pounds) so existe pra US, entao
 // nao da pra usar ela aqui sem quebrar a comparacao entre paises.
 const AREA_YIELD_CONFIG = {
-  'Corn':               {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Bushels'},
-  'Oilseed, Soybean':   {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Bushels'},
-  'Cotton':             {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Kilograms per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Pounds'},
+  'Corn':               {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare'},
+  'Oilseed, Soybean':   {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare'},
+  'Cotton':             {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Kilograms per Hectare'},
 };
 
 // ══ STATE ════════════════════════════════════════════════════════════════════
@@ -971,19 +971,19 @@ function renderAYRevisionChart(){
     note.textContent = `No ${MEASURE_LABELS[ayMeasure]} data available for ${commodity}.`;
     return;
   }
-  if(region !== 'United States'){
-    note.textContent = `Note: Area Harvested / Yield / Production breakdown by month is only published by USDA for United States.`;
-  } else { note.textContent = ''; }
+  note.textContent = '';
 
-  // pra Area/Yield, forca a unidade "nativa" dos EUA (Acres/Bushels/Pounds) --
-  // sem isso o SUM(value) do measureSeries somaria Acres+Hectares juntos,
-  // ja que os dois convivem sob o mesmo atributo desde que o WAP foi integrado.
-  const nativeUnit = ayMeasure === 'area' ? ayCfg.nativeAreaUnit : ayMeasure === 'yield' ? ayCfg.nativeYieldUnit : undefined;
-  const unit = (region==='United States' && nativeUnit) ? nativeUnit : getUnit(commodity, attrs);
-  const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs, region==='United States' ? nativeUnit : undefined);
+  // Mesma unidade metrica (WAP) usada no grafico principal de Area/Yield, pra
+  // qualquer pais -- inclusive US. Isso evita: (1) somar Acres+Hectares juntos
+  // (os dois convivem sob o mesmo atributo desde que o WAP foi integrado), e
+  // (2) o atraso de 1 ano que a versao "nativa" (Acres/Bushels) do US tem em
+  // relacao ao WAP pro ano-safra mais novo.
+  const forcedUnit = ayMeasure === 'area' ? ayCfg.areaUnit : ayMeasure === 'yield' ? ayCfg.yieldUnit : undefined;
+  const unit = forcedUnit || getUnit(commodity, attrs);
+  const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs, forcedUnit);
 
-  if(region === 'United States' && !s.length && (ayMeasure==='area' || ayMeasure==='yield')){
-    note.textContent = `USDA has not yet published US ${MEASURE_LABELS[ayMeasure]} for ${chartYear} in WASDE — the new-crop Acreage breakout is usually added a few months after Production first appears. Not a data error; try an earlier Harvest Year.`;
+  if(!s.length && (ayMeasure==='area' || ayMeasure==='yield')){
+    note.textContent = `USDA has not yet published ${MEASURE_LABELS[ayMeasure]} for ${commodity} — ${region} in ${chartYear}. Not a data error; try an earlier Harvest Year.`;
   }
 
   if(chartAYRevision) chartAYRevision.destroy();
