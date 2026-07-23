@@ -802,6 +802,15 @@ def parse_wap_pdf(pdf_bytes, report_title):
                         continue
                     area_v = nums[col_idx]
                     yield_v = nums[col_idx + n_cols]
+                    # Guarda contra bug real do USDA: de vez em quando uma coluna
+                    # inteira do PDF sai zerada (ja visto em Cotton abr/2024 e
+                    # Soybean ago/2016 -- toda regiao, area E yield, exatamente
+                    # 0). Area harvested 0 nunca e um valor real pras regioes
+                    # que rastreamos, entao trata como falha de extracao e pula
+                    # (o valor do mes anterior fica valendo ate a proxima
+                    # atualizacao real).
+                    if area_v == 0:
+                        continue
                     rows.append({
                         "report_title": report_title, "release_date": "",
                         "commodity": commodity, "region": region, "market_year": market_year,
