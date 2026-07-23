@@ -128,11 +128,14 @@ const REGION_COLORS = {
 };
 const MEASURE_LABELS = {supply:'Supply', demand:'Demand', ending_stocks:'Ending Stocks', stock_to_use:'Stock-to-Use (%)', production:'Production', area:'Area Harvested', yield:'Yield'};
 
-// componentes de Area/Yield -- Cotton usa nomes diferentes de Corn/Soybean
+// componentes de Area/Yield -- unidade fixada na versao metrica (do WAP), que
+// existe pra World + todos os paises rastreados, inclusive United States.
+// A versao "nativa" do WASDE (Acres/Bushels/Pounds) so existe pra US, entao
+// nao da pra usar ela aqui sem quebrar a comparacao entre paises.
 const AREA_YIELD_CONFIG = {
-  'Corn':               {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre']},
-  'Oilseed, Soybean':   {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre']},
-  'Cotton':             {production:['Production'], area:['Harvested'],       yield:['Yield per Harvested Acre']},
+  'Corn':               {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Bushels'},
+  'Oilseed, Soybean':   {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Metric Tons per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Bushels'},
+  'Cotton':             {production:['Production'], area:['Area Harvested'], yield:['Yield per Harvested Acre'], areaUnit:'Million Hectares', yieldUnit:'Kilograms per Hectare', nativeAreaUnit:'Million Acres', nativeYieldUnit:'Pounds'},
 };
 
 // ══ STATE ════════════════════════════════════════════════════════════════════
@@ -156,16 +159,18 @@ function q(sql, params=[]){
 }
 
 // ══ DATA HELPERS ═════════════════════════════════════════════════════════════
-function measureSeries(cmdty, region, myYear, attrs){
+function measureSeries(cmdty, region, myYear, attrs, unit){
   if(!attrs.length) return [];
   const ph = attrs.map(()=>'?').join(',');
+  const unitClause = unit ? `AND unit=?` : '';
+  const params = unit ? [cmdty, region, myYear, ...attrs, unit] : [cmdty, region, myYear, ...attrs];
   return q(`
     SELECT wasde_number, report_title, SUM(value) as value
     FROM wasde_facts
-    WHERE commodity=? AND region=? AND market_year=? AND attribute IN (${ph})
+    WHERE commodity=? AND region=? AND market_year=? AND attribute IN (${ph}) ${unitClause}
     GROUP BY wasde_number, report_title
     ORDER BY wasde_number
-  `, [cmdty, region, myYear, ...attrs]);
+  `, params);
 }
 function stockToUseSeries(cmdty, region, myYear){
   const cfg = CMDTY_CONFIG[cmdty];
@@ -496,15 +501,15 @@ function onCommodityChange(){
   renderBridgeChart();
 }
 
-function latestRaw(cmdty, region, yr, attrs){
-  const s = measureSeries(cmdty, region, yr, attrs).filter(r=>r.value!=null);
+function latestRaw(cmdty, region, yr, attrs, unit){
+  const s = measureSeries(cmdty, region, yr, attrs, unit).filter(r=>r.value!=null);
   return s.length ? s[s.length-1].value : null;
 }
-function othersRawLatest(cmdty, yr, attrs){
-  const world = latestRaw(cmdty, 'World', yr, attrs);
+function othersRawLatest(cmdty, yr, attrs, unit){
+  const world = latestRaw(cmdty, 'World', yr, attrs, unit);
   if(world==null) return null;
   let sum = 0;
-  OTHER_COUNTRIES.forEach(c => { const v = latestRaw(cmdty, c, yr, attrs); if(v!=null) sum += v; });
+  OTHER_COUNTRIES.forEach(c => { const v = latestRaw(cmdty, c, yr, attrs, unit); if(v!=null) sum += v; });
   return world - sum;
 }
 function othersSeriesRaw(cmdty, yr, attrs){
@@ -643,14 +648,12 @@ function renderAYChart(){
     note.textContent = `No Area Harvested / Yield data available for ${commodity}.`;
     return;
   }
-  if(region !== 'United States'){
-    note.textContent = `Note: Area Harvested / Yield are only published by USDA for United States — not broken out by other countries. Switch the Stock-to-Use country to "United States" to see this chart.`;
-  } else { note.textContent = ''; }
+  note.textContent = `Source: USDA World Agricultural Production (harvested area & yield by country).`;
 
-  const areaUnit = getUnit(commodity, ayCfg.area);
-  const yieldUnit = getUnit(commodity, ayCfg.yield);
-  const getV = (yr, attrs) => region==='Others' ? othersRawLatest(commodity, yr, attrs) : latestRaw(commodity, region, yr, attrs);
-  const points = years.map(yr => ({year: yr, area: getV(yr, ayCfg.area), yld: getV(yr, ayCfg.yield)}));
+  const areaUnit = ayCfg.areaUnit;
+  const yieldUnit = ayCfg.yieldUnit;
+  const getV = (yr, attrs, unit) => region==='Others' ? othersRawLatest(commodity, yr, attrs, unit) : latestRaw(commodity, region, yr, attrs, unit);
+  const points = years.map(yr => ({year: yr, area: getV(yr, ayCfg.area, areaUnit), yld: getV(yr, ayCfg.yield, yieldUnit)}));
 
   if(chartAY) chartAY.destroy();
   chartAY = new Chart(document.getElementById('chartAY'), {
@@ -798,8 +801,12 @@ function renderAYRevisionChart(){
     note.textContent = `Note: Area Harvested / Yield / Production breakdown by month is only published by USDA for United States.`;
   } else { note.textContent = ''; }
 
-  const unit = getUnit(commodity, attrs);
-  const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs);
+  // pra Area/Yield, forca a unidade "nativa" dos EUA (Acres/Bushels/Pounds) --
+  // sem isso o SUM(value) do measureSeries somaria Acres+Hectares juntos,
+  // ja que os dois convivem sob o mesmo atributo desde que o WAP foi integrado.
+  const nativeUnit = ayMeasure === 'area' ? ayCfg.nativeAreaUnit : ayMeasure === 'yield' ? ayCfg.nativeYieldUnit : undefined;
+  const unit = (region==='United States' && nativeUnit) ? nativeUnit : getUnit(commodity, attrs);
+  const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs, region==='United States' ? nativeUnit : undefined);
 
   if(chartAYRevision) chartAYRevision.destroy();
   chartAYRevision = new Chart(document.getElementById('chartAYRevision'), {
