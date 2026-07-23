@@ -982,6 +982,10 @@ function renderAYRevisionChart(){
   const unit = (region==='United States' && nativeUnit) ? nativeUnit : getUnit(commodity, attrs);
   const s = region==='Others' ? [] : measureSeries(commodity, region, chartYear, attrs, region==='United States' ? nativeUnit : undefined);
 
+  if(region === 'United States' && !s.length && (ayMeasure==='area' || ayMeasure==='yield')){
+    note.textContent = `USDA has not yet published US ${MEASURE_LABELS[ayMeasure]} for ${chartYear} in WASDE — the new-crop Acreage breakout is usually added a few months after Production first appears. Not a data error; try an earlier Harvest Year.`;
+  }
+
   if(chartAYRevision) chartAYRevision.destroy();
   chartAYRevision = new Chart(document.getElementById('chartAYRevision'), {
     type:'line',
