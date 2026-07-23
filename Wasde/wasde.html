@@ -37,6 +37,13 @@ canvas{max-height:220px;}
 .tog-btn{padding:4px 11px;font-size:10.5px;font-weight:600;cursor:pointer;background:var(--wh);color:var(--gy);border:none;font-family:var(--font);transition:all .15s;}
 .tog-btn.active{background:var(--or);color:var(--wh);}
 .hdr-ctrl-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.hdr-region-btn{border-color:var(--or);}
+.hdr-region-tag{font-size:9px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.3px;}
+
+.filter-row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.filter-bar{background:#FFF8F2;border:1px dashed var(--or);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.filter-bar-title{font-size:9.5px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}
+.filter-bar-hint{font-size:9.5px;color:var(--gy);margin-left:auto;}
 
 .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
 .chip{padding:5px 11px;border-radius:4px;border:1px solid var(--bd);cursor:pointer;font-size:10.5px;font-weight:600;color:var(--gy);background:var(--wh);user-select:none;display:flex;align-items:center;gap:5px;transition:all .12s;}
@@ -86,6 +93,7 @@ tr.metric td:first-child{background:var(--wh);}
 
 @media(max-width:768px){
   .row2{grid-template-columns:1fr;gap:12px;}
+  .filter-row2{grid-template-columns:1fr;gap:8px;}
   .content{padding:12px;gap:12px;}
   .card{padding:12px;}
   .hdr{padding:11px 12px;flex-direction:column;align-items:flex-start;}
@@ -102,6 +110,10 @@ tr.metric td:first-child{background:var(--wh);}
   </div>
   <div class="hdr-right">
     <span class="hdr-updated" id="last-upd">—</span>
+    <div class="ddown" id="ddStuCountry">
+      <button class="ddown-btn hdr-region-btn" type="button"><span class="hdr-region-tag">Region</span><span id="ddStuCountryLabel">World</span><span class="ddown-arrow">▾</span></button>
+      <div class="ddown-panel hidden" id="ddStuCountryPanel"></div>
+    </div>
     <select class="cmdty-select" id="commoditySelect"></select>
   </div>
 </div>
@@ -256,24 +268,32 @@ function buildLayout(){
             <button class="ddown-btn" type="button"><span id="ddTblCountriesLabel">Countries</span><span class="ddown-arrow">▾</span></button>
             <div class="ddown-panel hidden" id="ddTblCountriesPanel"></div>
           </div>
-          <div class="ddown" id="ddYearsRange">
-            <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">5 years</span><span class="ddown-arrow">▾</span></button>
-            <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
-          </div>
         </div>
       </div>
       <div class="tbl-wrap"><table><thead><tr id="tblHeadRow"></tr></thead><tbody id="tblBody"></tbody></table></div>
       <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries.</div>
     </div>
 
+    <div class="filter-row2">
+      <div class="filter-bar">
+        <span class="filter-bar-title">Period</span>
+        <div class="ddown" id="ddYearsRange">
+          <button class="ddown-btn" type="button"><span id="ddYearsRangeLabel">5 years</span><span class="ddown-arrow">▾</span></button>
+          <div class="ddown-panel hidden" id="ddYearsRangePanel"></div>
+        </div>
+        <span class="filter-bar-hint">Applies to the charts on the left</span>
+      </div>
+      <div class="filter-bar">
+        <span class="filter-bar-title">Market Year</span>
+        <select class="yr-select" id="chartYearSelect"></select>
+        <span class="filter-bar-hint">Applies to the charts on the right</span>
+      </div>
+    </div>
+
     <div class="row2">
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Stock-to-Use — Historical Trend</span>
-          <div class="ddown" id="ddStuCountry">
-            <button class="ddown-btn" type="button"><span id="ddStuCountryLabel">World</span><span class="ddown-arrow">▾</span></button>
-            <div class="ddown-panel hidden" id="ddStuCountryPanel"></div>
-          </div>
         </div>
         <canvas id="chartSTU"></canvas>
       </div>
@@ -281,7 +301,6 @@ function buildLayout(){
         <div class="card-hdr">
           <span class="card-title">Monthly Revision History - Stock-to-Use</span>
           <div class="hdr-ctrl-group">
-            <select class="yr-select" id="chartYearSelect"></select>
             <div class="ddown" id="ddChartMeasure">
               <button class="ddown-btn" type="button"><span id="ddChartMeasureLabel">S:U</span><span class="ddown-arrow">▾</span></button>
               <div class="ddown-panel hidden" id="ddChartMeasurePanel"></div>
@@ -315,7 +334,7 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Exports / Imports / Net Trade</span>
-          <span class="card-stat" id="eiLinkedNote">Linked to Stock-to-Use country</span>
+          <span class="card-stat" id="eiLinkedNote">Linked to Region filter (header)</span>
         </div>
         <canvas id="chartEI"></canvas>
       </div>
@@ -335,7 +354,7 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Area Harvested &amp; Yield</span>
-          <span class="card-stat" id="ayLinkedNote">Linked to Stock-to-Use country</span>
+          <span class="card-stat" id="ayLinkedNote">Linked to Region filter (header)</span>
         </div>
         <canvas id="chartAY"></canvas>
         <div class="src" id="ayNote"></div>
@@ -356,7 +375,7 @@ function buildLayout(){
     <div class="card">
       <div class="card-hdr">
         <span class="card-title">Supply &amp; Demand Bridge</span>
-        <span class="card-stat" id="bridgeLinkedNote">Linked to Stock-to-Use country &amp; Monthly Revision market year</span>
+        <span class="card-stat" id="bridgeLinkedNote">Linked to Region (header) &amp; Market Year filter</span>
       </div>
       <canvas id="chartBridge"></canvas>
       <div class="src" id="bridgeNote"></div>
@@ -640,7 +659,7 @@ function renderAYChart(){
   let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
   if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
 
-  document.getElementById('ayLinkedNote').textContent = `Linked to Stock-to-Use country: ${region}`;
+  document.getElementById('ayLinkedNote').textContent = `Linked to Region filter (header): ${region}`;
 
   const note = document.getElementById('ayNote');
   if(!ayCfg.area.length){
@@ -678,7 +697,7 @@ function renderAYChart(){
 
 function renderEIChart(){
   const region = stuCountry;
-  document.getElementById('eiLinkedNote').textContent = `Linked to Stock-to-Use country: ${region}`;
+  document.getElementById('eiLinkedNote').textContent = `Linked to Region filter (header): ${region}`;
   let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
   if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
 
