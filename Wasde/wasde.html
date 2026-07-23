@@ -42,6 +42,10 @@ canvas{max-height:220px;}
 .hdr-region-btn{border-color:var(--or);gap:8px;}
 .hdr-region-tag{font-size:9px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.3px;padding-right:8px;border-right:1px solid var(--bd);}
 .hdr-filter-item{display:flex;align-items:center;gap:8px;border:1px solid var(--bd);border-radius:4px;padding:6px 10px;background:var(--wh);}
+.card-filter{display:inline-flex;align-items:center;gap:5px;}
+.card-filter-tag{font-size:8.5px;font-weight:700;color:var(--gy);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}
+.ddown-btn-sm{padding:3px 7px;font-size:10px;gap:5px;}
+.yr-select-sm{padding:3px 6px;font-size:10px;}
 
 .info-badge{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--gy);color:#fff;font-size:9px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;cursor:default;position:relative;flex-shrink:0;}
 .info-badge .info-tooltip{display:none;position:absolute;top:130%;right:0;background:var(--bk);color:#fff;font-size:10.5px;font-weight:400;font-style:normal;font-family:var(--font);padding:8px 10px;border-radius:5px;width:190px;line-height:1.4;z-index:30;text-transform:none;letter-spacing:normal;box-shadow:0 3px 12px rgba(0,0,0,.15);}
@@ -217,6 +221,19 @@ function stockToUseSeries(cmdty, region, myYear){
   return esS.map(r => ({wasde_number:r.wasde_number, report_title:r.report_title,
     value:(r.value!=null && demandMap[r.wasde_number]) ? (r.value/demandMap[r.wasde_number])*100 : null}));
 }
+// Stock-to-Use "oficial" do dashboard: SEMPRE World + formula Simplified
+// (Ending Stocks / Domestic Use, sem Exports), independente de region/tableMode.
+// Usada em todo lugar que exibe Stock-to-Use -- por isso o numero nunca muda
+// ao trocar o filtro de Regiao.
+function worldStockToUseSeries(cmdty, myYear){
+  const cfg = CMDTY_CONFIG[cmdty];
+  const domesticAttr = cfg.demand[0];
+  const esS = measureSeries(cmdty, 'World', myYear, ['Ending Stocks']);
+  const domS = measureSeries(cmdty, 'World', myYear, [domesticAttr]);
+  const domMap = {}; domS.forEach(r=>domMap[r.wasde_number]=r.value);
+  return esS.map(r => ({wasde_number:r.wasde_number, report_title:r.report_title,
+    value:(r.value!=null && domMap[r.wasde_number]) ? (r.value/domMap[r.wasde_number])*100 : null}));
+}
 function attrsForMeasure(cmdty, meas){
   const cfg = CMDTY_CONFIG[cmdty];
   if(meas === 'supply') return cfg.supply;
@@ -228,7 +245,7 @@ function attrsForMeasure(cmdty, meas){
 function seriesForRegion(cmdty, region, myYear, meas){
   const cfg = CMDTY_CONFIG[cmdty];
   if(meas === 'stock_to_use' && !cfg.directTotals){
-    return stockToUseSeries(cmdty, region, myYear);
+    return worldStockToUseSeries(cmdty, myYear); // trava em World+Simplified sempre
   }
   return measureSeries(cmdty, region, myYear, attrsForMeasure(cmdty, meas));
 }
@@ -260,6 +277,16 @@ function findClosedYear(cmdty){
   }
   return years[0];
 }
+// true se, no ultimo relatorio daquela safra, o Avg. Farm Price ainda estava marcado como projecao (nao "realizado")
+function isProjectedYear(cmdty, region, yr){
+  const maxwn = q(`SELECT MAX(wasde_number) as wn FROM wasde_facts WHERE commodity=? AND region=? AND market_year=? AND attribute='Avg. Farm Price'`, [cmdty, region, yr])[0]?.wn;
+  if(!maxwn) return false;
+  const flag = q(`SELECT proj_est_flag FROM wasde_facts WHERE commodity=? AND region=? AND market_year=? AND wasde_number=? AND attribute='Avg. Farm Price'`, [cmdty, region, yr, maxwn]);
+  return flag.length ? flag[0].proj_est_flag !== '' : false;
+}
+function yearLabelWithEst(cmdty, region, yr){
+  return isProjectedYear(cmdty, region, yr) ? `${yr}e` : yr;
+}
 
 // ══ LAYOUT ═══════════════════════════════════════════════════════════════════
 function buildLayout(){
@@ -289,13 +316,32 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Stock-to-Use — Historical Trend</span>
+          <div class="card-filter">
+            <span class="card-filter-tag">Region</span>
+            <div class="ddown" id="ddRegionSTU">
+              <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionSTULabel">World</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddRegionSTUPanel"></div>
+            </div>
+          </div>
         </div>
         <canvas id="chartSTU"></canvas>
+        <div class="src">The Stock-to-Use line is always World, Simplified — it does not follow the Region filter (only the Surplus/Deficit bars do).</div>
       </div>
       <div class="card">
         <div class="card-hdr">
-          <span class="card-title">Monthly Revision History - Stock-to-Use</span>
+          <span class="card-title">Monthly Revision History</span>
           <div class="hdr-ctrl-group">
+            <div class="card-filter">
+              <span class="card-filter-tag">Region</span>
+              <div class="ddown" id="ddRegionRev">
+                <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionRevLabel">World</span><span class="ddown-arrow">▾</span></button>
+                <div class="ddown-panel hidden" id="ddRegionRevPanel"></div>
+              </div>
+            </div>
+            <div class="card-filter">
+              <span class="card-filter-tag">Harvest Yr</span>
+              <select class="yr-select yr-select-sm" id="yrSelectRev"></select>
+            </div>
             <div class="ddown" id="ddChartMeasure">
               <button class="ddown-btn" type="button"><span id="ddChartMeasureLabel">S:U</span><span class="ddown-arrow">▾</span></button>
               <div class="ddown-panel hidden" id="ddChartMeasurePanel"></div>
@@ -303,6 +349,7 @@ function buildLayout(){
           </div>
         </div>
         <canvas id="chartRevision"></canvas>
+        <div class="src" id="revNote"></div>
       </div>
     </div>
 
@@ -311,6 +358,7 @@ function buildLayout(){
         <div class="card-hdr">
           <span class="card-title">Avg. Farm Price (US) vs. Global Stock-to-Use</span>
           <span class="card-stat">United States only</span>
+          <span class="info-badge" tabindex="0">i<span class="info-tooltip">Price and Stock-to-Use figures are sourced directly from USDA WASDE.</span></span>
         </div>
         <canvas id="chartPrice"></canvas>
         <div class="src" id="priceNote"></div>
@@ -319,6 +367,11 @@ function buildLayout(){
         <div class="card-hdr">
           <span class="card-title">Monthly Revision History — Avg. Farm Price</span>
           <span class="card-stat">United States only</span>
+          <span class="info-badge" tabindex="0">i<span class="info-tooltip">From USDA. Sourced directly from USDA WASDE.</span></span>
+          <div class="card-filter">
+            <span class="card-filter-tag">Harvest Yr</span>
+            <select class="yr-select yr-select-sm" id="yrSelectPriceRev"></select>
+          </div>
         </div>
         <canvas id="chartPriceRevision"></canvas>
         <div class="src" id="priceRevNote"></div>
@@ -329,16 +382,35 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Exports / Imports / Net Trade</span>
-          <span class="card-stat" id="eiLinkedNote">Linked to Region filter (header)</span>
+          <div class="card-filter">
+            <span class="card-filter-tag">Region</span>
+            <div class="ddown" id="ddRegionEI">
+              <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionEILabel">World</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddRegionEIPanel"></div>
+            </div>
+          </div>
         </div>
         <canvas id="chartEI"></canvas>
       </div>
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Monthly Revision History — Trade</span>
-          <div class="ddown" id="ddTradeMeasure">
-            <button class="ddown-btn" type="button"><span id="ddTradeMeasureLabel">Exports</span><span class="ddown-arrow">▾</span></button>
-            <div class="ddown-panel hidden" id="ddTradeMeasurePanel"></div>
+          <div class="hdr-ctrl-group">
+            <div class="card-filter">
+              <span class="card-filter-tag">Region</span>
+              <div class="ddown" id="ddRegionTradeRev">
+                <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionTradeRevLabel">World</span><span class="ddown-arrow">▾</span></button>
+                <div class="ddown-panel hidden" id="ddRegionTradeRevPanel"></div>
+              </div>
+            </div>
+            <div class="card-filter">
+              <span class="card-filter-tag">Harvest Yr</span>
+              <select class="yr-select yr-select-sm" id="yrSelectTradeRev"></select>
+            </div>
+            <div class="ddown" id="ddTradeMeasure">
+              <button class="ddown-btn" type="button"><span id="ddTradeMeasureLabel">Exports</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddTradeMeasurePanel"></div>
+            </div>
           </div>
         </div>
         <canvas id="chartTradeRevision"></canvas>
@@ -349,7 +421,13 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Area Harvested &amp; Yield</span>
-          <span class="card-stat" id="ayLinkedNote">Linked to Region filter (header)</span>
+          <div class="card-filter">
+            <span class="card-filter-tag">Region</span>
+            <div class="ddown" id="ddRegionAY">
+              <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionAYLabel">World</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddRegionAYPanel"></div>
+            </div>
+          </div>
         </div>
         <canvas id="chartAY"></canvas>
         <div class="src" id="ayNote"></div>
@@ -357,9 +435,22 @@ function buildLayout(){
       <div class="card">
         <div class="card-hdr">
           <span class="card-title">Monthly Revision History — Area / Yield / Production</span>
-          <div class="ddown" id="ddAyMeasure">
-            <button class="ddown-btn" type="button"><span id="ddAyMeasureLabel">Area Harvested</span><span class="ddown-arrow">▾</span></button>
-            <div class="ddown-panel hidden" id="ddAyMeasurePanel"></div>
+          <div class="hdr-ctrl-group">
+            <div class="card-filter">
+              <span class="card-filter-tag">Region</span>
+              <div class="ddown" id="ddRegionAYRev">
+                <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionAYRevLabel">World</span><span class="ddown-arrow">▾</span></button>
+                <div class="ddown-panel hidden" id="ddRegionAYRevPanel"></div>
+              </div>
+            </div>
+            <div class="card-filter">
+              <span class="card-filter-tag">Harvest Yr</span>
+              <select class="yr-select yr-select-sm" id="yrSelectAYRev"></select>
+            </div>
+            <div class="ddown" id="ddAyMeasure">
+              <button class="ddown-btn" type="button"><span id="ddAyMeasureLabel">Area Harvested</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddAyMeasurePanel"></div>
+            </div>
           </div>
         </div>
         <canvas id="chartAYRevision"></canvas>
@@ -370,7 +461,17 @@ function buildLayout(){
     <div class="card">
       <div class="card-hdr">
         <span class="card-title">Supply &amp; Demand Bridge</span>
-        <span class="card-stat" id="bridgeLinkedNote">Linked to Region (header) &amp; Harvest Year filter</span>
+        <div class="card-filter">
+          <span class="card-filter-tag">Region</span>
+          <div class="ddown" id="ddRegionBridge">
+            <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionBridgeLabel">World</span><span class="ddown-arrow">▾</span></button>
+            <div class="ddown-panel hidden" id="ddRegionBridgePanel"></div>
+          </div>
+        </div>
+        <div class="card-filter">
+          <span class="card-filter-tag">Harvest Yr</span>
+          <select class="yr-select yr-select-sm" id="yrSelectBridge"></select>
+        </div>
       </div>
       <canvas id="chartBridge"></canvas>
       <div class="src" id="bridgeNote"></div>
@@ -383,9 +484,6 @@ function buildLayout(){
       tableMode = btn.dataset.mode;
       btn.parentElement.querySelectorAll('.tog-btn').forEach(b=>b.classList.toggle('active', b===btn));
       renderTable();
-      renderSTUTrend();
-      renderPriceChart();
-      if(chartMeasure === 'stock_to_use') renderRevisionChart();
     };
   });
 
@@ -468,11 +566,28 @@ function buildChartMeasureDropdown(){
   const opts = [{key:'supply',label:'Supply'},{key:'demand',label:'Demand'},{key:'ending_stocks',label:'Stocks'},{key:'stock_to_use',label:'S:U'}];
   buildSingleDropdown('ddChartMeasure', 'ddChartMeasurePanel', 'ddChartMeasureLabel', opts, chartMeasure, (key) => { chartMeasure = key; renderRevisionChart(); });
 }
+const REGION_DDOWN_INSTANCES = [
+  {btnId:'ddStuCountry', panelId:'ddStuCountryPanel', labelId:'ddStuCountryLabel'},        // header (global)
+  {btnId:'ddRegionSTU', panelId:'ddRegionSTUPanel', labelId:'ddRegionSTULabel'},            // Stock-to-Use Historical Trend (so afeta o Surplus/Deficit)
+  {btnId:'ddRegionRev', panelId:'ddRegionRevPanel', labelId:'ddRegionRevLabel'},            // Monthly Revision History
+  {btnId:'ddRegionEI', panelId:'ddRegionEIPanel', labelId:'ddRegionEILabel'},               // Exports/Imports/Net Trade
+  {btnId:'ddRegionTradeRev', panelId:'ddRegionTradeRevPanel', labelId:'ddRegionTradeRevLabel'}, // Monthly Revision - Trade
+  {btnId:'ddRegionAY', panelId:'ddRegionAYPanel', labelId:'ddRegionAYLabel'},               // Area Harvested & Yield
+  {btnId:'ddRegionAYRev', panelId:'ddRegionAYRevPanel', labelId:'ddRegionAYRevLabel'},      // Monthly Revision - Area/Yield/Production
+  {btnId:'ddRegionBridge', panelId:'ddRegionBridgePanel', labelId:'ddRegionBridgeLabel'},   // Supply & Demand Bridge
+];
 function buildStuCountryDropdown(){
   const regions = REGION_ORDER;
   const opts = regions.map(r=>({key:r, label:r}));
   if(!regions.includes(stuCountry)) stuCountry = 'World';
-  buildSingleDropdown('ddStuCountry', 'ddStuCountryPanel', 'ddStuCountryLabel', opts, stuCountry, (key) => { stuCountry = key; renderSTUTrend(); renderAYChart(); renderAYRevisionChart(); renderRevisionChart(); renderEIChart(); renderTradeRevisionChart(); renderBridgeChart(); });
+  const onChange = (key) => {
+    stuCountry = key;
+    REGION_DDOWN_INSTANCES.forEach(ids => { const el = document.getElementById(ids.labelId); if(el) el.textContent = key; });
+    renderSTUTrend(); renderAYChart(); renderAYRevisionChart(); renderRevisionChart(); renderEIChart(); renderTradeRevisionChart(); renderBridgeChart();
+  };
+  REGION_DDOWN_INSTANCES.forEach(ids => {
+    if(document.getElementById(ids.btnId)) buildSingleDropdown(ids.btnId, ids.panelId, ids.labelId, opts, stuCountry, onChange);
+  });
 }
 function buildAyDropdowns(){
   const measOpts = [{key:'area',label:'Area Harvested'},{key:'yield',label:'Yield'},{key:'production',label:'Production'}];
@@ -483,19 +598,43 @@ function buildTradeMeasureDropdown(){
   buildSingleDropdown('ddTradeMeasure', 'ddTradeMeasurePanel', 'ddTradeMeasureLabel', opts, tradeMeasure, (key) => { tradeMeasure = key; renderTradeRevisionChart(); });
 }
 
-function onCommodityChange(){
-  const years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? ORDER BY market_year DESC`, [commodity]).map(r=>r.market_year);
+// World + top3 produtores + top3 consumidores (uniao), recalculado a cada troca de commodity
+function computeDefaultCountries(cmdty){
+  const lastYr = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year DESC LIMIT 1`, [cmdty])[0]?.market_year;
+  if(!lastYr) return new Set(['World']);
+  const cfgc = CMDTY_CONFIG[cmdty];
+  const domesticAttr = cfgc.demand[0];
+  function top3(attrs){
+    const scored = OTHER_COUNTRIES.map(r => ({r, v: latestRaw(cmdty, r, lastYr, attrs) ?? -Infinity}));
+    scored.sort((a,b)=>b.v-a.v);
+    return scored.slice(0,3).map(s=>s.r);
+  }
+  return new Set(['World', ...top3(['Production']), ...top3([domesticAttr])]);
+}
 
-  const cSel = document.getElementById('chartYearSelect');
-  const yearOptsHtml = years.map(y=>`<option value="${y}">${y}</option>`).join('');
-  cSel.innerHTML = yearOptsHtml;
+const YEAR_SELECT_IDS = ['chartYearSelect','yrSelectRev','yrSelectTradeRev','yrSelectAYRev','yrSelectPriceRev','yrSelectBridge'];
+function buildYearSelects(){
+  const years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? ORDER BY market_year DESC`, [commodity]).map(r=>r.market_year);
   chartYear = years[0];
-  cSel.value = chartYear;
-  cSel.onchange = () => {
-    chartYear = cSel.value;
+  const yearOptsHtml = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  const onChange = (val) => {
+    chartYear = val;
+    YEAR_SELECT_IDS.forEach(id => { const el = document.getElementById(id); if(el) el.value = chartYear; });
     renderRevisionChart(); renderAYRevisionChart(); renderTradeRevisionChart(); renderPriceRevisionChart(); renderBridgeChart();
   };
+  YEAR_SELECT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.innerHTML = yearOptsHtml;
+    el.value = chartYear;
+    el.onchange = () => onChange(el.value);
+  });
+}
 
+function onCommodityChange(){
+  tableCountries = computeDefaultCountries(commodity);
+
+  buildYearSelects();
   buildTableCountryDropdown();
   buildYearsRangeDropdown();
   buildChartMeasureDropdown();
@@ -570,6 +709,7 @@ function renderTable(){
     const n = parseInt(tableYearsRange, 10);
     years = years.slice(-n);
   }
+  const lastYr = years[years.length-1];
 
   document.getElementById('tblHeadRow').innerHTML = `<th>Country</th>` + years.map(y=>`<th>${y}</th>`).join('');
 
@@ -579,8 +719,16 @@ function renderTable(){
   function rowCellsRaw(region, attrs){
     return years.map(yr => { const v = latestValueRaw(commodity, region, yr, attrs); return `<td>${v!=null?v.toFixed(1):'—'}</td>`; }).join('');
   }
+  // ordena de maior pra menor (usando o ultimo ano visivel); "World" sempre primeiro
+  function sortedRegions(attrs){
+    const others = selectedRegions.filter(r=>r!=='World');
+    const scored = others.map(r => ({r, v: latestValueRaw(commodity, r, lastYr, attrs) ?? -Infinity}));
+    scored.sort((a,b)=>b.v-a.v);
+    const ordered = scored.map(s=>s.r);
+    return selectedRegions.includes('World') ? ['World', ...ordered] : ordered;
+  }
   function countryBreakdown(attrs, cssClass){
-    return selectedRegions.map(r => `<tr class="${cssClass}${r==='World'?' metric':''}"><td>${r}</td>${rowCellsRaw(r, attrs)}</tr>`).join('');
+    return sortedRegions(attrs).map(r => `<tr class="${cssClass}${r==='World'?' metric':''}"><td>${r}</td>${rowCellsRaw(r, attrs)}</tr>`).join('');
   }
 
   let rows = '';
@@ -591,34 +739,45 @@ function renderTable(){
 
     rows += `<tr class="grp"><td>Domestic Consumption</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += countryBreakdown([domesticAttr], 'sub');
+
+    rows += `<tr class="metric"><td>Ending Stocks</td>${rowCellsMeasure(worldRegion, 'ending_stocks')}</tr>`;
+
+    const stuCells = years.map(yr => { const v = latestValue(commodity, worldRegion, yr, 'stock_to_use'); return `<td>${v!=null?(v.toFixed(1)+'%'):'—'}</td>`; }).join('');
+    rows += `<tr class="stu-row"><td>Stock-to-Use</td>${stuCells}</tr>`;
   } else {
-    rows += `<tr class="grp"><td>Supply</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    // Complete: sem as linhas divisorias "Supply"/"Demand" e sem Stock-to-Use --
+    // so os componentes (agora incluindo Beginning Stocks, que faz parte da
+    // formula de Supply mas antes nao aparecia em lugar nenhum da tabela).
+    rows += `<tr class="subgrp"><td>Beginning Stocks</td>${years.map(()=>'<td></td>').join('')}</tr>`;
+    rows += countryBreakdown(['Beginning Stocks'], 'sub');
     rows += `<tr class="subgrp"><td>Production</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += countryBreakdown(['Production'], 'sub');
     rows += `<tr class="subgrp"><td>Imports</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += countryBreakdown(['Imports'], 'sub');
 
-    rows += `<tr class="grp"><td>Demand</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += `<tr class="subgrp"><td>Domestic Use</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += countryBreakdown([domesticAttr], 'sub');
     rows += `<tr class="subgrp"><td>Exports</td>${years.map(()=>'<td></td>').join('')}</tr>`;
     rows += countryBreakdown(['Exports'], 'sub');
+
+    rows += `<tr class="metric"><td>Ending Stocks</td>${rowCellsMeasure(worldRegion, 'ending_stocks')}</tr>`;
   }
-
-  rows += `<tr class="metric"><td>Ending Stocks</td>${rowCellsMeasure(worldRegion, 'ending_stocks')}</tr>`;
-
-  const stuCells = years.map(yr => { const v = latestValue(commodity, worldRegion, yr, 'stock_to_use'); return `<td>${v!=null?(v.toFixed(1)+'%'):'—'}</td>`; }).join('');
-  rows += `<tr class="stu-row"><td>Stock-to-Use</td>${stuCells}</tr>`;
 
   document.getElementById('tblBody').innerHTML = rows || `<tr><td colspan="${years.length+1}">Select at least one country</td></tr>`;
 }
 
 // ══ REVISION CHART ═══════════════════════════════════════════════════════════
 function renderRevisionChart(){
-  const region = stuCountry;
+  const isStu = chartMeasure === 'stock_to_use';
+  const region = isStu ? 'World' : stuCountry; // S:U sempre World+Simplified, ignora o filtro de Regiao
   const regions = [region];
   const attrs = attrsForMeasure(commodity, chartMeasure);
-  const unit = chartMeasure==='stock_to_use' ? '%' : getUnit(commodity, attrs || CMDTY_CONFIG[commodity].supply);
+  const unit = isStu ? '%' : getUnit(commodity, attrs || CMDTY_CONFIG[commodity].supply);
+
+  const note = document.getElementById('revNote');
+  note.textContent = isStu
+    ? 'Stock-to-Use is always World, Simplified (Ending Stocks / Domestic Use) — the Region filter above does not apply to this measure.'
+    : '';
 
   let labels = [];
   const datasets = regions.map(r => {
@@ -653,8 +812,6 @@ function renderAYChart(){
   const region = stuCountry;
   let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
   if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
-
-  document.getElementById('ayLinkedNote').textContent = `Linked to Region filter (header): ${region}`;
 
   const note = document.getElementById('ayNote');
   if(!ayCfg.area.length){
@@ -692,7 +849,6 @@ function renderAYChart(){
 
 function renderEIChart(){
   const region = stuCountry;
-  document.getElementById('eiLinkedNote').textContent = `Linked to Region filter (header): ${region}`;
   let years = q(`SELECT DISTINCT market_year FROM wasde_facts WHERE commodity=? AND region='World' ORDER BY market_year ASC`, [commodity]).map(r=>r.market_year);
   if(tableYearsRange !== 'full'){ years = years.slice(-parseInt(tableYearsRange,10)); }
 
@@ -748,7 +904,7 @@ function renderPriceChart(){
 
   if(chartPrice) chartPrice.destroy();
   chartPrice = new Chart(document.getElementById('chartPrice'), {
-    data:{ labels: points.map(p=>p.year), datasets:[
+    data:{ labels: points.map(p=>yearLabelWithEst(commodity, region, p.year)), datasets:[
       { type:'line', label:stuLabel, data: points.map(p=>p.stu),
         borderColor:'#333333', backgroundColor:'#333333', borderWidth:2, pointRadius:2.5, tension:.2, spanGaps:true, yAxisID:'y', order:1 },
       { type:'line', label:`Avg. Farm Price (${priceUnit})`, data: points.map(p=>p.price),
@@ -766,14 +922,14 @@ function renderPriceChart(){
     }
   });
 }
-// helper: pega a serie de stock-to-use (respeitando tableMode) pra um wrapper generico usado no grafico de preco
+// helper: pega a serie "oficial" de stock-to-use (World, Simplified) pro grafico de preco
 function stockToUseSeriesForChart(region, yr){
   const cfg = CMDTY_CONFIG[commodity];
   if(cfg.directTotals){
-    const r = measureSeries(commodity, region, yr, cfg.stockToUseAttr);
+    const r = measureSeries(commodity, 'World', yr, cfg.stockToUseAttr);
     return r.filter(x=>x.value!=null);
   }
-  return stockToUseSeries(commodity, region, yr).filter(x=>x.value!=null);
+  return worldStockToUseSeries(commodity, yr).filter(x=>x.value!=null);
 }
 
 function renderPriceRevisionChart(){
@@ -986,7 +1142,7 @@ function renderSTUTrend(){
         stuVal = r.length ? r[0].value : null;
       }
     } else {
-      const s = stockToUseSeries(commodity, region, yr).filter(r=>r.value!=null);
+      const s = worldStockToUseSeries(commodity, yr).filter(r=>r.value!=null);
       stuVal = s.length ? s[s.length-1].value : null;
     }
 
