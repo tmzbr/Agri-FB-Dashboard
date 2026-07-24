@@ -183,6 +183,19 @@ function q(sql, params=[]){
   stmt.free();
   return out;
 }
+// Chart.js, sem min/max explicito, escala o eixo bem colado nos dados -- o que
+// faz variacoes pequenas parecerem dramaticas. Isso da uma folga de ~25% pra
+// cima e pra baixo do range real, deixando o movimento visual proporcional.
+function yAxisPadding(values, padFrac=0.25, clampZero=false){
+  const vals = (values||[]).filter(v=>v!=null && !isNaN(v));
+  if(!vals.length) return {};
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if(lo === hi){ const base = Math.abs(lo) || 1; lo -= base*0.25; hi += base*0.25; }
+  const pad = (hi - lo) * padFrac;
+  let suggestedMin = lo - pad, suggestedMax = hi + pad;
+  if(clampZero && lo >= 0) suggestedMin = Math.max(0, suggestedMin);
+  return { suggestedMin, suggestedMax };
+}
 
 // ══ DATA HELPERS ═════════════════════════════════════════════════════════════
 function measureSeries(cmdty, region, myYear, attrs, unit){
@@ -465,16 +478,18 @@ function buildLayout(){
     <div class="card">
       <div class="card-hdr">
         <span class="card-title">Supply &amp; Demand Bridge</span>
-        <div class="card-filter">
-          <span class="card-filter-tag">Region</span>
-          <div class="ddown" id="ddRegionBridge">
-            <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionBridgeLabel">World</span><span class="ddown-arrow">▾</span></button>
-            <div class="ddown-panel hidden" id="ddRegionBridgePanel"></div>
+        <div class="hdr-ctrl-group">
+          <div class="card-filter">
+            <span class="card-filter-tag">Harvest Yr</span>
+            <select class="yr-select yr-select-sm" id="yrSelectBridge"></select>
           </div>
-        </div>
-        <div class="card-filter">
-          <span class="card-filter-tag">Harvest Yr</span>
-          <select class="yr-select yr-select-sm" id="yrSelectBridge"></select>
+          <div class="card-filter">
+            <span class="card-filter-tag">Region</span>
+            <div class="ddown" id="ddRegionBridge">
+              <button class="ddown-btn ddown-btn-sm" type="button"><span id="ddRegionBridgeLabel">World</span><span class="ddown-arrow">▾</span></button>
+              <div class="ddown-panel hidden" id="ddRegionBridgePanel"></div>
+            </div>
+          </div>
         </div>
       </div>
       <canvas id="chartBridge"></canvas>
@@ -806,7 +821,7 @@ function renderRevisionChart(){
       plugins:{ legend:{position:'bottom', onClick:()=>{}, labels:{boxWidth:10, font:{size:10}, color:'#333'}},
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
-               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}, ...yAxisPadding(chartDatasets.flatMap(d=>d.data))} }
     }
   });
 }
@@ -844,8 +859,8 @@ function renderAYChart(){
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
       scales:{
         x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
-        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Area Harvested (${areaUnit})`,font:{size:9},color:'#000'}},
-        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Yield (${yieldUnit})`,font:{size:9},color:'#FF5500'}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Area Harvested (${areaUnit})`,font:{size:9},color:'#000'}, ...yAxisPadding(points.map(p=>p.area), 0.25, true)},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Yield (${yieldUnit})`,font:{size:9},color:'#FF5500'}, ...yAxisPadding(points.map(p=>p.yld))},
       }
     }
   });
@@ -882,8 +897,8 @@ function renderEIChart(){
         tooltip:{filter: ctx => ctx.dataset.label !== 'Zero', callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{
         x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
-        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Exports / Imports (${unit})`,font:{size:9},color:'#000'}},
-        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Net (${unit})`,font:{size:9},color:'#FF5500'}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:`Exports / Imports (${unit})`,font:{size:9},color:'#000'}, ...yAxisPadding([...points.map(p=>p.exp),...points.map(p=>p.imp)], 0.25, true)},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Net (${unit})`,font:{size:9},color:'#FF5500'}, ...yAxisPadding([...points.map(p=>p.net), 0])},
       }
     }
   });
@@ -920,8 +935,8 @@ function renderPriceChart(){
         tooltip:{callbacks:{label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}`}} },
       scales:{
         x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
-        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:stuLabel,font:{size:9},color:'#000'}},
-        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Avg. Farm Price (${priceUnit})`,font:{size:9},color:'#FF5500'}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:stuLabel,font:{size:9},color:'#000'}, ...yAxisPadding(points.map(p=>p.stu))},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:`Avg. Farm Price (${priceUnit})`,font:{size:9},color:'#FF5500'}, ...yAxisPadding(points.map(p=>p.price))},
       }
     }
   });
@@ -955,7 +970,7 @@ function renderPriceRevisionChart(){
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
       scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
-               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}, ...yAxisPadding(s.map(r=>r.value))} }
     }
   });
 }
@@ -997,7 +1012,7 @@ function renderAYRevisionChart(){
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'} ${unit}`}} },
       scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
-               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}, ...yAxisPadding(s.map(r=>r.value), 0.25, ayMeasure==='production')} }
     }
   });
 }
@@ -1019,7 +1034,7 @@ function renderTradeRevisionChart(){
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label: ctx => `${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{ x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
-               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}} }
+               y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}, ...yAxisPadding(s.map(r=>r.value), 0.25, tradeMeasure!=='net')} }
     }
   });
 }
@@ -1120,7 +1135,7 @@ function renderBridgeChart(){
         }}} },
       scales:{
         x:{ticks:{font:{size:9},color:'#000'}, grid:{display:false}, border:{color:'#000',width:1.5}},
-        y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}},
+        y:{ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:unit,font:{size:9},color:'#000'}, min:0, ...(() => { const highs = barRanges.flat().filter(v=>v!=null); return highs.length ? {suggestedMax: Math.max(...highs)*1.15} : {}; })() },
       }
     }
   });
@@ -1181,8 +1196,8 @@ function renderSTUTrend(){
         tooltip:{callbacks:{label: ctx => ctx.dataset.yAxisID==='y1' ? `${stuLabel}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'}%` : `Surplus/Deficit: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'—'} ${unit}`}} },
       scales:{
         x:{ticks:{font:{size:9},color:'#000', maxRotation:60, minRotation:60}, grid:{display:false}, border:{color:'#000',width:1.5}},
-        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:'Surplus/Deficit',font:{size:9},color:'#000'}},
-        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:stuLabel,font:{size:9},color:'#FF5500'}},
+        y:{position:'left', ticks:{font:{size:9},color:'#000'}, grid:{color:'#EEE'}, title:{display:true,text:'Surplus/Deficit',font:{size:9},color:'#000'}, ...yAxisPadding([...points.map(p=>p.surplus), 0])},
+        y1:{position:'right', ticks:{font:{size:9},color:'#FF5500'}, grid:{display:false}, title:{display:true,text:stuLabel,font:{size:9},color:'#FF5500'}, ...yAxisPadding(points.map(p=>p.stu))},
       }
     }
   });
