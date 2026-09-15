@@ -354,8 +354,11 @@ def parse_wasde_xml(xml_text):
         if report_el is None:
             continue
         title_raw = report_el.get('sub_report_title', '').strip()
-        title = re.sub(r'\s+1/\s*$', '', title_raw).strip()
-        title = re.sub(r"\s*\(Cont'd\.\)\s*$", '', title).strip()
+        # tira o "(Cont'd.)" ANTES do "1/": na pagina de continuacao o titulo
+        # vem "World Corn Supply and Use  1/  (Cont'd.)" -- na ordem inversa o
+        # "1/" sobrava e a pagina inteira (ex.: milho 2026/27) era descartada.
+        title = re.sub(r"\s*\(Cont'd\.\)\s*$", '', title_raw).strip()
+        title = re.sub(r'\s+1/\s*$', '', title).strip()
 
         commodity = XML_COMMODITY_TITLES.get(title)
         if commodity is None:
