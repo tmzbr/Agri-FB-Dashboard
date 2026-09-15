@@ -48,6 +48,12 @@ jobs:
         run: python wasde.py wap-monthly
         continue-on-error: true
 
+      - name: Rodar atualizacao do PSD (safras que ja sairam do WASDE)
+        if: github.event_name == 'schedule' || github.event.inputs.mode == 'monthly'
+        working-directory: Wasde
+        run: python wasde.py psd
+        continue-on-error: true
+
       - name: Rodar backfill completo
         if: github.event.inputs.mode == 'backfill_full'
         working-directory: Wasde

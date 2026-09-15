@@ -961,6 +961,90 @@ def cmd_wap_backfill(max_pages=30, max_minutes=170, start_page=0):
 
 
 # =============================================================================
+# PSD (USDA FAS PSD Online) -- valor "final" das safras que ja sairam do WASDE.
+# Cada WASDE so traz 3 safras; depois disso o numero congela no ultimo
+# relatorio, enquanto o PSD continua revisando. O dashboard usa psd_facts so
+# pras safras fora do WASDE mais recente (o historico de revisoes segue WASDE).
+# World = soma de todos os paises (mesma agregacao do PSD Online).
+# =============================================================================
+
+PSD_ZIP_URL = "https://apps.fas.usda.gov/psdonline/downloads/psd_{name}_csv.zip"
+# commodity -> (arquivo PSD, divisor p/ unidade do WASDE, unidade do WASDE, {atributo PSD: atributo WASDE})
+PSD_CONFIG = {
+    "Corn": ("grains_pulses", 1000.0, "Million Metric Tons", {
+        "Beginning Stocks": "Beginning Stocks", "Production": "Production",
+        "Imports": "Imports", "Exports": "Exports", "Ending Stocks": "Ending Stocks",
+        "Domestic Consumption": "Domestic Total", "Feed Dom. Consumption": "Domestic Feed",
+    }),
+    "Oilseed, Soybean": ("oilseeds", 1000.0, "Million Metric Tons", {
+        "Beginning Stocks": "Beginning Stocks", "Production": "Production",
+        "Imports": "Imports", "Exports": "Exports", "Ending Stocks": "Ending Stocks",
+        "Domestic Consumption": "Domestic Total", "Crush": "Domestic Crush",
+    }),
+    "Cotton": ("cotton", 1000.0, "Million 480-Pound Bales", {
+        "Beginning Stocks": "Beginning Stocks", "Production": "Production",
+        "Imports": "Imports", "Exports": "Exports", "Ending Stocks": "Ending Stocks",
+        "Domestic Use": "Domestic Use", "Loss": "Loss",
+    }),
+}
+
+PSD_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS psd_facts (
+    commodity   TEXT NOT NULL,
+    region      TEXT NOT NULL,
+    market_year TEXT NOT NULL,
+    attribute   TEXT NOT NULL,
+    value       REAL,
+    unit        TEXT NOT NULL,
+    PRIMARY KEY (commodity, region, market_year, attribute)
+);
+"""
+
+
+def parse_psd_csv(csv_text, commodity, divisor, unit, attr_map, min_year=2000):
+    agg = {}
+    for r in csv.DictReader(io.StringIO(csv_text)):
+        if r["Commodity_Description"] != commodity:
+            continue
+        attribute = attr_map.get(r["Attribute_Description"])
+        if attribute is None:
+            continue
+        y = int(r["Market_Year"])
+        if y < min_year:
+            continue
+        market_year = f"{y}/{str(y + 1)[-2:]}"
+        value = float(r["Value"] or 0) / divisor
+        country = r["Country_Name"].strip()
+        keys = [("World", market_year, attribute)]
+        if country in REGIONS_FOR_OTHERS_CALC:
+            keys.append((country, market_year, attribute))
+        for k in keys:
+            agg[k] = agg.get(k, 0.0) + value
+    return [{"commodity": commodity, "region": reg, "market_year": my, "attribute": at,
+             "value": round(v, 4), "unit": unit} for (reg, my, at), v in agg.items()]
+
+
+def cmd_psd():
+    rows = []
+    for commodity, (name, divisor, unit, attr_map) in PSD_CONFIG.items():
+        zbytes = _download_zip_bytes(PSD_ZIP_URL.format(name=name))
+        with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
+            csv_name = next(n for n in zf.namelist() if n.lower().endswith(".csv"))
+            text = zf.read(csv_name).decode("utf-8", errors="replace")
+        part = parse_psd_csv(text, commodity, divisor, unit, attr_map)
+        print(f"  {commodity}: {len(part)} linhas")
+        rows += part
+    if not rows:
+        raise RuntimeError("PSD nao retornou nenhuma linha")
+    with get_conn() as conn:
+        conn.executescript(PSD_SCHEMA_SQL)
+        conn.execute("DELETE FROM psd_facts")
+        conn.executemany("""INSERT INTO psd_facts (commodity, region, market_year, attribute, value, unit)
+                            VALUES (:commodity, :region, :market_year, :attribute, :value, :unit)""", rows)
+    print(f"OK: {len(rows)} linhas gravadas em psd_facts")
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -989,9 +1073,13 @@ def main():
     p_wap_backfill.add_argument("--max-minutes", type=int, default=170)
     p_wap_backfill.add_argument("--start-page", type=int, default=0)
 
+    sub.add_parser("psd", help="atualiza psd_facts (PSD Online) -- safras que ja sairam do WASDE")
+
     args = parser.parse_args()
 
-    if args.command == "monthly":
+    if args.command == "psd":
+        cmd_psd()
+    elif args.command == "monthly":
         cmd_monthly(args.year, args.month)
     elif args.command == "backfill":
         cmd_backfill(skip_zips=args.skip_zips, only_year=args.only_year, max_minutes=args.max_minutes)

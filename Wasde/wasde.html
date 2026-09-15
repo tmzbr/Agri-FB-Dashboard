@@ -391,7 +391,7 @@ function buildLayout(){
         </div>
       </div>
       <div class="tbl-wrap"><table><thead><tr id="tblHeadRow"></tr></thead><tbody id="tblBody"></tbody></table></div>
-      <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries. World Domestic Use = Beginning Stocks + Production + Imports − Exports − Ending Stocks (same basis as USDA PSD).</div>
+      <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries. World Domestic Use = Beginning Stocks + Production + Imports − Exports − Ending Stocks (same basis as USDA PSD). Market years no longer in the latest WASDE use final USDA PSD figures.</div>
     </div>
 
 
@@ -739,7 +739,45 @@ function onCommodityChange(){
   renderBridgeChart();
 }
 
+// ══ PSD override ══════════════════════════════════════════════════════════════
+// Cada WASDE so traz 3 safras; depois disso o valor congela no ultimo relatorio
+// em que a safra apareceu, enquanto o PSD Online continua revisando. Pras
+// leituras "ultimo valor" (tabela, S/U, bridge, tendencia) de safras que ja
+// sairam do WASDE mais recente, usamos psd_facts. Historico de revisoes mensais
+// continua 100% WASDE.
+const _psdYearCache = {};
+function isPsdYear(cmdty, yr){
+  const key = cmdty + '|' + yr;
+  if(key in _psdYearCache) return _psdYearCache[key];
+  let res = false;
+  if(q(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='psd_facts'`).length){
+    const inLatest = q(`SELECT 1 FROM wasde_facts WHERE commodity=? AND region='World' AND market_year=? AND attribute='Ending Stocks'
+      AND wasde_number=(SELECT MAX(wasde_number) FROM wasde_facts WHERE commodity=? AND region='World' AND attribute='Ending Stocks')`, [cmdty, yr, cmdty]).length;
+    res = !inLatest && q(`SELECT 1 FROM psd_facts WHERE commodity=? AND market_year=? LIMIT 1`, [cmdty, yr]).length > 0;
+  }
+  return _psdYearCache[key] = res;
+}
+function psdRaw(cmdty, region, yr, attrs){
+  const ph = attrs.map(()=>'?').join(',');
+  const r = q(`SELECT COUNT(*) as n, SUM(value) as value FROM psd_facts WHERE commodity=? AND region=? AND market_year=? AND attribute IN (${ph})`, [cmdty, region, yr, ...attrs])[0];
+  return (r && r.n === attrs.length) ? r.value : null;
+}
+// Stock-to-Use "oficial" (World, Simplified) da ultima leitura da safra
+function latestWorldSTU(cmdty, yr){
+  if(isPsdYear(cmdty, yr)){
+    const es = psdRaw(cmdty, 'World', yr, ['Ending Stocks']);
+    const dom = psdRaw(cmdty, 'World', yr, [CMDTY_CONFIG[cmdty].demand[0]]);
+    if(es!=null && dom) return es/dom*100;
+  }
+  const s = worldStockToUseSeries(cmdty, yr).filter(r=>r.value!=null);
+  return s.length ? s[s.length-1].value : null;
+}
+
 function latestRaw(cmdty, region, yr, attrs, unit){
+  if(!unit && isPsdYear(cmdty, yr)){
+    const v = psdRaw(cmdty, region, yr, attrs);
+    if(v!=null) return v;
+  }
   const s = measureSeries(cmdty, region, yr, attrs, unit).filter(r=>r.value!=null);
   return s.length ? s[s.length-1].value : null;
 }
@@ -772,6 +810,12 @@ function tradeMonthlySeries(cmdty, region, yr, measure){
 
 // ══ TABLE (year-over-year, latest reading per market year) ═════════════════════
 function latestValue(cmdty, region, myYear, meas){
+  if(meas === 'stock_to_use') return latestWorldSTU(cmdty, myYear);
+  if(isPsdYear(cmdty, myYear)){
+    const attrs = attrsForMeasure(cmdty, meas);
+    const v = attrs ? latestValueRaw(cmdty, region, myYear, attrs) : null;
+    if(v!=null) return v;
+  }
   const s = getSeries(cmdty, region, myYear, meas).filter(r=>r.value!=null);
   return s.length ? s[s.length-1].value : null;
 }
@@ -982,8 +1026,7 @@ function renderPriceChart(){
 
   const points = years.map(yr => {
     const price = region==='Others' ? othersRawLatest(commodity, yr, ['Avg. Farm Price']) : latestRaw(commodity, region, yr, ['Avg. Farm Price']);
-    const stuSeries = stockToUseSeriesForChart('World', yr);
-    const stu = stuSeries.length ? stuSeries[stuSeries.length-1].value : null;
+    const stu = latestWorldSTU(commodity, yr);
     return {year: yr, price, stu};
   });
 
@@ -1231,8 +1274,7 @@ function renderSTUTrend(){
         stuVal = r.length ? r[0].value : null;
       }
     } else {
-      const s = worldStockToUseSeries(commodity, yr).filter(r=>r.value!=null);
-      stuVal = s.length ? s[s.length-1].value : null;
+      stuVal = latestWorldSTU(commodity, yr);
     }
 
     let surplus = null;
