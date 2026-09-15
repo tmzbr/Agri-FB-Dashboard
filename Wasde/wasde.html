@@ -241,6 +241,31 @@ function yAxisPadding(values, padFrac=0.25, clampZero=false){
 // ══ DATA HELPERS ═════════════════════════════════════════════════════════════
 function measureSeries(cmdty, region, myYear, attrs, unit){
   if(!attrs.length) return [];
+  // World: consumo domestico vem do fechamento do balanco (BS+Prod+Imp-Exp-ES),
+  // igual ao "Domestic Consumption" do PSD. O "Domestic Total" publicado no WASDE
+  // nao fecha no World (exportacao != importacao por diferenca de ano-safra
+  // local) -- no milho 25/26 isso da ~22 Mt de diferenca. "Others" herda via World.
+  const domAttr = CMDTY_CONFIG[cmdty]?.demand[0];
+  if(region === 'World' && !unit && attrs.includes(domAttr)){
+    const rest = attrs.filter(a => a !== domAttr);
+    const restMap = {};
+    if(rest.length) measureSeries(cmdty, region, myYear, rest).forEach(r => restMap[r.wasde_number] = r.value);
+    return q(`
+      SELECT wasde_number, report_title,
+        SUM(CASE WHEN attribute='Beginning Stocks' THEN value END)
+        + SUM(CASE WHEN attribute='Production' THEN value END)
+        + SUM(CASE WHEN attribute='Imports' THEN value END)
+        - SUM(CASE WHEN attribute='Exports' THEN value END)
+        - SUM(CASE WHEN attribute='Ending Stocks' THEN value END) as value
+      FROM wasde_facts
+      WHERE commodity=? AND region='World' AND market_year=?
+        AND attribute IN ('Beginning Stocks','Production','Imports','Exports','Ending Stocks')
+        AND unit=(SELECT unit FROM wasde_facts WHERE commodity=? AND region='World' AND market_year=? AND attribute='Ending Stocks' LIMIT 1)
+      GROUP BY wasde_number, report_title
+      ORDER BY wasde_number
+    `, [cmdty, myYear, cmdty, myYear]).map(r => ({...r,
+      value: r.value==null ? null : (rest.length ? (restMap[r.wasde_number]!=null ? r.value + restMap[r.wasde_number] : null) : r.value)}));
+  }
   const ph = attrs.map(()=>'?').join(',');
   const unitClause = unit ? `AND unit=?` : '';
   const params = unit ? [cmdty, region, myYear, ...attrs, unit] : [cmdty, region, myYear, ...attrs];
@@ -366,7 +391,7 @@ function buildLayout(){
         </div>
       </div>
       <div class="tbl-wrap"><table><thead><tr id="tblHeadRow"></tr></thead><tbody id="tblBody"></tbody></table></div>
-      <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries.</div>
+      <div class="src">Source: USDA WASDE. Supply = Beginning Stocks + Production + Imports. Demand = Domestic Use + Exports. "Others" = World minus tracked countries. World Domestic Use = Beginning Stocks + Production + Imports − Exports − Ending Stocks (same basis as USDA PSD).</div>
     </div>
 
 
