@@ -1479,12 +1479,14 @@ def summary(conn):
         "WHERE data_referencia = (SELECT MAX(data_referencia) FROM crushing_spread) "
         "ORDER BY regiao"
     ).fetchall():
+        # Farelo (e portanto o spread) fica NULL enquanto a SECEX nao fecha o mes
+        fmt = lambda v: "n/d" if v is None else f"{v:.2f}"
         log.info(
             f"  {row['regiao']} ({row['data_referencia']}): "
-            f"soja={row['preco_soja_sc60']:.2f} R$/sc | "
-            f"farelo={row['preco_farelo_ton']:.2f} R$/t | "
-            f"bio={row['preco_bio_m3']:.2f} R$/m³ | "
-            f"SPREAD = {row['spread_brl_ton']:.2f} R$/t"
+            f"soja={fmt(row['preco_soja_sc60'])} R$/sc | "
+            f"farelo={fmt(row['preco_farelo_ton'])} R$/t | "
+            f"bio={fmt(row['preco_bio_m3'])} R$/m³ | "
+            f"SPREAD = {fmt(row['spread_brl_ton'])} R$/t"
         )
     log.info("=" * 60)
 
