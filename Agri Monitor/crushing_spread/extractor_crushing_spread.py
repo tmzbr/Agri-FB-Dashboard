@@ -815,9 +815,21 @@ def run_spread(conn):
 
     ld_spread = last_date(conn, "crushing_spread")
     start = (
-        datetime.strptime(ld_spread, "%Y-%m-%d").date() + timedelta(days=1)
+        # +7 (nao +1) para manter a grade semanal; +1 deslocava um dia a cada run
+        datetime.strptime(ld_spread, "%Y-%m-%d").date() + timedelta(days=7)
         if ld_spread else HISTORY_START
     )
+    # Linhas recentes gravadas sem farelo/bio (fonte ainda nao publicada)
+    # precisam ser recalculadas quando o dado chegar — senao ficam NULL para
+    # sempre, ja que o incremental so avanca a partir da ultima data.
+    pend = conn.execute(
+        "SELECT MIN(data_referencia) FROM crushing_spread "
+        "WHERE (preco_farelo_ton IS NULL OR preco_bio_m3 IS NULL) "
+        "AND data_referencia >= ?",
+        ((TODAY - timedelta(days=120)).strftime("%Y-%m-%d"),),
+    ).fetchone()[0]
+    if pend:
+        start = min(start, datetime.strptime(pend, "%Y-%m-%d").date())
 
     ptax_map   = dict(zip(ptax_df["data_referencia"],
                           ptax_df["ptax_venda"].astype(float)))
