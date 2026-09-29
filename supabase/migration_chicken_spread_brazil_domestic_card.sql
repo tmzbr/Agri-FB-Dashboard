@@ -1,5 +1,5 @@
 -- ============================================================================
--- Chicken Spread Brazil: Exports (id 10) and Domestic (id 33) as two cards
+-- Brazil Chicken Spread Tracker: Exports (id 10) and Domestic (id 33) as two cards
 -- ============================================================================
 -- Each card opens its own page; inside both, the Exports | Domestic subtabs
 -- still switch between the two pages.
@@ -10,7 +10,7 @@
 -- ----------------------------------------------------------------------------
 
 update public.dashboards set
-  title       = 'Chicken Spread Brazil — Exports',
+  title       = 'Brazil Chicken Spread Tracker — Exports',
   description = 'Weekly and monthly SECEX chicken export price vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag. NCM 0207 with BCB PTAX FX.',
   source      = 'MDIC · CEPEA/ESALQ · BCB',
   tags        = '{"Brazil","Chicken","Spread","SECEX","CEPEA"}'
@@ -21,7 +21,7 @@ insert into public.dashboards
    tags, display_order, visible_to_all, coming_soon)
 values
   (33, 'fnb', 'chicken',
-   'Chicken Spread Brazil — Domestic',
+   'Brazil Chicken Spread Tracker — Domestic',
    'Daily, weekly and monthly CEPEA fresh chicken wholesale price (SP, BRL/kg) vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
    'CEPEA/ESALQ',
    '', '', '#',

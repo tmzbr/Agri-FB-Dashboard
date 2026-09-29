@@ -769,7 +769,7 @@ const STATIC_DASHBOARDS = [
     id: 10,
     sector: 'fnb',
     subsector: 'chicken',
-    title: 'Chicken Spread Brazil — Exports',
+    title: 'Brazil Chicken Spread Tracker — Exports',
     description: 'Weekly and monthly SECEX chicken export price vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag. NCM 0207 with BCB PTAX FX.',
     source: 'MDIC · CEPEA/ESALQ · BCB',
     tags: ['Brazil', 'Chicken', 'Spread', 'SECEX', 'CEPEA'],
@@ -783,7 +783,7 @@ const STATIC_DASHBOARDS = [
     id: 33,
     sector: 'fnb',
     subsector: 'chicken',
-    title: 'Chicken Spread Brazil — Domestic',
+    title: 'Brazil Chicken Spread Tracker — Domestic',
     description: 'Daily, weekly and monthly CEPEA fresh chicken wholesale price (SP, BRL/kg) vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
     source: 'CEPEA/ESALQ',
     tags: ['Brazil', 'Chicken', 'Spread', 'Domestic', 'CEPEA'],
@@ -1098,7 +1098,7 @@ function getDashes(sector, subsector){
    Use the numeric ID from the Supabase dashboards table.
    To add a new module: 2: 'Agri Monitor/secex/exportacoes_dashboard.html'     */
 /* Cards that get the pulsing NEW badge next to the title — remove the id to drop it. */
-const NEW_DASH_IDS = [33, 34];   // 33 = Chicken Spread Brazil — Domestic · 34 = Cattle Cycle
+const NEW_DASH_IDS = [33, 34];   // 33 = Brazil Chicken Spread Tracker — Domestic · 34 = Cattle Cycle
 
 const DASH_MODULES = {
   1: 'Agri Monitor/conab/producao_dashboard.html',
