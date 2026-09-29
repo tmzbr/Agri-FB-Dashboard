@@ -114,12 +114,23 @@ def fetch_sidra(conn):
         slot = vals.setdefault(key, [None, None])
         slot[0 if row["D2C"] == "284" else 1] = _num(row["V"])
 
-    conn.executemany(
-        "INSERT OR REPLACE INTO br_slaughter_raw(period, herd, heads, carcass_kg) VALUES(?,?,?,?)",
-        [(p, h, v[0], v[1]) for (p, h), v in vals.items()])
-    conn.commit()
     periods = sorted({p for p, _ in vals})
     print(f"  [SIDRA] {len(vals)} rows · {periods[0]} → {periods[-1]}")
+
+    # The workflow polls daily around IBGE's release dates — leave the DB
+    # file untouched (so nothing gets committed) unless IBGE changed something.
+    new = {(p, h, v[0], v[1]) for (p, h), v in vals.items()}
+    old = set(conn.execute("SELECT period, herd, heads, carcass_kg FROM br_slaughter_raw"))
+    if new == old:
+        print("  [SIDRA] no change since last run — nothing to update.")
+        return False
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO br_slaughter_raw(period, herd, heads, carcass_kg) VALUES(?,?,?,?)",
+        sorted(new))
+    conn.commit()
+    print(f"  [SIDRA] {len(new - old)} new/revised rows")
+    return True
 
 
 def materialise(conn):
@@ -162,9 +173,9 @@ def main():
     print(f"[DB] Opening {DB_PATH}")
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    fetch_sidra(conn)
-    materialise(conn)
-    conn.execute("VACUUM")
+    if fetch_sidra(conn):
+        materialise(conn)
+        conn.execute("VACUUM")
     conn.close()
     print(f"\n✓ Done. {DB_PATH.name} = {DB_PATH.stat().st_size // 1024} KB")
 

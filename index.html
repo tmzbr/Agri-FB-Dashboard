@@ -166,6 +166,14 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .dash-card-body{flex:1;min-width:0;}
 .dash-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:5px;}
 .dash-card-title{font-size:14px;font-weight:700;color:var(--black);}
+/* Pulsing NEW badge beside a card title (same look as the Domestic subtab badge) */
+.new-badge{display:inline-block;margin-left:7px;padding:1px 6px 2px;border-radius:9px;
+  background:#FF5500;color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;
+  line-height:13px;vertical-align:2px;box-shadow:0 0 0 0 rgba(255,85,0,.55);
+  animation:newPulse 1.8s ease-out infinite;}
+@keyframes newPulse{0%{box-shadow:0 0 0 0 rgba(255,85,0,.55);}
+  70%{box-shadow:0 0 0 7px rgba(255,85,0,0);}100%{box-shadow:0 0 0 0 rgba(255,85,0,0);}}
+@media (prefers-reduced-motion:reduce){.new-badge{animation:none;}}
 .dash-card-source{font-size:11.5px;color:#aaa;font-weight:600;letter-spacing:.3px;white-space:nowrap;flex-shrink:0;}
 .dash-card-desc{font-size:12.5px;color:var(--gray-mid);line-height:1.55;}
 .dash-card-note{font-size:11.5px;color:#E05C2A;margin-top:6px;}
@@ -1075,6 +1083,9 @@ function getDashes(sector, subsector){
 /* ── Module registry: maps dashboard ID → iframe src ────────────────────────
    Use the numeric ID from the Supabase dashboards table.
    To add a new module: 2: 'Agri Monitor/secex/exportacoes_dashboard.html'     */
+/* Cards that get the pulsing NEW badge next to the title — remove the id to drop it. */
+const NEW_DASH_IDS = [34];   // 34 = Cattle Cycle
+
 const DASH_MODULES = {
   1: 'Agri Monitor/conab/producao_dashboard.html',
   2: 'Agri Monitor/imea/imea_margin_dashboard.html',
@@ -1147,7 +1158,7 @@ function renderContent(){
       return `<div class="dash-card">
         <div class="dash-card-icon">&#128200;</div>
         <div class="dash-card-body">
-          <div class="dash-card-top"><div class="dash-card-title">${esc(d.title)}</div><div class="dash-card-source">${esc(d.source||'')}</div></div>
+          <div class="dash-card-top"><div class="dash-card-title">${esc(d.title)}${NEW_DASH_IDS.includes(Number(d.id))?'<span class="new-badge">NEW</span>':''}</div><div class="dash-card-source">${esc(d.source||'')}</div></div>
           <div class="dash-card-desc">${esc(d.description)}</div>
           ${noteHtml}${footerHtml}
           <div class="dash-card-meta"><div class="dash-tags">${tags}</div>${cta}</div>

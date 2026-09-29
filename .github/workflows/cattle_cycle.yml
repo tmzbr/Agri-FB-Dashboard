@@ -1,11 +1,18 @@
 name: Refresh Cattle Cycle DB
 
 on:
-  # Mondays 12:00 UTC. IBGE releases the quarterly slaughter survey (SIDRA
-  # 1092) ~2.5 months after quarter end — a weekly check picks it up within
-  # days, and each run re-downloads the full series so revisions land too.
+  # IBGE "Pesquisas Trimestrais do Abate" (SIDRA 1092) calendar, 12:00 BRT:
+  #   full release  → between the 5th and 18th of Mar / Jun / Sep / Dec
+  #                   (2024-26: 14/03 05/06 05/09 05/12 · 18/03 11/06 10/09
+  #                    10/12 · 18/03 16/06 15/09 15/12; next 23/03/2027)
+  #   first results → ~9th–19th of Feb / May / Aug / Nov
+  # The day moves every quarter, so poll daily on the 5th–25th of those
+  # months at 16:00 UTC (13:00 BRT, 1h after release). The extractor leaves
+  # the DB untouched unless IBGE published something, so quiet days make no
+  # commit. The monthly run on the 1st catches off-calendar revisions.
   schedule:
-    - cron: '0 12 * * 1'
+    - cron: '0 16 5-25 2,3,5,6,8,9,11,12 *'
+    - cron: '0 16 1 * *'
 
   workflow_dispatch:
 
