@@ -318,7 +318,7 @@ tr:hover td{background:#FFF8F5;}
       <div class="chart-card-header">
         <div class="chart-title">Chicken Price vs. Grain Cost — Dual Axis</div>
         <div class="chart-stat" style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;">
-          <span><span style="color:var(--orange);font-weight:700;">■</span> Chilled Chicken (BRL/kg, right)</span>
+          <span><span style="color:var(--orange);font-weight:700;">■</span> Fresh Chicken (BRL/kg, right)</span>
           <span><span style="color:#555555;font-weight:700;">■</span> Grain Cost (BRL/bag 60kg, left)</span>
         </div>
       </div>
@@ -370,7 +370,7 @@ tr:hover td{background:#FFF8F5;}
         <div>
           <div class="chart-title">Chicken Price &amp; Grain Cost — <span id="comp-period-label">Period Comparison</span></div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
-            <span style="color:var(--orange);font-weight:700;">■</span> Chilled Chicken BRL/kg (left axis)
+            <span style="color:var(--orange);font-weight:700;">■</span> Fresh Chicken BRL/kg (left axis)
             &nbsp;·&nbsp;
             <span style="color:#555;font-weight:700;">■</span> Grain Cost BRL/bag (right axis)
           </div>
@@ -428,7 +428,7 @@ tr:hover td{background:#FFF8F5;}
 
       <div class="param-info-label">Current Prices</div>
       <div class="param-info-row">
-        <span class="param-info-name">Chilled Chicken SP</span>
+        <span class="param-info-name">Fresh Chicken SP</span>
         <span class="param-info-val" id="info-frango">—</span>
       </div>
       <div class="param-info-row">
@@ -466,7 +466,7 @@ tr:hover td{background:#FFF8F5;}
   </div><!-- /bottom-row -->
 
   <div class="note-bar">
-    Sources: <em>CEPEA/ESALQ</em> Chilled Chicken (Frango Resfriado) — wholesale, State of SP, BRL/kg, daily ·
+    Sources: <em>CEPEA/ESALQ</em> Fresh Chicken (Frango Resfriado) — wholesale, State of SP, BRL/kg, daily ·
     <em>CEPEA/ESALQ</em> Corn ESALQ/BM&amp;F + Soy PNA (BRL/sc60kg) ·
     Spread = Chicken Price BRL/kg ÷ Grain Basket BRL/kg ·
     Monthly grain = avg of month M−lag (same as Exports) · Daily grain = 30-day avg ending d−lag · Weekly = Mon–Sun average · Grain basket weights &amp; lag adjustable above ·
@@ -841,7 +841,7 @@ function renderCharts() {
           borderColor: '#555555', backgroundColor: 'transparent',
           borderWidth: 2, pointRadius: ptRadius, pointHoverRadius: 4,
           tension: 0.3, yAxisID: 'yBag', order: 2 },
-        { label: 'Chilled Chicken (BRL/kg)', data: frango,
+        { label: 'Fresh Chicken (BRL/kg)', data: frango,
           borderColor: '#FF5500', backgroundColor: 'transparent',
           borderWidth: 2, pointRadius: ptRadius, pointHoverRadius: 4,
           tension: 0.3, yAxisID: 'yBrl', order: 1 },
@@ -978,7 +978,7 @@ function renderTable() {
 
   head.innerHTML = `<tr>
     <th style="text-align:left;width:16%;">${firstCol}</th>
-    <th style="width:17%;">Chilled Chicken${sub('BRL/kg')}</th>
+    <th style="width:17%;">Fresh Chicken${sub('BRL/kg')}</th>
     <th style="width:17%;">Grain Cost${sub(lagNote)}</th>
     <th style="width:17%;">Grain Cost${sub('BRL/kg')}</th>
     <th style="width:13%;">${nCol ? 'N' + sub(nCol) : ''}</th>
@@ -1069,7 +1069,7 @@ function renderComparisonCharts() {
     data: {
       labels: REF.labels,
       datasets: [
-        { label: 'Chilled Chicken (BRL/kg)', data: REF.frango, backgroundColor: frBg,
+        { label: 'Fresh Chicken (BRL/kg)', data: REF.frango, backgroundColor: frBg,
           borderWidth: 0, yAxisID: 'yFr', datalabels: barLabel('#FF5500', v => v.toFixed(2)) },
         { label: 'Grain Cost (BRL/bag)', data: REF.grain, backgroundColor: grBg,
           borderWidth: 0, yAxisID: 'yGr', datalabels: barLabel('#555', v => v.toFixed(1)) },

@@ -7,7 +7,7 @@ Chicken Spread Tracker; the "Exports" tab reads chicken_bz.db).
 
 Same spread construction as the export tracker (extractor_chicken_bz.py),
 with a single change: the price leg is the domestic wholesale price of
-chilled chicken (CEPEA "Frango Resfriado – Estado SP", R$/kg) instead of the
+fresh chicken (CEPEA "Frango Resfriado – Estado SP", R$/kg) instead of the
 SECEX export price converted to BRL.
 
   spread = (frango_brl_kg − grain_brl_kg) / frango_brl_kg

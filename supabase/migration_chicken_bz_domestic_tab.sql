@@ -6,7 +6,7 @@
 -- Safe to re-run. Run in the Supabase SQL editor.
 -- ----------------------------------------------------------------------------
 update public.dashboards set
-  description = 'Exports and Domestic tabs. Chicken price vs. grain basket spread — SECEX export price (NCM 0207, BCB PTAX FX) and CEPEA chilled chicken wholesale SP (BRL/kg, daily). Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
+  description = 'Exports and Domestic tabs. Chicken price vs. grain basket spread — SECEX export price (NCM 0207, BCB PTAX FX) and CEPEA fresh chicken wholesale SP (BRL/kg, daily). Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
   source      = 'MDIC · CEPEA/ESALQ · BCB',
   tags        = '{"Brazil","Chicken","Spread","SECEX","CEPEA","Domestic"}'
 where id = 10;
