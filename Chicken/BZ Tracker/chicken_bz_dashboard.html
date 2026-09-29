@@ -80,6 +80,15 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   padding:4px 10px;white-space:nowrap;}
 .top-latest strong{color:var(--orange);}
 
+/* ── SUB-TABS (Exports | Domestic) ── */
+.subtab-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:flex-end;padding:0 20px;height:38px;gap:4px;flex-shrink:0;}
+.subtab{padding:9px 16px 8px;font-size:12.5px;font-weight:600;color:var(--gray-mid);
+  cursor:pointer;border:none;background:none;font-family:var(--font);
+  border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.subtab:hover:not(.active){color:var(--gray-dark);}
+.subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
 
@@ -271,6 +280,12 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-latest">Latest monthly: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
 <div class="orange-rule"></div>
+
+<!-- SUB-TABS: both views of the BZ Chicken Spread Tracker (portal module 10) -->
+<div class="subtab-bar">
+  <button class="subtab active">Exports</button>
+  <button class="subtab" onclick="location.replace('chicken_bz_domestic_dashboard.html')">Domestic</button>
+</div>
 
 <!-- VIEW CONTROLS -->
 <div class="controls-bar">

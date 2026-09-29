@@ -80,6 +80,15 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   padding:4px 10px;white-space:nowrap;}
 .top-latest strong{color:var(--orange);}
 
+/* ── SUB-TABS (Exports | Domestic) ── */
+.subtab-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:flex-end;padding:0 20px;height:38px;gap:4px;flex-shrink:0;}
+.subtab{padding:9px 16px 8px;font-size:12.5px;font-weight:600;color:var(--gray-mid);
+  cursor:pointer;border:none;background:none;font-family:var(--font);
+  border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.subtab:hover:not(.active){color:var(--gray-dark);}
+.subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
 
@@ -266,11 +275,17 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Brazil Chicken Domestic Spread Tracker</div>
-    <div class="top-sub">Spread = (CEPEA Chilled Chicken SP − Grain Cost) ÷ Chicken Price · BRL/kg</div>
+    <div class="top-sub">Spread = Chicken Price ÷ Grain Cost (×) — CEPEA Frango Resfriado SP · BRL/kg</div>
   </div>
   <div class="top-latest">Latest: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
 <div class="orange-rule"></div>
+
+<!-- SUB-TABS: both views of the BZ Chicken Spread Tracker (portal module 10) -->
+<div class="subtab-bar">
+  <button class="subtab" onclick="location.replace('chicken_bz_dashboard.html')">Exports</button>
+  <button class="subtab active">Domestic</button>
+</div>
 
 <!-- VIEW CONTROLS -->
 <div class="controls-bar">
@@ -291,7 +306,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Chicken Domestic Spread — Margin over Grain Cost (%)</div>
+        <div class="chart-title">Chicken Domestic Spread — Chicken Price ÷ Grain Cost (×)</div>
         <div class="chart-stat">
           Solid = Spread &nbsp;·&nbsp; Dashed = Period Avg &nbsp;·&nbsp;
           Avg: <strong id="avg-display">—</strong>
@@ -316,7 +331,7 @@ tr:hover td{background:#FFF8F5;}
     <div class="chart-card">
       <div class="chart-card-header">
         <div>
-          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year (%)</div>
+          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year (×)</div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
             Each line = one year &nbsp;·&nbsp;
             <span style="color:var(--orange);font-weight:700;">—</span> = current year &nbsp;·&nbsp;
@@ -368,7 +383,7 @@ tr:hover td{background:#FFF8F5;}
         <div>
           <div class="chart-title">Spread — <span id="comp-period-label2">Period Comparison</span></div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
-            (Chicken − Grain) ÷ Chicken, %
+            Chicken Price ÷ Grain Cost (×)
           </div>
         </div>
       </div>
@@ -453,8 +468,8 @@ tr:hover td{background:#FFF8F5;}
   <div class="note-bar">
     Sources: <em>CEPEA/ESALQ</em> Chilled Chicken (Frango Resfriado) — wholesale, State of SP, BRL/kg, daily ·
     <em>CEPEA/ESALQ</em> Corn ESALQ/BM&amp;F + Soy PNA (BRL/sc60kg) ·
-    Spread = (Chicken BRL/kg − Grain Basket BRL/kg) ÷ Chicken BRL/kg ·
-    Weekly = Mon–Sun average of trading days · Grain basket weights &amp; lag adjustable above ·
+    Spread = Chicken Price BRL/kg ÷ Grain Basket BRL/kg ·
+    Monthly grain = avg of month M−lag (same as Exports) · Daily grain = 30-day avg ending d−lag · Weekly = Mon–Sun average · Grain basket weights &amp; lag adjustable above ·
     Q/M/W/D tab drives comparison charts + table
   </div>
 
@@ -464,6 +479,7 @@ tr:hover td{background:#FFF8F5;}
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
 let FRANGO_RAW    = [];  // [{ dt, brl_kg }] daily, immutable
 let CEPEA_MONTHLY = {};  // { "YYYY-MM": { corn, soy } } — raw BRL/sc60kg
+let GRAIN_DAILY   = { dt: [], corn: [0], soy: [0] };  // dates + prefix sums (BRL/sc60kg)
 
 let DAILY = [], WEEKLY = [], MONTHLY = [], QUARTERLY = [];
 let SEASONALITY = {};
@@ -550,6 +566,31 @@ function computeGrainCost(year, month) {
   return (cornWeight * g.corn + (1 - cornWeight) * g.soy) / 60;
 }
 
+// Daily/weekly grain: average basket over the 30 days ending (d − lag months).
+// Using the monthly figure here would make the line step at every turn of the
+// month; this keeps the same level without the steps (extractor does the same).
+const GRAIN_WINDOW_DAYS = 30;
+function upperBound(arr, x) {           // first index with arr[i] > x
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] <= x) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+function dailyGrainCost(dt) {
+  const y = +dt.slice(0, 4), m = +dt.slice(5, 7) - 1 - grainLag, d = +dt.slice(8, 10);
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const anchor = new Date(Date.UTC(y, m, Math.min(d, lastDay)));
+  const hiKey = anchor.toISOString().slice(0, 10);
+  anchor.setUTCDate(anchor.getUTCDate() - GRAIN_WINDOW_DAYS);
+  const G = GRAIN_DAILY;
+  const hi = upperBound(G.dt, hiKey);
+  let lo = upperBound(G.dt, anchor.toISOString().slice(0, 10));
+  if (hi === 0) return null;
+  if (lo === hi) lo = hi - 1;           // no quote inside the window → last one before it
+  const n = hi - lo;
+  const corn = (G.corn[hi] - G.corn[lo]) / n, soy = (G.soy[hi] - G.soy[lo]) / n;
+  return (cornWeight * corn + (1 - cornWeight) * soy) / 60;
+}
+
 const spreadOf = (px, g) => (px != null && g != null && px > 0) ? (px - g) / px : null;
 const avg = arr => { const v = arr.filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
 
@@ -574,12 +615,11 @@ function recomputeAll(skipRender) {
   };
 
   DAILY = FRANGO_RAW.map(r => {
-    const g = grainFor(+r.dt.slice(0, 4), +r.dt.slice(5, 7));
+    const g = dailyGrainCost(r.dt);
     return { period: r.dt, date: r.dt, frango: r.brl_kg, grain: g, spread: spreadOf(r.brl_kg, g) };
   });
 
-  // Weekly (Mon–Sun): grain = mean of the daily lagged values, so a week that
-  // straddles two months blends both months' basket like the price does.
+  // Weekly (Mon–Sun): grain = mean of the daily values of the week.
   const wk = {};
   DAILY.forEach(r => { const k = isoMonday(r.date); (wk[k] = wk[k] || []).push(r); });
   WEEKLY = Object.keys(wk).sort().map(k => {
@@ -642,6 +682,14 @@ async function loadDB() {
       WHERE  corn_brl_sc IS NOT NULL AND soy_brl_sc IS NOT NULL
       GROUP  BY period ORDER BY period`);
     if (c.length) c[0].values.forEach(r => { CEPEA_MONTHLY[r[0]] = { corn: r[1], soy: r[2] }; });
+
+    const gd = db.exec(`SELECT dt, corn_brl_sc, soy_brl_sc FROM _cepea_grain_raw
+                        WHERE corn_brl_sc IS NOT NULL AND soy_brl_sc IS NOT NULL ORDER BY dt`);
+    if (gd.length) gd[0].values.forEach(([dt, corn, soy]) => {
+      GRAIN_DAILY.dt.push(dt);
+      GRAIN_DAILY.corn.push(GRAIN_DAILY.corn[GRAIN_DAILY.corn.length - 1] + corn);
+      GRAIN_DAILY.soy.push(GRAIN_DAILY.soy[GRAIN_DAILY.soy.length - 1] + soy);
+    });
     db.close();
 
     recomputeAll(true);
@@ -650,7 +698,7 @@ async function loadDB() {
     const lastD = DAILY.filter(r => r.spread != null).slice(-1)[0];
     if (lastD) {
       document.getElementById('latest-period').textContent = lastD.date;
-      document.getElementById('latest-spread').textContent = pct(lastD.spread);
+      document.getElementById('latest-spread').textContent = lastD.spread.toFixed(2) + '×';
     }
     updateCurrentPrices();
     render();
@@ -730,7 +778,7 @@ function niceScale(vals, nTicks, bottomPadFrac) {
   return { min: fix(axMin), max: fix(axMax), stepSize: step };
 }
 
-const pct = (v, dec = 1) => v == null ? '—' : (v * 100).toFixed(dec) + '%';
+const xf = (v, dec = 3) => v == null ? '—' : v.toFixed(dec) + '×';
 
 const TOOLTIP = { backgroundColor: '#333', titleColor: '#ccc', bodyColor: '#eee',
                   borderColor: '#555', borderWidth: 1 };
@@ -745,7 +793,7 @@ function renderCharts() {
   const frango  = rows.map(r => r.frango);
   const grainBag = rows.map(r => r.grain != null ? r.grain * 60 : null);
   const mean    = avg(spreads);
-  document.getElementById('avg-display').textContent = pct(mean);
+  document.getElementById('avg-display').textContent = xf(mean, 2);
 
   const ptRadius = rows.length > 60 ? 0 : 2;
 
@@ -770,11 +818,11 @@ function renderCharts() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false }, datalabels: { display: false },
-        tooltip: { ...TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${pct(ctx.parsed.y, 2)}` } },
+        tooltip: { ...TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label} (×): ${xf(ctx.parsed.y)}` } },
       },
       scales: {
         x: { ticks: XTICKS, grid: { color: 'rgba(0,0,0,0.04)' } },
-        y: { ticks: { color: '#999', font: { size: 9 }, callback: v => (v * 100).toFixed(0) + '%' },
+        y: { ticks: { color: '#999', font: { size: 9 }, callback: v => v.toFixed(2) + '×' },
              grid: { color: 'rgba(0,0,0,0.05)' } },
       },
     },
@@ -900,7 +948,7 @@ function renderSeasonalityChart() {
             label: ctx => {
               if (ctx.parsed.y == null) return null;
               const lbl = ctx.dataset.label;
-              return `${lbl.startsWith('Max/Min') ? 'Band Max' : lbl}: ${pct(ctx.parsed.y, 2)}`;
+              return `${lbl.startsWith('Max/Min') ? 'Band Max' : lbl}: ${xf(ctx.parsed.y)}`;
             },
           },
         },
@@ -908,9 +956,9 @@ function renderSeasonalityChart() {
       scales: {
         x: { ticks: { color: '#999', font: { size: 10 }, maxRotation: 0 },
              grid: { color: 'rgba(0,0,0,0.04)' } },
-        y: { ticks: { color: '#888', font: { size: 9 }, callback: v => (v * 100).toFixed(0) + '%' },
+        y: { ticks: { color: '#888', font: { size: 9 }, callback: v => v.toFixed(2) + '×' },
              grid: { color: 'rgba(0,0,0,0.05)' },
-             title: { display: true, text: 'Margin over grain (%)', color: '#999', font: { size: 9 } } },
+             title: { display: true, text: 'Price / Grain Cost (×)', color: '#999', font: { size: 9 } } },
       },
     },
   });
@@ -919,7 +967,7 @@ function renderSeasonalityChart() {
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 const sub = t => `<br><span style="font-weight:400;font-size:9px;text-transform:none;">${t}</span>`;
 const fmt = (v, dec = 2) => v == null ? NA : v.toFixed(dec);
-const fmtSpread = v => v == null ? NA : `<span class="td-spread">${pct(v)}</span>`;
+const fmtSpread = v => v == null ? NA : `<span class="td-spread">${xf(v)}</span>`;
 
 function renderTable() {
   const head = document.getElementById('table-head');
@@ -934,7 +982,7 @@ function renderTable() {
     <th style="width:17%;">Grain Cost${sub(lagNote)}</th>
     <th style="width:17%;">Grain Cost${sub('BRL/kg')}</th>
     <th style="width:13%;">${nCol ? 'N' + sub(nCol) : ''}</th>
-    <th style="width:20%;">Spread${sub('(chicken − grain) / chicken')}</th>
+    <th style="width:20%;">Spread${sub('price / grain (×)')}</th>
   </tr>`;
   // Daily history is ~5.7k rows — cap the table so the DOM stays light.
   const rows = tabRows().slice().reverse().slice(0, currentTab === 'daily' ? 750 : undefined);
@@ -1057,18 +1105,18 @@ function renderComparisonCharts() {
     data: {
       labels: REF.labels,
       datasets: [{ label: 'Spread', data: REF.spread, backgroundColor: frBg, borderWidth: 0,
-                   datalabels: barLabel('#FF5500', v => pct(v)) }],
+                   datalabels: barLabel('#FF5500', v => xf(v)) }],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false }, datalabels: { display: false },
-        tooltip: { ...TOOLTIP, callbacks: { label: ctx => `Spread: ${pct(ctx.parsed.y, 2)}` } },
+        tooltip: { ...TOOLTIP, callbacks: { label: ctx => `Spread: ${xf(ctx.parsed.y)}` } },
       },
       scales: {
         y: { min: spScale.min, max: spScale.max,
              ticks: { color: '#888', font: { size: 9 }, stepSize: spScale.stepSize,
-                      callback: v => (v * 100).toFixed(1) + '%' },
+                      callback: v => v.toFixed(3) + '×' },
              grid: { color: 'rgba(0,0,0,0.05)' } },
         x: { ticks: { color: '#999', font: { size: 9 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.04)' } },
       },

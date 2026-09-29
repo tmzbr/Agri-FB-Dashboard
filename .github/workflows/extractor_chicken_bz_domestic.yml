@@ -3,7 +3,7 @@ name: Refresh BZ Chicken Domestic DB
 on:
   # Mon / Wed / Fri at 21:00 UTC (18:00 BRT) — an hour after "Refresh BZ
   # Chicken DB", so the grain basket copied from chicken_bz.db is fresh.
-  # CEPEA shows the last 15 trading days, so a 2–3 day cadence never misses one.
+  # Each run downloads CEPEA's full series xls, so the cadence can't miss a day.
   schedule:
     - cron: '0 21 * * 1,3,5'
 
@@ -36,8 +36,9 @@ jobs:
           python-version: '3.11'
 
       # requests: imported by extractor_chicken_bz (grain basket helper)
+      # xlrd:     parses the CEPEA full-series xls
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests xlrd
 
       - name: Run extractor
         run: python extractor_chicken_bz_domestic.py
