@@ -291,7 +291,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: both views of the BZ Chicken Spread Tracker (portal module 10) -->
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
-  <button class="subtab" onclick="location.replace('chicken_bz_domestic_dashboard.html')">Domestic<span class="new-badge">NEW</span></button>
+  <button class="subtab" onclick="openSiblingModule('chicken_bz_domestic_dashboard.html', 33)">Domestic<span class="new-badge">NEW</span></button>
 </div>
 
 <!-- VIEW CONTROLS -->
@@ -484,6 +484,14 @@ tr:hover td{background:#FFF8F5;}
 </div><!-- main-wrap -->
 
 <script>
+// Exports | Domestic subtabs: each is its own portal module (ids 10 / 33).
+// Tell the portal first so it logs the switch like a card click, then go.
+function openSiblingModule(file, moduleId) {
+  if (window.parent && window.parent !== window)
+    window.parent.postMessage({ action: 'openModule', id: moduleId }, location.origin);
+  location.replace(file);
+}
+
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
 let MONTHLY_RAW  = [];   // original rows from DB (immutable)
 let WEEKLY_RAW   = [];   // original rows from DB (immutable)

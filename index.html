@@ -1045,6 +1045,24 @@ function openDashView(id){
   renderContent();
 }
 function closeDashView(){ STATE.activeDash=null; renderContent(); }
+/* A module page asked to switch to a sibling module (e.g. the Exports |
+   Domestic subtabs of the chicken spread tracker). The iframe navigates by
+   itself; here we log it exactly like a card click and retitle the header. */
+function switchDashInPlace(id){
+  const d=STATE.dashboards.find(x=>Number(x.id)===id);
+  if(!d||d.coming_soon) return;
+  STATE.activeDash=d;
+  logEvent('dash_open', d);
+  const t=document.querySelector('.dash-view-title'); if(t) t.textContent=d.title;
+}
+/* Messages from the open module iframe (same origin only). */
+window.addEventListener('message', e=>{
+  if(e.origin!==location.origin || !e.data || typeof e.data!=='object') return;
+  const frame=document.querySelector('.dash-view-body iframe');
+  if(!frame || e.source!==frame.contentWindow) return;
+  if(e.data.action==='closeDash')  closeDashView();
+  if(e.data.action==='openModule') switchDashInPlace(Number(e.data.id));
+});
 function handleSearch(q){ STATE.searchQuery=q; renderContent(); }
 
 /* ══ RENDER ══ */
@@ -2126,6 +2144,14 @@ async function logEvent(type, dash){
 }
 
 /* ══ ANALYTICS PANE ══ */
+/* Module name for a log row: the module's CURRENT title looked up by id, so
+   a renamed card keeps one history (e.g. "BZ Chicken Spread Tracker" →
+   "Brazil Chicken Spread Tracker — Exports", both id 10). Falls back to the
+   title stored at click time for modules that no longer exist. */
+function logDashTitle(l){
+  const d=l.dash_id!=null && STATE.dashboards.find(x=>Number(x.id)===Number(l.dash_id));
+  return (d&&d.title) || l.dash_title || 'Unknown';
+}
 async function buildPaneAnalytics(){
   const isAll = STATE.analyticsPeriod === 'all';
   const days  = STATE.analyticsPeriod;
@@ -2164,7 +2190,7 @@ async function buildPaneAnalytics(){
   // Dash opens by title, with unique-user / unique-client counts per module
   const dashStats = {};
   dashOpens.forEach(l=>{
-    const t=l.dash_title||'Unknown';
+    const t=logDashTitle(l);
     if(!dashStats[t]) dashStats[t]={opens:0, users:new Set(), clients:new Set()};
     dashStats[t].opens++;
     if(l.user_email) dashStats[t].users.add(l.user_email.toLowerCase());
@@ -2259,7 +2285,7 @@ async function buildPaneAnalytics(){
 
   const recentRows = recent.map(l=>{
     const icon = l.event_type==='login'?'&#128275;':'&#128200;';
-    const label= l.event_type==='login'?'Login':`Opened: ${esc(l.dash_title||'')}`;
+    const label= l.event_type==='login'?'Login':`Opened: ${esc(logDashTitle(l))}`;
     const time = new Date(l.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
     return `<tr><td>${icon}</td><td>${esc(l.user_name||l.user_email)}</td><td>${label}</td><td style="color:var(--gray-mid);white-space:nowrap;">${time}</td></tr>`;
   }).join('');
@@ -2397,7 +2423,7 @@ async function exportAnalyticsExcel(days){
     'User Name':  l.user_name||'',
     'Email':      l.user_email||'',
     'Event':      l.event_type==='login'?'Login':'Dashboard Open',
-    'Dashboard':  l.dash_title||'',
+    'Dashboard':  l.event_type==='login'?'':logDashTitle(l),
     'Sector':     l.sector||'',
     'Subsector':  l.subsector||'',
   }));

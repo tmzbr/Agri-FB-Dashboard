@@ -290,7 +290,7 @@ tr:hover td{background:#FFF8F5;}
 
 <!-- SUB-TABS: both views of the BZ Chicken Spread Tracker (portal module 10) -->
 <div class="subtab-bar">
-  <button class="subtab" onclick="location.replace('chicken_bz_dashboard.html')">Exports</button>
+  <button class="subtab" onclick="openSiblingModule('chicken_bz_dashboard.html', 10)">Exports</button>
   <button class="subtab active">Domestic<span class="new-badge">NEW</span></button>
 </div>
 
@@ -483,6 +483,14 @@ tr:hover td{background:#FFF8F5;}
 </div><!-- main-wrap -->
 
 <script>
+// Exports | Domestic subtabs: each is its own portal module (ids 10 / 33).
+// Tell the portal first so it logs the switch like a card click, then go.
+function openSiblingModule(file, moduleId) {
+  if (window.parent && window.parent !== window)
+    window.parent.postMessage({ action: 'openModule', id: moduleId }, location.origin);
+  location.replace(file);
+}
+
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
 let FRANGO_RAW    = [];  // [{ dt, brl_kg }] daily, immutable
 let CEPEA_MONTHLY = {};  // { "YYYY-MM": { corn, soy } } — raw BRL/sc60kg
