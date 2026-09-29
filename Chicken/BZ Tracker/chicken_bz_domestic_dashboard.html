@@ -1092,6 +1092,7 @@ function renderComparisonCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },   // room for the label above the tallest bar
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
@@ -1124,6 +1125,7 @@ function renderComparisonCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },   // room for the label above the tallest bar
       plugins: {
         legend: { display: false }, datalabels: { display: false },
         tooltip: { ...TOOLTIP, callbacks: { label: ctx => `Spread: ${xf(ctx.parsed.y)}` } },
