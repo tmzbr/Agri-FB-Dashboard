@@ -173,11 +173,6 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .dash-card-meta{margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .dash-tags{display:flex;gap:5px;flex-wrap:wrap;}
 .dash-tag{font-size:10.5px;color:#999;font-weight:600;letter-spacing:.4px;text-transform:uppercase;background:var(--gray-light);border-radius:3px;padding:2px 7px;}
-.dash-tag-new{color:#fff;background:#FF5500;font-weight:800;letter-spacing:.6px;border-radius:9px;
-  box-shadow:0 0 0 0 rgba(255,85,0,.55);animation:newTagPulse 1.8s ease-out infinite;}
-@keyframes newTagPulse{0%{box-shadow:0 0 0 0 rgba(255,85,0,.55);}
-  70%{box-shadow:0 0 0 7px rgba(255,85,0,0);}100%{box-shadow:0 0 0 0 rgba(255,85,0,0);}}
-@media (prefers-reduced-motion:reduce){.dash-tag-new{animation:none;}}
 .btn-open-dash{padding:7px 16px;background:transparent;border:1.5px solid var(--orange);border-radius:5px;
   font-size:12px;color:var(--orange);font-weight:600;cursor:pointer;font-family:var(--font);
   display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s;white-space:nowrap;}
@@ -1145,10 +1140,7 @@ function renderContent(){
       <h3>${STATE.searchQuery?'No results found':'No dashboards published yet'}</h3>
       <p>${STATE.searchQuery?'Try a different search term.':'Dashboards for <strong>'+esc(subLabel)+'</strong> will appear here as they are published.'}</p>
     </div>`:`<div class="dash-grid">${dashes.map(d=>{
-      // A "NEW" tag (set in the admin panel) is highlighted and shown first.
-      const isNew=t=>String(t).trim().toLowerCase()==='new';
-      const tags=[...(d.tags||[]).filter(isNew),...(d.tags||[]).filter(t=>!isNew(t))]
-        .map(t=>isNew(t)?`<span class="dash-tag dash-tag-new">NEW</span>`:`<span class="dash-tag">${esc(t)}</span>`).join('');
+      const tags=(d.tags||[]).map(t=>`<span class="dash-tag">${esc(t)}</span>`).join('');
       const cta=d.coming_soon?`<span class="badge-soon">Coming Soon</span>`:`<button class="btn-open-dash" onclick="openDashView(${d.id})">Open &#8594;</button>`;
       const noteHtml=d.note?`<div class="dash-card-note">${esc(d.note)}</div>`:'';
       const footerHtml=d.footer?`<div class="dash-card-footer">${esc(d.footer)}</div>`:'';
