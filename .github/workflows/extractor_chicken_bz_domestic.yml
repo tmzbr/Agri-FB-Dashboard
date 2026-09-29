@@ -1,0 +1,57 @@
+name: Refresh BZ Chicken Domestic DB
+
+on:
+  # Mon / Wed / Fri at 21:00 UTC (18:00 BRT) — an hour after "Refresh BZ
+  # Chicken DB", so the grain basket copied from chicken_bz.db is fresh.
+  # CEPEA shows the last 15 trading days, so a 2–3 day cadence never misses one.
+  schedule:
+    - cron: '0 21 * * 1,3,5'
+
+  workflow_dispatch:
+
+  push:
+    paths:
+      - 'Chicken/BZ Tracker/extractor_chicken_bz_domestic.py'
+
+jobs:
+  refresh-db:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: Chicken/BZ Tracker
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # requests: imported by extractor_chicken_bz (grain basket helper)
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run extractor
+        run: python extractor_chicken_bz_domestic.py
+
+      - name: Commit updated DB
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add chicken_bz_domestic.db
+          if git diff --cached --quiet; then
+            echo "No changes to chicken_bz_domestic.db — nothing to commit."
+          else
+            git commit -m "auto: refresh chicken_bz_domestic.db — $(date -u +'%Y-%m-%d %H:%M') UTC"
+            # -X ours: in a binary-file conflict the freshly generated DB wins.
+            git pull origin main --no-rebase -X ours
+            git push
+          fi
