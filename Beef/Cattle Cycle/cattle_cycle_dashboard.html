@@ -307,13 +307,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- VIEW CONTROLS -->
 <div class="controls-bar">
   <span class="view-label">CHART VIEW:</span>
-  <div class="view-btns">
-    <button class="view-btn active" data-view="all" onclick="setView('all')">All</button>
-    <button class="view-btn" data-view="120" onclick="setView('120')">Last 10 Years</button>
-    <button class="view-btn" data-view="60"  onclick="setView('60')">Last 5 Years</button>
-    <button class="view-btn" data-view="36"  onclick="setView('36')">Last 3 Years</button>
-    <button class="view-btn" data-view="12"  onclick="setView('12')">Last 12 Months</button>
-  </div>
+  <div class="view-btns" id="view-btns"></div>
 </div>
 
 <div class="main-wrap">
@@ -427,6 +421,9 @@ const COUNTRIES = {
     ],
     female: ['vacas', 'novilhas'], male: ['bois', 'novilhos'],
     weight: true,
+    views: [['all', 'All'], ['120', 'Last 10 Years'], ['60', 'Last 5 Years'],
+            ['36', 'Last 3 Years'], ['12', 'Last 12 Months']],
+    defaultView: 'all',
     note: `Source: <em>IBGE</em> — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092 (monthly detail within each quarter), Brazil ·
            Cows = vacas · Heifers = novilhas · Bulls = bois · Steers = novilhos · calves excluded ·
            Quarterly/annual share = Σ females ÷ Σ total`,
@@ -444,6 +441,9 @@ const COUNTRIES = {
     ],
     female: ['cows_heifers'], male: ['bulls', 'steers'],
     weight: false,
+    views: [['480', 'Last 40 Years'], ['360', 'Last 30 Years'],
+            ['120', 'Last 10 Years'], ['60', 'Last 5 Years']],
+    defaultView: '480',
     note: `Source: <em>USDA NASS</em> — Quick Stats, Livestock Slaughter: Cattle GE 500 lbs, Steers and Bulls, commercial FI slaughter, national, monthly ·
            Cows + Heifers = GE 500 lbs − (Steers + Bulls); Total = GE 500 lbs (calves excluded) ·
            No monthly steer/bull split in 1958–1970 (gap in the charts) · <sup>*</sup> 1982: published quarterly only, each quarter spread evenly over its 3 months ·
@@ -539,6 +539,9 @@ function setCountry(c) {
   document.getElementById('comp-legend').innerHTML   = legend(false);
   document.getElementById('weight-legend').innerHTML = legend(true);
   document.getElementById('weight-card').style.display = C.weight ? '' : 'none';
+  currentView = C.defaultView;
+  document.getElementById('view-btns').innerHTML = C.views.map(([v, l]) =>
+    `<button class="view-btn${v === currentView ? ' active' : ''}" data-view="${v}" onclick="setView('${v}')">${l}</button>`).join('');
   document.getElementById('support-row').style.gridTemplateColumns = C.weight ? '' : '1fr';
 
   const last = MONTHLY.filter(hasData).slice(-1)[0];
