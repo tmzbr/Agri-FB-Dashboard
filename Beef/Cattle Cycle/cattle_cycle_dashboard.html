@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Cattle Cycle — Agribusiness, F&B DataHouse</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+// Rotulos do eixo X: horizontais enquanto couberem; quando nao couberem, vao
+// para 90 graus (leitura de baixo para cima, topo do texto a esquerda). Nunca
+// na diagonal — sozinho o Chart.js escolheria qualquer angulo entre 0 e 50.
+(function(){
+  function tickFontString(scale){
+    var f = scale.options.ticks.font || {}, d = Chart.defaults.font;
+    var size = f.size || d.size || 12, fam = f.family || d.family, w = f.weight || '';
+    return (w ? w + ' ' : '') + size + 'px ' + fam;
+  }
+  // Quantos rotulos vao mesmo aparecer. Este hook roda ANTES do autoSkip, entao
+  // scale.ticks ainda tem a lista inteira. Com autoSkip livre o Chart.js pula
+  // rotulos ate nao haver sobreposicao — nesse caso girar seria desnecessario;
+  // o aperto so acontece quando maxTicksLimit forca uma quantidade fixa.
+  function shownTickCount(scale){
+    var n = (scale.ticks || []).length, o = scale.options.ticks;
+    if (o.autoSkip === false) return n;
+    return o.maxTicksLimit ? Math.min(n, o.maxTicksLimit) : 0;
+  }
+  function overflows(scale){
+    if (!scale.isHorizontal()) return false;
+    var n = shownTickCount(scale);
+    if (!n) return false;
+    var ctx = scale.ctx, widest = 0, ticks = scale.ticks;
+    ctx.save();
+    ctx.font = tickFontString(scale);
+    for (var i = 0; i < ticks.length; i++){
+      var l = ticks[i].label;
+      var s = Array.isArray(l) ? l.join(' ') : String(l == null ? '' : l);
+      widest = Math.max(widest, ctx.measureText(s).width);
+    }
+    ctx.restore();
+    return widest + 6 > scale.width / n;   // 6px de respiro entre rotulos
+  }
+  function snapRotation(scale){ scale.labelRotation = overflows(scale) ? 90 : 0; }
+  ['category','linear','logarithmic','time','timeseries'].forEach(function(t){
+    Chart.defaults.scales[t] = Chart.defaults.scales[t] || {};
+    Chart.defaults.scales[t].afterCalculateLabelRotation = snapRotation;
+  });
+})();
+</script>
+<script>
+// Fonte dos graficos = fonte da pagina (--font). Sem a cadeia completa,
+// 'Segoe UI' nao resolve no macOS e o canvas cai no serif padrao.
+Chart.defaults.font.family = "'Segoe UI',Helvetica,Arial,sans-serif";
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
+  --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
+  --green:#27AE60;--red:#C0392B;--grain:#555555;
+  --font:'Segoe UI',Helvetica,Arial,sans-serif;
+}
+html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);
+  min-height:100%;overflow-y:auto;font-size:13px;}
+
+/* ── TOP BAR ── */
+.top-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;height:48px;flex-shrink:0;gap:14px;}
+.back-btn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-mid);
+  cursor:pointer;padding:5px 10px;border-radius:4px;border:1px solid var(--border);
+  background:none;transition:all .15s;white-space:nowrap;}
+.back-btn:hover{color:var(--gray-dark);border-color:#ccc;}
+.back-btn svg{width:14px;height:14px;}
+.top-bar-divider{width:1px;height:22px;background:var(--border);}
+.top-title{font-size:15px;font-weight:700;color:var(--black);}
+.top-sub{font-size:11.5px;color:var(--gray-mid);}
+.top-latest{margin-left:auto;font-size:11px;color:var(--gray-mid);
+  background:#F9F9F9;border:1px solid var(--border);border-radius:4px;
+  padding:4px 10px;white-space:nowrap;}
+.top-latest strong{color:var(--orange);}
+
+/* ── SUB-TABS (Exports | Domestic) ── */
+.subtab-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:flex-end;padding:0 20px;height:38px;gap:4px;flex-shrink:0;}
+.subtab{padding:9px 16px 8px;font-size:12.5px;font-weight:600;color:var(--gray-mid);
+  cursor:pointer;border:none;background:none;font-family:var(--font);
+  border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.subtab:hover:not(.active){color:var(--gray-dark);}
+.subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.new-badge{display:inline-block;margin-left:6px;padding:1px 6px 2px;border-radius:9px;
+  background:var(--orange);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;
+  line-height:13px;vertical-align:2px;box-shadow:0 0 0 0 rgba(255,85,0,.55);
+  animation:newPulse 1.8s ease-out infinite;}
+@keyframes newPulse{0%{box-shadow:0 0 0 0 rgba(255,85,0,.55);}
+  70%{box-shadow:0 0 0 7px rgba(255,85,0,0);}100%{box-shadow:0 0 0 0 rgba(255,85,0,0);}}
+@media (prefers-reduced-motion:reduce){.new-badge{animation:none;}}
+
+/* ── ORANGE RULE ── */
+.orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
+
+/* ── VIEW CONTROLS ── */
+.controls-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:flex-end;
+  padding:0 20px;height:40px;gap:16px;flex-shrink:0;}
+.view-label{font-size:11px;font-weight:700;color:var(--gray-mid);
+  text-transform:uppercase;letter-spacing:.5px;}
+.view-btns{display:flex;gap:4px;}
+.view-btn,.tab-btn,.season-btn{padding:4px 12px;font-size:12px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--border);background:none;color:var(--gray-mid);
+  font-family:var(--font);transition:all .15s;}
+.view-btn.active,.tab-btn.active,.season-btn.active{background:var(--orange);color:white;
+  border-color:var(--orange);font-weight:700;}
+.view-btn:hover:not(.active),.tab-btn:hover:not(.active),.season-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+.season-btn{padding:3px 9px;font-size:11px;}
+
+/* ── PARAMS + TABLE ROW ── */
+.bottom-row{display:flex;align-items:stretch;border-top:1px solid var(--border);}
+.params-panel{width:270px;min-width:270px;background:var(--white);
+  border-right:1px solid var(--border);padding:16px 18px;flex-shrink:0;
+  display:flex;flex-direction:column;gap:0;}
+.params-panel-title{font-size:13px;font-weight:700;color:var(--black);
+  margin-bottom:14px;}
+.params-section-label{font-size:10px;font-weight:700;color:var(--orange);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;margin-top:14px;}
+.params-section-label:first-of-type{margin-top:0;}
+.param-row{display:flex;align-items:center;gap:0;margin-bottom:7px;}
+.param-name{font-size:12px;color:var(--gray-dark);width:90px;flex-shrink:0;}
+.param-name small{font-size:10.5px;color:var(--gray-mid);display:block;}
+.param-slider{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:2px;
+  background:var(--border);cursor:pointer;outline:none;min-width:0;}
+.param-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--orange);cursor:pointer;border:2px solid white;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);}
+.param-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+  background:var(--orange);cursor:pointer;border:2px solid white;}
+.param-slider.disabled{opacity:.4;pointer-events:none;}
+.param-val{font-size:12px;font-weight:700;color:var(--black);
+  width:36px;text-align:right;flex-shrink:0;}
+.param-val.auto{color:var(--gray-mid);font-weight:400;}
+.param-input{width:40px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;
+  font-size:12px;font-family:var(--font);text-align:center;color:var(--black);}
+.param-input:focus{outline:none;border-color:var(--orange);}
+.param-unit{font-size:11px;color:var(--gray-mid);margin-left:4px;}
+.params-reset{margin-top:14px;padding:7px 0;width:100%;
+  border:1px solid var(--orange);border-radius:4px;background:none;
+  color:var(--orange);font-size:12px;font-weight:600;font-family:var(--font);
+  cursor:pointer;transition:all .15s;}
+.params-reset:hover{background:var(--orange);color:white;}
+.params-divider{height:1px;background:var(--border);margin:14px 0 10px;}
+.param-info-label{font-size:10px;font-weight:700;color:var(--gray-mid);
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.param-info-row{display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:5px;}
+.param-info-name{font-size:11.5px;color:var(--gray-dark);}
+.param-info-val{font-size:11.5px;font-weight:600;color:var(--black);}
+.param-info-bar-wrap{width:100%;height:4px;background:var(--border);border-radius:2px;margin-bottom:2px;}
+.param-info-bar{height:4px;border-radius:2px;background:var(--orange);transition:width .3s;}
+
+/* table-section lives inside bottom-row */
+.table-section{flex:1;min-width:0;background:var(--white);
+  display:flex;flex-direction:column;}
+.table-section-header{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px 8px;border-bottom:1px solid var(--border);}
+.table-section-title{font-size:13px;font-weight:700;color:var(--black);}
+.table-section-accent{width:4px;height:20px;background:var(--orange);border-radius:2px;}
+
+/* ── GRANULARITY BAR ── */
+.granularity-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;height:40px;gap:16px;flex-shrink:0;}
+
+/* ── MAIN LAYOUT ── */
+.main-wrap{display:flex;flex-direction:column;}
+
+/* ── CHARTS ROW ── */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  padding:12px 16px 8px;flex-shrink:0;}
+.chart-card{background:var(--white);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px 10px;display:flex;flex-direction:column;}
+.chart-card-header{display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:10px;gap:10px;}
+.chart-title{font-size:12.5px;font-weight:700;color:var(--black);}
+.chart-stat{font-size:11px;color:var(--gray-mid);text-align:right;flex-shrink:0;}
+.chart-stat strong{color:var(--orange);}
+.chart-wrap{flex:1;min-height:0;position:relative;height:210px;}
+
+/* ── SEASONALITY SECTION ── */
+.season-section{padding:0 16px 8px;}
+.season-section .chart-card{min-height:0;}
+.season-section .chart-wrap{height:250px;}
+
+/* ── TABLE SECTION ── */
+.table-section{background:var(--white);border-top:1px solid var(--border);
+  display:flex;flex-direction:column;min-height:260px;}
+.table-wrap{overflow:auto;max-height:340px;}
+.table-wrap::-webkit-scrollbar{width:5px;height:5px;}
+.table-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
+table{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed;}
+thead tr{background:#FAFAFA;border-bottom:2px solid var(--border);}
+th{padding:7px 8px;text-align:right;font-weight:700;font-size:10.5px;
+  color:var(--gray-mid);text-transform:uppercase;letter-spacing:.3px;
+  position:sticky;top:0;background:#FAFAFA;z-index:1;overflow:hidden;}
+th:first-child{text-align:left;}
+td{padding:5px 8px;text-align:right;border-bottom:1px solid #F5F5F5;
+  color:var(--gray-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+td:first-child{text-align:left;font-weight:600;color:var(--black);}
+tr:hover td{background:#FFF8F5;}
+.td-spread{font-weight:700;color:var(--orange);}
+.td-na{color:#ccc;font-size:10.5px;}
+
+/* ── REFERENCE CHARTS ROW ── */
+.refcharts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  padding:0 16px 8px;}
+.refcharts-row .chart-wrap{height:220px;}
+
+/* ── NOTE BAR ── */
+.note-bar{background:#FFFBF8;border-top:1px solid #FFD9C8;
+  padding:5px 20px;font-size:10.5px;color:var(--gray-mid);flex-shrink:0;}
+.note-bar em{color:var(--orange);}
+
+/* ── LOADING OVERLAY ── */
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.92);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999;}
+.spinner{width:36px;height:36px;border:3px solid #eee;
+  border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#loading p{font-size:13px;color:var(--gray-mid);}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  /* stack the side-by-side chart pairs */
+  .charts-row,.refcharts-row{grid-template-columns:1fr;padding-left:10px;padding-right:10px;}
+  .season-section{padding-left:10px;padding-right:10px;}
+  .chart-card{padding:12px 12px 8px;}
+  /* card headers: title above legend/stat instead of squeezed beside it */
+  .chart-card-header{flex-direction:column;align-items:stretch;gap:6px;}
+  .chart-stat{text-align:left;}
+  /* charts need real height once they are full-width */
+  .chart-wrap{height:240px;}
+  .season-section .chart-wrap{height:260px;}
+  .refcharts-row .chart-wrap{height:240px;}
+
+  /* top bar: let it breathe over two lines */
+  .top-bar{height:auto;padding:10px 12px;flex-wrap:wrap;gap:10px;}
+  .top-title{font-size:13.5px;}
+  .top-sub{font-size:10.5px;}
+  .top-latest{margin-left:0;width:100%;}
+
+  /* controls: wrap the button groups instead of overflowing */
+  .controls-bar,.granularity-bar{height:auto;padding:8px 12px;flex-wrap:wrap;gap:8px;
+    justify-content:flex-start;}
+  .view-btn,.tab-btn{padding:5px 10px;font-size:11.5px;}
+
+  /* params panel sits beside the table on desktop — stack it above instead */
+  .bottom-row{flex-direction:column;}
+  .params-panel{width:auto;min-width:0;border-right:none;
+    border-bottom:1px solid var(--border);padding:14px 12px;}
+
+  /* table: scroll sideways rather than crushing every column */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:none;}
+  table{table-layout:auto;min-width:640px;}
+  .table-section-header{padding:10px 12px 8px;}
+  .note-bar{padding:6px 12px;}
+}
+
+/* ── CATTLE CYCLE extras ── */
+.full-row{padding:12px 16px 8px;}
+.full-row .chart-wrap{height:300px;}
+.legend-inline span{white-space:nowrap;}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px;}
+.sw.line{height:3px;vertical-align:2px;}
+.td-imp{color:var(--gray-mid);font-size:9px;margin-left:3px;}
+.table-section.full{border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading cattle_cycle.db…</p>
+</div>
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <button class="back-btn" onclick="goBack()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10 3L5 8l5 5"/>
+    </svg>
+    Back
+  </button>
+  <div class="top-bar-divider"></div>
+  <div>
+    <div class="top-title">🇧🇷 Cattle Cycle — Brazil</div>
+    <div class="top-sub">Female share of slaughter = (Cows + Heifers) ÷ (Cows + Heifers + Bois + Novilhos) · heads · Federal inspection (SIF)</div>
+  </div>
+  <div class="top-latest">Latest: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Female share: <strong id="latest-share">—</strong> &nbsp;·&nbsp; 12M: <strong id="latest-12m">—</strong></div>
+</div>
+<div class="orange-rule"></div>
+
+<!-- SUB-TABS: one per country (U.S. etc. to follow) -->
+<div class="subtab-bar">
+  <button class="subtab active">Brazil</button>
+</div>
+
+<!-- VIEW CONTROLS -->
+<div class="controls-bar">
+  <span class="view-label">CHART VIEW:</span>
+  <div class="view-btns">
+    <button class="view-btn active" data-view="all" onclick="setView('all')">All</button>
+    <button class="view-btn" data-view="120" onclick="setView('120')">Last 10 Years</button>
+    <button class="view-btn" data-view="60"  onclick="setView('60')">Last 5 Years</button>
+    <button class="view-btn" data-view="36"  onclick="setView('36')">Last 3 Years</button>
+    <button class="view-btn" data-view="12"  onclick="setView('12')">Last 12 Months</button>
+  </div>
+</div>
+
+<div class="main-wrap">
+
+  <!-- FEMALE SHARE -->
+  <div class="full-row">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title">Female Share of Cattle Slaughter (%) — Cows + Heifers ÷ Adults Slaughtered</div>
+        <div class="chart-stat legend-inline">
+          <span><span class="sw line" style="background:rgba(255,85,0,.35)"></span>Monthly</span> &nbsp;·&nbsp;
+          <span><span class="sw line" style="background:#FF5500"></span>12M rolling</span> &nbsp;·&nbsp;
+          <span><span class="sw line" style="background:#1A1A1A"></span>Long-run avg: <strong id="lr-avg">—</strong></span>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="shareChart"></canvas></div>
+      <div style="font-size:10px;color:var(--gray-mid);margin-top:6px;">
+        Higher share = more females sent to slaughter (herd liquidation) · lower share = females retained for breeding (herd rebuilding).
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPOSITION + CARCASS WEIGHT -->
+  <div class="charts-row" style="padding-top:0;">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title">Slaughter by Category — '000 heads</div>
+        <div class="chart-stat legend-inline" style="display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:flex-end;">
+          <span><span class="sw" style="background:#FF5500"></span>Cows</span>
+          <span><span class="sw" style="background:#FFAA80"></span>Heifers</span>
+          <span><span class="sw" style="background:#1A1A1A"></span>Bois</span>
+          <span><span class="sw" style="background:#9A9A9A"></span>Novilhos</span>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="compChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title">Average Carcass Weight — kg/head</div>
+        <div class="chart-stat legend-inline" style="display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:flex-end;">
+          <span><span class="sw line" style="background:#FF5500"></span>Cows</span>
+          <span><span class="sw line" style="background:#FFAA80"></span>Heifers</span>
+          <span><span class="sw line" style="background:#1A1A1A"></span>Bois</span>
+          <span><span class="sw line" style="background:#9A9A9A"></span>Novilhos</span>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- SEASONALITY -->
+  <div class="season-section">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-title">Seasonal Pattern — Female Share by Month (%)</div>
+          <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
+            Each line = one year &nbsp;·&nbsp;
+            <span style="color:var(--orange);font-weight:700;">—</span> = current year &nbsp;·&nbsp;
+            <span style="color:var(--black);font-weight:700;">—</span> = prev year &nbsp;·&nbsp;
+            <span style="background:rgba(255,85,0,0.15);padding:0 4px;border-radius:2px;">shading</span> = max/min band
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <span style="font-size:10.5px;font-weight:700;color:var(--gray-mid);">BAND:</span>
+          <div style="display:flex;gap:3px;">
+            <button class="season-btn" data-sy="3" onclick="setSeasonYears(3)">3Y</button>
+            <button class="season-btn active" data-sy="5" onclick="setSeasonYears(5)">5Y</button>
+            <button class="season-btn" data-sy="10" onclick="setSeasonYears(10)">10Y</button>
+            <button class="season-btn" data-sy="0" onclick="setSeasonYears(0)">All</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="seasonChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- GRANULARITY -->
+  <div class="granularity-bar">
+    <span class="view-label">TABLE:</span>
+    <div class="view-btns">
+      <button class="tab-btn active" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+      <button class="tab-btn" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+      <button class="tab-btn" data-tab="annual"    onclick="setTab('annual')">Annual</button>
+    </div>
+  </div>
+
+  <div class="table-section full">
+    <div class="table-section-header">
+      <span class="table-section-title">Slaughter Detail — Federal Inspection</span>
+      <div class="table-section-accent"></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note-bar">
+    Source: <em>IBGE</em> — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092 (monthly detail within each quarter), Brazil, Federal inspection ·
+    Bois = adult males · Novilhos = young males · Vacas = cows · Novilhas = heifers · calves excluded ·
+    Quarterly/annual share = Σ females ÷ Σ adults ·
+    <sup>*</sup> 1997Q4, 2001Q3, 2009Q4: heifers suppressed by IBGE, taken as total − other categories (includes calves, &lt;1%)
+  </div>
+
+</div>
+
+<script>
+// ─── GLOBALS ─────────────────────────────────────────────────────────────────
+const CATS = [
+  { k: 'vacas',    label: 'Cows',     color: '#FF5500' },
+  { k: 'novilhas', label: 'Heifers',  color: '#FFAA80' },
+  { k: 'bois',     label: 'Bois',     color: '#1A1A1A' },
+  { k: 'novilhos', label: 'Novilhos', color: '#9A9A9A' },
+];
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const NA = '<span class="td-na">—</span>';
+
+let MONTHLY = [];      // one row per month, with roll12
+let charts = {};
+let currentView = 'all';
+let currentTab  = 'monthly';
+let seasonYears = 5;
+
+const pct  = (v, d = 1) => v == null ? '—' : (v * 100).toFixed(d) + '%';
+const kHd  = v => v == null ? NA : (v / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const TOOLTIP = { backgroundColor: '#333', titleColor: '#ccc', bodyColor: '#eee', borderColor: '#555', borderWidth: 1 };
+const XTICKS  = { color: '#999', font: { size: 9 }, maxTicksLimit: 12, maxRotation: 0 };
+
+function goBack() {
+  if (window.parent && window.parent !== window) window.parent.postMessage({ action: 'closeDash' }, '*');
+  else window.history.back();
+}
+
+// ─── LOAD ────────────────────────────────────────────────────────────────────
+async function loadDB() {
+  const loadEl = document.getElementById('loading');
+  try {
+    const SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
+    const v = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const resp = await fetch(`cattle_cycle.db?v=${v}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: cattle_cycle.db not found`);
+    const db = new SQL.Database(new Uint8Array(await resp.arrayBuffer()));
+    const res = db.exec(`SELECT * FROM br_monthly ORDER BY period`);
+    db.close();
+    if (!res.length) throw new Error('br_monthly is empty');
+    const cols = res[0].columns;
+    MONTHLY = res[0].values.map(r => { const o = {}; cols.forEach((c, i) => o[c] = r[i]); return o; });
+
+    // 12-month rolling share = Σ females ÷ Σ adults over the trailing 12 months
+    MONTHLY.forEach((r, i) => {
+      const w = MONTHLY.slice(Math.max(0, i - 11), i + 1);
+      const ok = w.length === 12 && w.every(x => x.female_share != null);
+      const f = w.reduce((s, x) => s + (x.female_heads || 0), 0);
+      const m = w.reduce((s, x) => s + (x.male_heads || 0), 0);
+      r.roll12 = ok ? f / (f + m) : null;
+    });
+
+    const last = MONTHLY[MONTHLY.length - 1];
+    document.getElementById('latest-period').textContent = `${MONTHS_SHORT[last.month - 1]} ${last.year}`;
+    document.getElementById('latest-share').textContent  = pct(last.female_share);
+    document.getElementById('latest-12m').textContent    = pct(last.roll12);
+
+    loadEl.style.display = 'none';
+    render();
+  } catch (e) {
+    loadEl.innerHTML = `<div style="text-align:center;padding:40px">
+      <div style="font-size:14px;color:#c00;margin-bottom:8px;">⚠ Failed to load cattle_cycle.db</div>
+      <div style="font-size:12px;color:#888;">${e.message}</div></div>`;
+  }
+}
+
+// ─── CONTROLS ────────────────────────────────────────────────────────────────
+function setView(v) {
+  currentView = v;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  renderTimeCharts();
+}
+function setTab(t) {
+  currentTab = t;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  renderTable();
+}
+function setSeasonYears(n) {
+  seasonYears = n;
+  document.querySelectorAll('.season-btn').forEach(b => b.classList.toggle('active', +b.dataset.sy === n));
+  renderSeasonality();
+}
+function viewRows() {
+  return currentView === 'all' ? MONTHLY : MONTHLY.slice(-parseInt(currentView));
+}
+const label = r => `${MONTHS_SHORT[r.month - 1]}-${String(r.year).slice(-2)}`;
+
+// ─── TIME-SERIES CHARTS ──────────────────────────────────────────────────────
+function renderTimeCharts() {
+  const rows = viewRows();
+  const labels = rows.map(label);
+  const allShares = MONTHLY.map(r => r.female_share).filter(v => v != null);
+  const lrAvg = allShares.reduce((s, v) => s + v, 0) / allShares.length;
+  document.getElementById('lr-avg').textContent = pct(lrAvg);
+  const pt = rows.length > 60 ? 0 : 2;
+
+  if (charts.share) charts.share.destroy();
+  charts.share = new Chart(document.getElementById('shareChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Monthly', data: rows.map(r => r.female_share), borderColor: 'rgba(255,85,0,0.35)',
+        backgroundColor: 'transparent', borderWidth: 1.2, pointRadius: pt, tension: 0.2, order: 3 },
+      { label: '12M rolling', data: rows.map(r => r.roll12), borderColor: '#FF5500',
+        backgroundColor: 'rgba(255,85,0,0.06)', fill: true, borderWidth: 2.4, pointRadius: 0, tension: 0.3, order: 1 },
+      { label: 'Long-run avg', data: rows.map(() => lrAvg), borderColor: '#1A1A1A',
+        borderWidth: 1.2, borderDash: [5, 4], pointRadius: 0, order: 2 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, datalabels: { display: false },
+        tooltip: { ...TOOLTIP, callbacks: { label: c => `${c.dataset.label}: ${pct(c.parsed.y)}` } } },
+      scales: {
+        x: { ticks: XTICKS, grid: { color: 'rgba(0,0,0,0.04)' } },
+        y: { ticks: { color: '#999', font: { size: 9 }, callback: v => (v * 100).toFixed(0) + '%' },
+             grid: { color: 'rgba(0,0,0,0.05)' } },
+      },
+    },
+  });
+
+  if (charts.comp) charts.comp.destroy();
+  charts.comp = new Chart(document.getElementById('compChart'), {
+    type: 'bar',
+    data: { labels, datasets: CATS.map(c => ({
+      label: c.label, data: rows.map(r => r[`heads_${c.k}`] != null ? r[`heads_${c.k}`] / 1000 : null),
+      backgroundColor: c.color, borderWidth: 0, stack: 's', barPercentage: 1, categoryPercentage: 0.9 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, datalabels: { display: false },
+        tooltip: { ...TOOLTIP, callbacks: {
+          label: c => `${c.dataset.label}: ${c.parsed.y?.toLocaleString('en-US', { maximumFractionDigits: 0 })}k`,
+          footer: items => `Total: ${items.reduce((s, i) => s + (i.parsed.y || 0), 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}k` } } },
+      scales: {
+        x: { stacked: true, ticks: XTICKS, grid: { display: false } },
+        y: { stacked: true, ticks: { color: '#999', font: { size: 9 }, callback: v => v.toLocaleString('en-US') },
+             grid: { color: 'rgba(0,0,0,0.05)' } },
+      },
+    },
+  });
+
+  if (charts.weight) charts.weight.destroy();
+  charts.weight = new Chart(document.getElementById('weightChart'), {
+    type: 'line',
+    data: { labels, datasets: CATS.map(c => ({
+      label: c.label,
+      data: rows.map(r => r[`heads_${c.k}`] && r[`carcass_kg_${c.k}`] ? r[`carcass_kg_${c.k}`] / r[`heads_${c.k}`] : null),
+      borderColor: c.color, backgroundColor: 'transparent', borderWidth: 1.8, pointRadius: 0, tension: 0.3 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, datalabels: { display: false },
+        tooltip: { ...TOOLTIP, callbacks: {
+          label: c => `${c.dataset.label}: ${c.parsed.y?.toFixed(1) ?? '—'} kg (${c.parsed.y != null ? (c.parsed.y / 15).toFixed(1) : '—'} @)` } } },
+      scales: {
+        x: { ticks: XTICKS, grid: { color: 'rgba(0,0,0,0.04)' } },
+        y: { ticks: { color: '#999', font: { size: 9 }, callback: v => v.toFixed(0) },
+             title: { display: true, text: 'kg carcass / head', color: '#999', font: { size: 9 } },
+             grid: { color: 'rgba(0,0,0,0.05)' } },
+      },
+    },
+  });
+}
+
+// ─── SEASONALITY ─────────────────────────────────────────────────────────────
+function renderSeasonality() {
+  const byYear = {};
+  MONTHLY.forEach(r => { (byYear[r.year] = byYear[r.year] || Array(12).fill(null))[r.month - 1] = r.female_share; });
+  const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+  const latest = years[years.length - 1], prev = latest - 1;
+  const hist = years.filter(y => y < latest);
+  const band = seasonYears === 0 ? hist : hist.filter(y => y >= latest - seasonYears);
+  const mn = Array(12).fill(null), mx = Array(12).fill(null);
+  band.forEach(y => byYear[y].forEach((v, i) => {
+    if (v == null) return;
+    mn[i] = mn[i] == null ? v : Math.min(mn[i], v);
+    mx[i] = mx[i] == null ? v : Math.max(mx[i], v);
+  }));
+  const bandLabel = `Max/Min — ${seasonYears === 0 ? 'all' : 'last ' + seasonYears + 'Y'} (${band[0]}–${band[band.length - 1]})`;
+  const ds = [
+    { label: bandLabel, data: mx, borderColor: 'rgba(255,85,0,0.20)', backgroundColor: 'rgba(255,85,0,0.10)',
+      borderWidth: 0.8, pointRadius: 0, tension: 0.35, fill: '+1', order: 4 },
+    { label: '_min', data: mn, borderColor: 'rgba(255,85,0,0.20)', backgroundColor: 'rgba(255,85,0,0.10)',
+      borderWidth: 0.8, pointRadius: 0, tension: 0.35, fill: false, order: 4 },
+    ...band.filter(y => y !== prev).map(y => ({ label: String(y), data: byYear[y],
+      borderColor: 'rgba(160,160,160,0.35)', backgroundColor: 'transparent', borderWidth: 1, pointRadius: 0, tension: 0.35, order: 3 })),
+  ];
+  if (byYear[prev]) ds.push({ label: `${prev} (prev)`, data: byYear[prev], borderColor: '#1A1A1A',
+    backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#1A1A1A', tension: 0.35, order: 2 });
+  ds.push({ label: `${latest} (current)`, data: byYear[latest], borderColor: '#FF5500',
+    backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: '#FF5500', tension: 0.35, order: 1 });
+
+  if (charts.season) charts.season.destroy();
+  charts.season = new Chart(document.getElementById('seasonChart'), {
+    type: 'line',
+    data: { labels: MONTHS_SHORT, datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        datalabels: { display: false },
+        legend: { display: true, position: 'right', labels: {
+          filter: i => !/^\d{4}$/.test(i.text) && !i.text.startsWith('_'),
+          font: { size: 10 }, boxWidth: 14, color: '#666', padding: 10 } },
+        tooltip: { ...TOOLTIP, filter: i => !i.dataset.label.startsWith('_'),
+          callbacks: { label: c => c.parsed.y == null ? null
+            : `${c.dataset.label.startsWith('Max/Min') ? 'Band Max' : c.dataset.label}: ${pct(c.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#999', font: { size: 10 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.04)' } },
+        y: { ticks: { color: '#888', font: { size: 9 }, callback: v => (v * 100).toFixed(0) + '%' },
+             grid: { color: 'rgba(0,0,0,0.05)' } },
+      },
+    },
+  });
+}
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+function aggregate(keyFn) {
+  const map = new Map();
+  MONTHLY.forEach(r => {
+    const k = keyFn(r);
+    if (!map.has(k)) map.set(k, { period: k, n: 0, imp: false, total: 0, kg: 0 });
+    const e = map.get(k);
+    e.n++; e.imp = e.imp || !!r.novilhas_imputed;
+    CATS.forEach(c => { e[c.k] = (e[c.k] || 0) + (r[`heads_${c.k}`] || 0); });
+    e.total += r.heads_total || 0;
+    e.kg    += r.carcass_kg_total || 0;
+  });
+  return [...map.values()].map(e => {
+    const f = e.vacas + e.novilhas, m = e.bois + e.novilhos;
+    return { ...e, female_share: f + m ? f / (f + m) : null };
+  });
+}
+
+function renderTable() {
+  const sub = t => `<br><span style="font-weight:400;font-size:9px;text-transform:none;">${t}</span>`;
+  let rows, first;
+  if (currentTab === 'monthly') {
+    first = 'Month';
+    rows = MONTHLY.map(r => ({ period: r.period, imp: !!r.novilhas_imputed,
+      vacas: r.heads_vacas, novilhas: r.heads_novilhas, bois: r.heads_bois, novilhos: r.heads_novilhos,
+      total: r.heads_total, kg: r.carcass_kg_total, female_share: r.female_share, n: 1 }));
+  } else if (currentTab === 'quarterly') {
+    first = 'Quarter';
+    rows = aggregate(r => `${Math.ceil(r.month / 3)}Q${String(r.year).slice(-2)}`);
+  } else {
+    first = 'Year';
+    rows = aggregate(r => String(r.year));
+  }
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th style="text-align:left;width:12%;">${first}</th>
+    <th>Cows${sub("'000 hd")}</th><th>Heifers${sub("'000 hd")}</th>
+    <th>Bois${sub("'000 hd")}</th><th>Novilhos${sub("'000 hd")}</th>
+    <th>Total${sub("'000 hd, incl. calves")}</th>
+    <th>Carcass${sub("'000 t")}</th><th>Avg Carcass${sub('kg/head')}</th>
+    <th style="width:13%;">Female Share${sub('cows + heifers / adults')}</th></tr>`;
+  document.getElementById('table-body').innerHTML = rows.slice().reverse().map(r => {
+    const partial = currentTab === 'annual' && r.n < 12 ? ` <span class="td-imp">(${r.n}m)</span>`
+                  : currentTab === 'quarterly' && r.n < 3 ? ` <span class="td-imp">(${r.n}m)</span>` : '';
+    return `<tr>
+      <td>${r.period}${r.imp ? '<sup class="td-imp">*</sup>' : ''}${partial}</td>
+      <td>${kHd(r.vacas)}</td><td>${kHd(r.novilhas)}</td><td>${kHd(r.bois)}</td><td>${kHd(r.novilhos)}</td>
+      <td>${kHd(r.total)}</td>
+      <td>${r.kg ? (r.kg / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1, minimumFractionDigits: 1 }) : NA}</td>
+      <td>${r.kg && r.total ? (r.kg / r.total).toFixed(1) : NA}</td>
+      <td><span class="td-spread">${pct(r.female_share)}</span></td></tr>`;
+  }).join('');
+}
+
+function render() {
+  renderTimeCharts();
+  renderSeasonality();
+  renderTable();
+}
+
+loadDB();
+</script>
+</body>
+</html>
