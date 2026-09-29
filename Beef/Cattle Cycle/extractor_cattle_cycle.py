@@ -11,7 +11,9 @@ SOURCE
     variables  284 Animais abatidos (cabeças) · 285 Peso total das carcaças (kg)
     months     c12716: 115233/115234/115235 = 1st/2nd/3rd month of the quarter
     herd type  c18 (all): Bois, Vacas, Novilhos, Novilhas, Vitelos e vitelas, Total
-    inspection c12529 = 111737 Federal (SIF)
+    inspection c12529: 118225 Total (federal + state + municipal) — the
+               headline series, and the dashboard default — and
+               111737 Federal (SIF), kept as an alternative view
 
   The table is quarterly but carries each month of the quarter, so the
   series is monthly from Jan/1997. The whole history (~2 MB) is downloaded
@@ -22,7 +24,7 @@ CYCLE INDICATOR
   (heads; calves — "Vitelos e vitelas" — are excluded, and are mostly not
   published by IBGE anyway: "...")
 
-  In 1997Q4, 2001Q3 and 2009Q4 IBGE suppresses Novilhas and Vitelos ("X",
+  Federal only: in 1997Q4, 2001Q3 and 2009Q4 IBGE suppresses Novilhas and Vitelos ("X",
   too few informants). Heifers are then taken as the residual
   total − bois − vacas − novilhos, which also contains the calves (≤ ~7k
   heads/month vs 100k+ heifers, <1% error). Those months carry
@@ -33,9 +35,10 @@ USAGE
   python extractor_cattle_cycle.py
 
 OUTPUT TABLES
-  br_slaughter_raw  period (YYYY-MM), herd, heads, carcass_kg
+  br_slaughter_raw  inspection, period (YYYY-MM), herd, heads, carcass_kg
+                    inspection ∈ total, federal
                     herd ∈ total, bois, vacas, novilhos, novilhas, vitelos
-  br_monthly        period, year, month, heads_* / carcass_kg_* per herd,
+  br_monthly        inspection, period, year, month, heads_* / carcass_kg_* per herd,
                     female_heads, male_heads, female_share, updated_at
 """
 
@@ -51,26 +54,34 @@ except ImportError:
 DB_PATH = Path(__file__).parent / "cattle_cycle.db"
 
 SIDRA_URL = ("https://apisidra.ibge.gov.br/values/t/1092/n1/all/v/284,285/p/all"
-             "/c12716/115233,115234,115235/c18/all/c12529/111737")
+             "/c12716/115233,115234,115235/c18/all/c12529/118225,111737")
 
 MONTH_IN_QUARTER = {"115233": 1, "115234": 2, "115235": 3}
 HERD = {"992": "total", "55": "bois", "56": "vacas",
         "111734": "novilhos", "111735": "novilhas", "57": "vitelos"}
 HERDS = ["total", "bois", "vacas", "novilhos", "novilhas", "vitelos"]
+INSPECTION = {"118225": "total", "111737": "federal"}
 
 
 def init_db(conn):
     cols = ",\n        ".join(f"heads_{h} REAL, carcass_kg_{h} REAL" for h in HERDS)
+    # v1 of the schema held Federal only, without an inspection column — the
+    # DB is fully rebuilt from SIDRA, so just drop it.
+    raw_cols = [r[1] for r in conn.execute("PRAGMA table_info(br_slaughter_raw)")]
+    if raw_cols and "inspection" not in raw_cols:
+        conn.executescript("DROP TABLE br_slaughter_raw; DROP TABLE IF EXISTS br_monthly;")
     conn.executescript(f"""
     CREATE TABLE IF NOT EXISTS br_slaughter_raw (
+        inspection  TEXT,     -- total | federal
         period      TEXT,     -- YYYY-MM
         herd        TEXT,
         heads       REAL,
         carcass_kg  REAL,
-        PRIMARY KEY (period, herd)
+        PRIMARY KEY (inspection, period, herd)
     );
     CREATE TABLE IF NOT EXISTS br_monthly (
-        period       TEXT PRIMARY KEY,
+        inspection   TEXT,
+        period       TEXT,
         year         INTEGER,
         month        INTEGER,
         {cols},
@@ -78,7 +89,8 @@ def init_db(conn):
         male_heads   REAL,    -- bois + novilhos
         female_share REAL,    -- female / (female + male)
         novilhas_imputed INTEGER,  -- 1 = heifers = residual (IBGE suppressed)
-        updated_at   TEXT
+        updated_at   TEXT,
+        PRIMARY KEY (inspection, period)
     );
     """)
     conn.commit()
@@ -106,27 +118,27 @@ def fetch_sidra(conn):
     if not data or len(data) < 2:
         sys.exit("  ✗ SIDRA 1092: no data retrieved")
 
-    vals = {}   # (period, herd) → [heads, kg]
+    vals = {}   # (inspection, period, herd) → [heads, kg]
     for row in data[1:]:
         q = row["D3C"]                       # YYYYQQ, e.g. 202602
         m = (int(q[4:]) - 1) * 3 + MONTH_IN_QUARTER[row["D4C"]]
-        key = (f"{q[:4]}-{m:02d}", HERD[row["D5C"]])
+        key = (INSPECTION[row["D6C"]], f"{q[:4]}-{m:02d}", HERD[row["D5C"]])
         slot = vals.setdefault(key, [None, None])
         slot[0 if row["D2C"] == "284" else 1] = _num(row["V"])
 
-    periods = sorted({p for p, _ in vals})
+    periods = sorted({p for _, p, _ in vals})
     print(f"  [SIDRA] {len(vals)} rows · {periods[0]} → {periods[-1]}")
 
     # The workflow polls daily around IBGE's release dates — leave the DB
     # file untouched (so nothing gets committed) unless IBGE changed something.
-    new = {(p, h, v[0], v[1]) for (p, h), v in vals.items()}
-    old = set(conn.execute("SELECT period, herd, heads, carcass_kg FROM br_slaughter_raw"))
+    new = {(i, p, h, v[0], v[1]) for (i, p, h), v in vals.items()}
+    old = set(conn.execute("SELECT inspection, period, herd, heads, carcass_kg FROM br_slaughter_raw"))
     if new == old:
         print("  [SIDRA] no change since last run — nothing to update.")
         return False
 
     conn.executemany(
-        "INSERT OR REPLACE INTO br_slaughter_raw(period, herd, heads, carcass_kg) VALUES(?,?,?,?)",
+        "INSERT OR REPLACE INTO br_slaughter_raw(inspection, period, herd, heads, carcass_kg) VALUES(?,?,?,?,?)",
         sorted(new))
     conn.commit()
     print(f"  [SIDRA] {len(new - old)} new/revised rows")
@@ -136,12 +148,13 @@ def fetch_sidra(conn):
 def materialise(conn):
     now = datetime.utcnow().isoformat()
     raw = {}
-    for p, h, heads, kg in conn.execute("SELECT period, herd, heads, carcass_kg FROM br_slaughter_raw"):
-        raw.setdefault(p, {})[h] = (heads, kg)
+    for i, p, h, heads, kg in conn.execute(
+            "SELECT inspection, period, herd, heads, carcass_kg FROM br_slaughter_raw"):
+        raw.setdefault((i, p), {})[h] = (heads, kg)
 
     rows = []
-    for p in sorted(raw):
-        d = raw[p]
+    for insp, p in sorted(raw):
+        d = raw[(insp, p)]
         get = lambda h, i: d.get(h, (None, None))[i]
         # Months where IBGE has not published yet come back as all-NULL — skip.
         if get("total", 0) is None:
@@ -156,7 +169,7 @@ def materialise(conn):
         else:
             fem, male = parts[0] + parts[1], parts[2] + parts[3]
             share = fem / (fem + male) if fem + male else None
-        rec = [p, int(p[:4]), int(p[5:])]
+        rec = [insp, p, int(p[:4]), int(p[5:])]
         for h in HERDS:
             rec += [parts[1] if h == "novilhas" else get(h, 0), get(h, 1)]
         rows.append(rec + [fem, male, share, imputed, now])
@@ -164,9 +177,10 @@ def materialise(conn):
     conn.execute("DELETE FROM br_monthly")
     conn.executemany(f"INSERT INTO br_monthly VALUES({','.join('?' * len(rows[0]))})", rows)
     conn.commit()
-    print(f"  [MAT] br_monthly = {len(rows)} months")
-    for r in rows[-3:]:
-        print(f"        {r[0]}  total {r[3]:>12,.0f} hd   female share {r[-3]:.1%}")
+    print(f"  [MAT] br_monthly = {len(rows)} rows (inspection × month)")
+    for insp in ("total", "federal"):
+        for r in [r for r in rows if r[0] == insp][-2:]:
+            print(f"        {insp:<7} {r[1]}  total {r[4]:>12,.0f} hd   female share {r[-3]:.1%}")
 
 
 def main():

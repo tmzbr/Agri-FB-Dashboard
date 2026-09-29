@@ -269,6 +269,10 @@ tr:hover td{background:#FFF8F5;}
 .legend-inline span{white-space:nowrap;}
 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px;}
 .sw.line{height:3px;vertical-align:2px;}
+.insp-btn{padding:4px 12px;font-size:12px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--border);background:none;color:var(--gray-mid);font-family:var(--font);transition:all .15s;}
+.insp-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.insp-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
 .td-imp{color:var(--gray-mid);font-size:9px;margin-left:3px;}
 .table-section.full{border-top:1px solid var(--border);}
 </style>
@@ -291,7 +295,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Cattle Cycle — Brazil</div>
-    <div class="top-sub">Female share of slaughter = (Cows + Heifers) ÷ (Cows + Heifers + Bulls + Steers) · heads · Federal inspection (SIF)</div>
+    <div class="top-sub">Female share of slaughter = (Cows + Heifers) ÷ (Cows + Heifers + Bulls + Steers) · heads · <span id="insp-sub">All inspection types</span></div>
   </div>
   <div class="top-latest">Latest: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Female share: <strong id="latest-share">—</strong> &nbsp;·&nbsp; 12M: <strong id="latest-12m">—</strong></div>
 </div>
@@ -304,6 +308,11 @@ tr:hover td{background:#FFF8F5;}
 
 <!-- VIEW CONTROLS -->
 <div class="controls-bar">
+  <span class="view-label">INSPECTION:</span>
+  <div class="view-btns" style="margin-right:auto;">
+    <button class="insp-btn active" data-insp="total"   onclick="setInspection('total')">All (Federal + State + Municipal)</button>
+    <button class="insp-btn"        data-insp="federal" onclick="setInspection('federal')">Federal (SIF)</button>
+  </div>
   <span class="view-label">CHART VIEW:</span>
   <div class="view-btns">
     <button class="view-btn active" data-view="all" onclick="setView('all')">All</button>
@@ -345,7 +354,7 @@ tr:hover td{background:#FFF8F5;}
 
   <div class="table-section full" style="margin:0 16px 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
     <div class="table-section-header">
-      <span class="table-section-title">Slaughter Detail — Federal Inspection</span>
+      <span class="table-section-title">Slaughter Detail — <span id="insp-title">All Inspection Types</span></span>
       <div class="table-section-accent"></div>
     </div>
     <div class="table-wrap">
@@ -412,10 +421,10 @@ tr:hover td{background:#FFF8F5;}
   </div>
 
   <div class="note-bar">
-    Source: <em>IBGE</em> — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092 (monthly detail within each quarter), Brazil, Federal inspection ·
+    Source: <em>IBGE</em> — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092 (monthly detail within each quarter), Brazil · All = federal + state + municipal inspection (IBGE headline) · Federal = SIF only ·
     Cows = vacas · Heifers = novilhas · Bulls = bois · Steers = novilhos · calves excluded ·
     Quarterly/annual share = Σ females ÷ Σ total ·
-    <sup>*</sup> 1997Q4, 2001Q3, 2009Q4: heifers suppressed by IBGE, taken as total − other categories (includes calves, &lt;1%)
+    <sup>*</sup> Federal view, 1997Q4, 2001Q3, 2009Q4: heifers suppressed by IBGE, taken as total − other categories (includes calves, &lt;1%)
   </div>
 
 </div>
@@ -431,7 +440,9 @@ const CATS = [
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NA = '<span class="td-na">—</span>';
 
-let MONTHLY = [];      // one row per month, with roll12
+let ALL_ROWS = [];     // br_monthly, both inspection types
+let MONTHLY = [];      // rows of the selected inspection, one per month, with roll12
+let inspection = 'total';
 let charts = {};
 let currentView = 'all';
 let currentTab  = 'monthly';
@@ -456,28 +467,14 @@ async function loadDB() {
     const resp = await fetch(`cattle_cycle.db?v=${v}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: cattle_cycle.db not found`);
     const db = new SQL.Database(new Uint8Array(await resp.arrayBuffer()));
-    const res = db.exec(`SELECT * FROM br_monthly ORDER BY period`);
+    const res = db.exec(`SELECT * FROM br_monthly ORDER BY inspection, period`);
     db.close();
     if (!res.length) throw new Error('br_monthly is empty');
     const cols = res[0].columns;
-    MONTHLY = res[0].values.map(r => { const o = {}; cols.forEach((c, i) => o[c] = r[i]); return o; });
-
-    // 12-month rolling share = Σ females ÷ Σ adults over the trailing 12 months
-    MONTHLY.forEach((r, i) => {
-      const w = MONTHLY.slice(Math.max(0, i - 11), i + 1);
-      const ok = w.length === 12 && w.every(x => x.female_share != null);
-      const f = w.reduce((s, x) => s + (x.female_heads || 0), 0);
-      const m = w.reduce((s, x) => s + (x.male_heads || 0), 0);
-      r.roll12 = ok ? f / (f + m) : null;
-    });
-
-    const last = MONTHLY[MONTHLY.length - 1];
-    document.getElementById('latest-period').textContent = `${MONTHS_SHORT[last.month - 1]} ${last.year}`;
-    document.getElementById('latest-share').textContent  = pct(last.female_share);
-    document.getElementById('latest-12m').textContent    = pct(last.roll12);
+    ALL_ROWS = res[0].values.map(r => { const o = {}; cols.forEach((c, i) => o[c] = r[i]); return o; });
 
     loadEl.style.display = 'none';
-    render();
+    setInspection('total');
   } catch (e) {
     loadEl.innerHTML = `<div style="text-align:center;padding:40px">
       <div style="font-size:14px;color:#c00;margin-bottom:8px;">⚠ Failed to load cattle_cycle.db</div>
@@ -486,6 +483,28 @@ async function loadDB() {
 }
 
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
+function setInspection(insp) {
+  inspection = insp;
+  document.querySelectorAll('.insp-btn').forEach(b => b.classList.toggle('active', b.dataset.insp === insp));
+  document.getElementById('insp-sub').textContent   = insp === 'total' ? 'All inspection types' : 'Federal inspection (SIF)';
+  document.getElementById('insp-title').textContent = insp === 'total' ? 'All Inspection Types' : 'Federal Inspection (SIF)';
+
+  MONTHLY = ALL_ROWS.filter(r => r.inspection === insp);
+  // 12-month rolling share = Σ females ÷ Σ total over the trailing 12 months
+  MONTHLY.forEach((r, i) => {
+    const w = MONTHLY.slice(Math.max(0, i - 11), i + 1);
+    const ok = w.length === 12 && w.every(x => x.female_share != null);
+    const f = w.reduce((s, x) => s + (x.female_heads || 0), 0);
+    const m = w.reduce((s, x) => s + (x.male_heads || 0), 0);
+    r.roll12 = ok ? f / (f + m) : null;
+  });
+
+  const last = MONTHLY[MONTHLY.length - 1];
+  document.getElementById('latest-period').textContent = `${MONTHS_SHORT[last.month - 1]} ${last.year}`;
+  document.getElementById('latest-share').textContent  = pct(last.female_share);
+  document.getElementById('latest-12m').textContent    = pct(last.roll12);
+  render();
+}
 function setView(v) {
   currentView = v;
   document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
