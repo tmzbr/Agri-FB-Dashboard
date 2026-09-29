@@ -15,7 +15,7 @@ insert into public.dashboards
 values
   (34, 'fnb', 'beef',
    'Cattle Cycle',
-   'Female share of cattle slaughter — (cows + heifers) ÷ (cows + heifers + bois + novilhos) — as a herd liquidation/retention gauge. Brazil: IBGE quarterly slaughter survey, monthly detail since 1997, Federal inspection (heads and carcass weight).',
+   'Female share of cattle slaughter — (cows + heifers) ÷ (cows + heifers + bulls + steers) — as a herd liquidation/retention gauge. Brazil: IBGE quarterly slaughter survey, monthly detail since 1997, Federal inspection (heads and carcass weight).',
    'IBGE · SIDRA 1092',
    '', '', '#',
    '{"Brazil","Beef","Cattle Cycle","Slaughter","IBGE"}',

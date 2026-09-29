@@ -291,7 +291,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Cattle Cycle — Brazil</div>
-    <div class="top-sub">Female share of slaughter = (Cows + Heifers) ÷ (Cows + Heifers + Bois + Novilhos) · heads · Federal inspection (SIF)</div>
+    <div class="top-sub">Female share of slaughter = (Cows + Heifers) ÷ (Cows + Heifers + Bulls + Steers) · heads · Federal inspection (SIF)</div>
   </div>
   <div class="top-latest">Latest: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Female share: <strong id="latest-share">—</strong> &nbsp;·&nbsp; 12M: <strong id="latest-12m">—</strong></div>
 </div>
@@ -320,11 +320,10 @@ tr:hover td{background:#FFF8F5;}
   <div class="full-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Female Share of Cattle Slaughter (%) — Cows + Heifers ÷ Adults Slaughtered</div>
+        <div class="chart-title">Female Share of Cattle Slaughter — (Cows + Heifers) ÷ (Cows + Heifers + Bulls + Steers)</div>
         <div class="chart-stat legend-inline">
-          <span><span class="sw line" style="background:rgba(255,85,0,.35)"></span>Monthly</span> &nbsp;·&nbsp;
-          <span><span class="sw line" style="background:#FF5500"></span>12M rolling</span> &nbsp;·&nbsp;
-          <span><span class="sw line" style="background:#1A1A1A"></span>Long-run avg: <strong id="lr-avg">—</strong></span>
+          <span><span class="sw line" style="background:#1A1A1A"></span>Monthly</span> &nbsp;·&nbsp;
+          <span><span class="sw line" style="background:#FF5500"></span>12-month moving average</span>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="shareChart"></canvas></div>
@@ -334,16 +333,39 @@ tr:hover td{background:#FFF8F5;}
     </div>
   </div>
 
+  <!-- GRANULARITY -->
+  <div class="granularity-bar">
+    <span class="view-label">TABLE:</span>
+    <div class="view-btns">
+      <button class="tab-btn active" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
+      <button class="tab-btn" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
+      <button class="tab-btn" data-tab="annual"    onclick="setTab('annual')">Annual</button>
+    </div>
+  </div>
+
+  <div class="table-section full" style="margin:0 16px 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+    <div class="table-section-header">
+      <span class="table-section-title">Slaughter Detail — Federal Inspection</span>
+      <div class="table-section-accent"></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- COMPOSITION + CARCASS WEIGHT -->
-  <div class="charts-row" style="padding-top:0;">
+  <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
         <div class="chart-title">Slaughter by Category — '000 heads</div>
         <div class="chart-stat legend-inline" style="display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:flex-end;">
           <span><span class="sw" style="background:#FF5500"></span>Cows</span>
           <span><span class="sw" style="background:#FFAA80"></span>Heifers</span>
-          <span><span class="sw" style="background:#1A1A1A"></span>Bois</span>
-          <span><span class="sw" style="background:#9A9A9A"></span>Novilhos</span>
+          <span><span class="sw" style="background:#1A1A1A"></span>Bulls</span>
+          <span><span class="sw" style="background:#9A9A9A"></span>Steers</span>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="compChart"></canvas></div>
@@ -354,8 +376,8 @@ tr:hover td{background:#FFF8F5;}
         <div class="chart-stat legend-inline" style="display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:flex-end;">
           <span><span class="sw line" style="background:#FF5500"></span>Cows</span>
           <span><span class="sw line" style="background:#FFAA80"></span>Heifers</span>
-          <span><span class="sw line" style="background:#1A1A1A"></span>Bois</span>
-          <span><span class="sw line" style="background:#9A9A9A"></span>Novilhos</span>
+          <span><span class="sw line" style="background:#1A1A1A"></span>Bulls</span>
+          <span><span class="sw line" style="background:#9A9A9A"></span>Steers</span>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
@@ -389,33 +411,10 @@ tr:hover td{background:#FFF8F5;}
     </div>
   </div>
 
-  <!-- GRANULARITY -->
-  <div class="granularity-bar">
-    <span class="view-label">TABLE:</span>
-    <div class="view-btns">
-      <button class="tab-btn active" data-tab="monthly" onclick="setTab('monthly')">Monthly</button>
-      <button class="tab-btn" data-tab="quarterly" onclick="setTab('quarterly')">Quarterly</button>
-      <button class="tab-btn" data-tab="annual"    onclick="setTab('annual')">Annual</button>
-    </div>
-  </div>
-
-  <div class="table-section full">
-    <div class="table-section-header">
-      <span class="table-section-title">Slaughter Detail — Federal Inspection</span>
-      <div class="table-section-accent"></div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="table-head"></thead>
-        <tbody id="table-body"></tbody>
-      </table>
-    </div>
-  </div>
-
   <div class="note-bar">
     Source: <em>IBGE</em> — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092 (monthly detail within each quarter), Brazil, Federal inspection ·
-    Bois = adult males · Novilhos = young males · Vacas = cows · Novilhas = heifers · calves excluded ·
-    Quarterly/annual share = Σ females ÷ Σ adults ·
+    Cows = vacas · Heifers = novilhas · Bulls = bois · Steers = novilhos · calves excluded ·
+    Quarterly/annual share = Σ females ÷ Σ total ·
     <sup>*</sup> 1997Q4, 2001Q3, 2009Q4: heifers suppressed by IBGE, taken as total − other categories (includes calves, &lt;1%)
   </div>
 
@@ -426,8 +425,8 @@ tr:hover td{background:#FFF8F5;}
 const CATS = [
   { k: 'vacas',    label: 'Cows',     color: '#FF5500' },
   { k: 'novilhas', label: 'Heifers',  color: '#FFAA80' },
-  { k: 'bois',     label: 'Bois',     color: '#1A1A1A' },
-  { k: 'novilhos', label: 'Novilhos', color: '#9A9A9A' },
+  { k: 'bois',     label: 'Bulls',    color: '#1A1A1A' },
+  { k: 'novilhos', label: 'Steers',   color: '#9A9A9A' },
 ];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NA = '<span class="td-na">—</span>';
@@ -511,21 +510,16 @@ const label = r => `${MONTHS_SHORT[r.month - 1]}-${String(r.year).slice(-2)}`;
 function renderTimeCharts() {
   const rows = viewRows();
   const labels = rows.map(label);
-  const allShares = MONTHLY.map(r => r.female_share).filter(v => v != null);
-  const lrAvg = allShares.reduce((s, v) => s + v, 0) / allShares.length;
-  document.getElementById('lr-avg').textContent = pct(lrAvg);
   const pt = rows.length > 60 ? 0 : 2;
 
   if (charts.share) charts.share.destroy();
   charts.share = new Chart(document.getElementById('shareChart'), {
     type: 'line',
     data: { labels, datasets: [
-      { label: 'Monthly', data: rows.map(r => r.female_share), borderColor: 'rgba(255,85,0,0.35)',
-        backgroundColor: 'transparent', borderWidth: 1.2, pointRadius: pt, tension: 0.2, order: 3 },
-      { label: '12M rolling', data: rows.map(r => r.roll12), borderColor: '#FF5500',
-        backgroundColor: 'rgba(255,85,0,0.06)', fill: true, borderWidth: 2.4, pointRadius: 0, tension: 0.3, order: 1 },
-      { label: 'Long-run avg', data: rows.map(() => lrAvg), borderColor: '#1A1A1A',
-        borderWidth: 1.2, borderDash: [5, 4], pointRadius: 0, order: 2 },
+      { label: 'Monthly', data: rows.map(r => r.female_share), borderColor: '#1A1A1A',
+        backgroundColor: 'transparent', borderWidth: 1.2, pointRadius: pt, tension: 0.2, order: 2 },
+      { label: '12M moving avg', data: rows.map(r => r.roll12), borderColor: '#FF5500',
+        backgroundColor: 'transparent', borderWidth: 2.6, pointRadius: 0, tension: 0.3, order: 1 },
     ] },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -651,7 +645,7 @@ function aggregate(keyFn) {
   });
   return [...map.values()].map(e => {
     const f = e.vacas + e.novilhas, m = e.bois + e.novilhos;
-    return { ...e, female_share: f + m ? f / (f + m) : null };
+    return { ...e, adults: f + m, female_share: f + m ? f / (f + m) : null };
   });
 }
 
@@ -662,7 +656,8 @@ function renderTable() {
     first = 'Month';
     rows = MONTHLY.map(r => ({ period: r.period, imp: !!r.novilhas_imputed,
       vacas: r.heads_vacas, novilhas: r.heads_novilhas, bois: r.heads_bois, novilhos: r.heads_novilhos,
-      total: r.heads_total, kg: r.carcass_kg_total, female_share: r.female_share, n: 1 }));
+      adults: r.female_heads != null ? r.female_heads + r.male_heads : null,
+      female_share: r.female_share, n: 1 }));
   } else if (currentTab === 'quarterly') {
     first = 'Quarter';
     rows = aggregate(r => `${Math.ceil(r.month / 3)}Q${String(r.year).slice(-2)}`);
@@ -671,21 +666,18 @@ function renderTable() {
     rows = aggregate(r => String(r.year));
   }
   document.getElementById('table-head').innerHTML = `<tr>
-    <th style="text-align:left;width:12%;">${first}</th>
-    <th>Cows${sub("'000 hd")}</th><th>Heifers${sub("'000 hd")}</th>
-    <th>Bois${sub("'000 hd")}</th><th>Novilhos${sub("'000 hd")}</th>
-    <th>Total${sub("'000 hd, incl. calves")}</th>
-    <th>Carcass${sub("'000 t")}</th><th>Avg Carcass${sub('kg/head')}</th>
-    <th style="width:13%;">Female Share${sub('cows + heifers / adults')}</th></tr>`;
+    <th style="text-align:left;width:14%;">${first}</th>
+    <th>Cows${sub("'000 heads")}</th><th>Heifers${sub("'000 heads")}</th>
+    <th>Bulls${sub("'000 heads")}</th><th>Steers${sub("'000 heads")}</th>
+    <th>Total${sub("'000 heads")}</th>
+    <th style="width:16%;">Female Share${sub('(cows + heifers) / total')}</th></tr>`;
   document.getElementById('table-body').innerHTML = rows.slice().reverse().map(r => {
     const partial = currentTab === 'annual' && r.n < 12 ? ` <span class="td-imp">(${r.n}m)</span>`
                   : currentTab === 'quarterly' && r.n < 3 ? ` <span class="td-imp">(${r.n}m)</span>` : '';
     return `<tr>
       <td>${r.period}${r.imp ? '<sup class="td-imp">*</sup>' : ''}${partial}</td>
       <td>${kHd(r.vacas)}</td><td>${kHd(r.novilhas)}</td><td>${kHd(r.bois)}</td><td>${kHd(r.novilhos)}</td>
-      <td>${kHd(r.total)}</td>
-      <td>${r.kg ? (r.kg / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1, minimumFractionDigits: 1 }) : NA}</td>
-      <td>${r.kg && r.total ? (r.kg / r.total).toFixed(1) : NA}</td>
+      <td>${kHd(r.adults)}</td>
       <td><span class="td-spread">${pct(r.female_share)}</span></td></tr>`;
   }).join('');
 }
