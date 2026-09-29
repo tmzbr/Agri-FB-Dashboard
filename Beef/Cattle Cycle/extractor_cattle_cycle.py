@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-extractor_cattle_cycle.py — Cattle Cycle tracker (Brazil tab)
-=============================================================
+extractor_cattle_cycle.py — Cattle Cycle tracker (Brazil + U.S. tabs)
+=====================================================================
 Builds / refreshes  cattle_cycle.db.
 
-SOURCE
+SOURCE — BRAZIL
   IBGE — Pesquisa Trimestral do Abate de Animais, SIDRA table 1092
   https://sidra.ibge.gov.br/tabela/1092
     level      Brasil (N1)
@@ -26,6 +26,25 @@ CYCLE INDICATOR
   total − bois − vacas − novilhos (flag novilhas_imputed = 1). The Total
   series has no suppressed cells today.
 
+SOURCE — U.S.
+  USDA NASS Quick Stats (Livestock Slaughter), https://quickstats.nass.usda.gov
+    Program SURVEY · Sector ANIMALS & PRODUCTS · Group LIVESTOCK ·
+    Commodity CATTLE · Geo NATIONAL · monthly (JAN…DEC), Data Items:
+      CATTLE, BULLS,      SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD
+      CATTLE, STEERS,     SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD
+      CATTLE, GE 500 LBS, SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD
+    males   = steers + bulls
+    females = GE 500 LBS − males   (= cows + heifers; the FI hierarchy is exact)
+    female_share = females / GE 500 LBS
+  Monthly steers/bulls exist 1922-07 onward, except 1958–1970 (not
+  published) and 1982, when NASS only published QUARTERLY totals, filed
+  under MAR/JUN/SEP/DEC. Those are split evenly over the quarter's three
+  months (share unchanged, heads ≈ monthly level) and flagged
+  quarter_split = 1.
+  Fetched through the same no-key flow the Quick Stats website uses
+  (/uuid/encode → /data/spreadsheet/<uuid>.csv). If NASS_API_KEY is set,
+  the official API is used as a fallback.
+
 USAGE
   pip install requests
   python extractor_cattle_cycle.py
@@ -35,9 +54,12 @@ OUTPUT TABLES
                     herd ∈ total, bois, vacas, novilhos, novilhas, vitelos
   br_monthly        period, year, month, heads_* / carcass_kg_* per herd,
                     female_heads, male_heads, female_share, updated_at
+  us_slaughter_raw  period (YYYY-MM), item (ge500 | steers | bulls), heads
+  us_monthly        period, year, month, heads_ge500, heads_steers, heads_bulls,
+                    heads_cows_heifers, female_heads, male_heads, female_share
 """
 
-import sqlite3, sys, time
+import csv, io, os, sqlite3, sys, time
 from datetime import datetime
 from pathlib import Path
 
@@ -56,6 +78,17 @@ HERD = {"992": "total", "55": "bois", "56": "vacas",
         "111734": "novilhos", "111735": "novilhas", "57": "vitelos"}
 HERDS = ["total", "bois", "vacas", "novilhos", "novilhas", "vitelos"]
 
+QS_BASE  = "https://quickstats.nass.usda.gov"
+QS_ITEMS = {
+    "CATTLE, GE 500 LBS, SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD": "ge500",
+    "CATTLE, STEERS, SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD":     "steers",
+    "CATTLE, BULLS, SLAUGHTER, COMMERCIAL, FI - SLAUGHTERED, MEASURED IN HEAD":      "bulls",
+}
+QS_FILTERS = [("source_desc", "SURVEY"), ("sector_desc", "ANIMALS & PRODUCTS"),
+              ("group_desc", "LIVESTOCK"), ("commodity_desc", "CATTLE"),
+              ("agg_level_desc", "NATIONAL"), ("freq_desc", "MONTHLY")]
+MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
 
 def init_db(conn):
     cols = ",\n        ".join(f"heads_{h} REAL, carcass_kg_{h} REAL" for h in HERDS)
@@ -65,6 +98,26 @@ def init_db(conn):
     if "inspection" in raw_cols:
         conn.executescript("DROP TABLE br_slaughter_raw; DROP TABLE IF EXISTS br_monthly;")
     conn.executescript(f"""
+    CREATE TABLE IF NOT EXISTS us_slaughter_raw (
+        period  TEXT,     -- YYYY-MM
+        item    TEXT,     -- ge500 | steers | bulls
+        heads   REAL,
+        PRIMARY KEY (period, item)
+    );
+    CREATE TABLE IF NOT EXISTS us_monthly (
+        period             TEXT PRIMARY KEY,
+        year               INTEGER,
+        month              INTEGER,
+        heads_ge500        REAL,
+        heads_steers       REAL,
+        heads_bulls        REAL,
+        heads_cows_heifers REAL,   -- ge500 − steers − bulls
+        female_heads       REAL,
+        male_heads         REAL,
+        female_share       REAL,
+        quarter_split      INTEGER,  -- 1 = quarterly total spread over 3 months (1982)
+        updated_at         TEXT
+    );
     CREATE TABLE IF NOT EXISTS br_slaughter_raw (
         period      TEXT,     -- YYYY-MM
         herd        TEXT,
@@ -95,7 +148,7 @@ def _num(v):
         return None
 
 
-def fetch_sidra(conn):
+def fetch_br(conn):
     data = None
     for attempt in range(4):
         try:
@@ -107,7 +160,9 @@ def fetch_sidra(conn):
             print(f"  [SIDRA] attempt {attempt + 1} failed: {e}")
             time.sleep(5 * 2 ** attempt)
     if not data or len(data) < 2:
-        sys.exit("  ✗ SIDRA 1092: no data retrieved")
+        # ::warning:: shows up as an annotation on the GitHub Actions run
+        print("::warning::Cattle Cycle — SIDRA 1092 unreachable, Brazil tab not refreshed")
+        return False
 
     vals = {}   # (period, herd) → [heads, kg]
     for row in data[1:]:
@@ -136,7 +191,7 @@ def fetch_sidra(conn):
     return True
 
 
-def materialise(conn):
+def materialise_br(conn):
     now = datetime.utcnow().isoformat()
     raw = {}
     for p, h, heads, kg in conn.execute("SELECT period, herd, heads, carcass_kg FROM br_slaughter_raw"):
@@ -172,12 +227,129 @@ def materialise(conn):
         print(f"        {r[0]}  total {r[3]:>12,.0f} hd   female share {r[-3]:.1%}")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# U.S. — NASS Quick Stats
+# ══════════════════════════════════════════════════════════════════════════════
+def _qs_rows_web():
+    """Quick Stats website flow (no API key): encode the query → CSV."""
+    form = QS_FILTERS + [("short_desc", item) for item in QS_ITEMS]
+    hdrs = {"User-Agent": "Mozilla/5.0"}
+    uuid = requests.post(f"{QS_BASE}/uuid/encode", data=form, headers=hdrs, timeout=120)
+    uuid.raise_for_status()
+    uuid = uuid.json()
+    r = requests.get(f"{QS_BASE}/data/spreadsheet/{uuid}.csv", headers=hdrs, timeout=300)
+    r.raise_for_status()
+    return [(d["Year"], d["Period"], d["Data Item"], d["Value"])
+            for d in csv.DictReader(io.StringIO(r.content.decode("utf-8-sig")))]
+
+
+def _qs_rows_api(key):
+    """Official Quick Stats API (needs NASS_API_KEY)."""
+    out = []
+    for item in QS_ITEMS:
+        params = dict(QS_FILTERS, short_desc=item, key=key, format="JSON")
+        r = requests.get(f"{QS_BASE}/api/api_GET/", params=params, timeout=300)
+        r.raise_for_status()
+        out += [(d["year"], d["reference_period_desc"], d["short_desc"], d["Value"])
+                for d in r.json()["data"]]
+    return out
+
+
+def fetch_us(conn):
+    rows = None
+    for attempt in range(3):
+        try:
+            rows = _qs_rows_web()
+            break
+        except Exception as e:
+            print(f"  [NASS] web flow attempt {attempt + 1} failed: {e}")
+            time.sleep(10 * 2 ** attempt)
+    if rows is None and os.environ.get("NASS_API_KEY"):
+        try:
+            rows = _qs_rows_api(os.environ["NASS_API_KEY"])
+        except Exception as e:
+            print(f"  [NASS] API fallback failed: {e}")
+    if not rows:
+        print("::warning::Cattle Cycle — NASS Quick Stats unreachable, U.S. tab not refreshed")
+        return False
+
+    new = set()
+    for year, period, item, value in rows:
+        if period not in MONTHS or item not in QS_ITEMS:
+            continue
+        try:
+            heads = float(value.replace(",", ""))
+        except ValueError:          # (D) withheld, (NA) …
+            continue
+        new.add((f"{year}-{MONTHS.index(period) + 1:02d}", QS_ITEMS[item], heads))
+    if not new:
+        print("::warning::Cattle Cycle — NASS Quick Stats returned no monthly values")
+        return False
+    periods = sorted({p for p, _, _ in new})
+    print(f"  [NASS] {len(new)} rows · {periods[0]} → {periods[-1]}")
+
+    old = set(conn.execute("SELECT period, item, heads FROM us_slaughter_raw"))
+    if new == old:
+        print("  [NASS] no change since last run — nothing to update.")
+        return False
+    conn.execute("DELETE FROM us_slaughter_raw")
+    conn.executemany("INSERT INTO us_slaughter_raw(period, item, heads) VALUES(?,?,?)", sorted(new))
+    conn.commit()
+    print(f"  [NASS] {len(new - old)} new/revised rows")
+    return True
+
+
+def materialise_us(conn):
+    now = datetime.utcnow().isoformat()
+    raw = {}
+    for p, item, heads in conn.execute("SELECT period, item, heads FROM us_slaughter_raw"):
+        raw.setdefault(p, {})[item] = heads
+    complete = {p: d for p, d in raw.items() if all(k in d for k in ("ge500", "steers", "bulls"))}
+
+    # Years whose split only exists at quarter ends (1982) hold quarterly
+    # totals there — spread each one over the quarter's three months.
+    by_year = {}
+    for p in complete:
+        by_year.setdefault(p[:4], set()).add(int(p[5:]))
+    months = {}                     # period → (values dict, quarter_split flag)
+    for p, d in complete.items():
+        if by_year[p[:4]] == {3, 6, 9, 12}:
+            q_end = int(p[5:])
+            for m in (q_end - 2, q_end - 1, q_end):
+                months[f"{p[:4]}-{m:02d}"] = ({k: v / 3 for k, v in d.items()}, 1)
+        else:
+            months[p] = (d, 0)
+
+    rows = []
+    for p in sorted(months):
+        d, split = months[p]
+        male = d["steers"] + d["bulls"]
+        fem = d["ge500"] - male
+        rows.append((p, int(p[:4]), int(p[5:]), d["ge500"], d["steers"], d["bulls"],
+                     fem, fem, male, fem / d["ge500"] if d["ge500"] else None, split, now))
+    conn.execute("DROP TABLE IF EXISTS us_monthly")
+    init_db(conn)
+    conn.executemany("INSERT INTO us_monthly VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    print(f"  [MAT] us_monthly = {len(rows)} months")
+    for r in rows[-3:]:
+        print(f"        {r[0]}  GE500 {r[3]:>12,.0f} hd   female share {r[9]:.1%}")
+
+
 def main():
     print(f"[DB] Opening {DB_PATH}")
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    if fetch_sidra(conn):
-        materialise(conn)
+    changed = False
+    print("[BRAZIL] IBGE SIDRA 1092")
+    if fetch_br(conn):
+        materialise_br(conn)
+        changed = True
+    print("[U.S.] NASS Quick Stats")
+    if fetch_us(conn):
+        materialise_us(conn)
+        changed = True
+    if changed:
         conn.execute("VACUUM")
     conn.close()
     print(f"\n✓ Done. {DB_PATH.name} = {DB_PATH.stat().st_size // 1024} KB")

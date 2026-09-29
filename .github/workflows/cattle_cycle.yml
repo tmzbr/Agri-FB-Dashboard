@@ -10,9 +10,18 @@ on:
   # months at 16:00 UTC (13:00 BRT, 1h after release). The extractor leaves
   # the DB untouched unless IBGE published something, so quiet days make no
   # commit. The monthly run on the 1st catches off-calendar revisions.
+  #
+  # U.S. — NASS "Livestock Slaughter", monthly, 3:00 PM ET on a Thursday
+  # between the 19th and 25th (2026: 22/01 19/02 19/03 23/04 21/05 25/06
+  # 23/07 20/08 24/09; next 22/10 19/11 24/12). Poll the 19th–26th at
+  # 21:00 UTC (5 PM EDT / 4 PM EST).
+  #
+  # Every run refreshes both countries; each source only writes when it has
+  # something new.
   schedule:
     - cron: '0 16 5-25 2,3,5,6,8,9,11,12 *'
     - cron: '0 16 1 * *'
+    - cron: '0 21 19-26 * *'
 
   workflow_dispatch:
 

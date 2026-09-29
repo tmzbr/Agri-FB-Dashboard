@@ -15,10 +15,10 @@ insert into public.dashboards
 values
   (34, 'fnb', 'beef',
    'Cattle Cycle',
-   'Female share of cattle slaughter — (cows + heifers) ÷ (cows + heifers + bulls + steers) — as a herd liquidation/retention gauge. Brazil: IBGE quarterly slaughter survey, monthly detail since 1997 (heads and carcass weight).',
-   'IBGE · SIDRA 1092',
+   'Female share of cattle slaughter — (cows + heifers) ÷ (cows + heifers + bulls + steers) — as a herd liquidation/retention gauge. Brazil: IBGE quarterly slaughter survey, monthly since 1997. U.S.: USDA NASS Livestock Slaughter, monthly since 1922.',
+   'IBGE · USDA NASS',
    '', '', '#',
-   '{"Brazil","Beef","Cattle Cycle","Slaughter","IBGE"}',
+   '{"Brazil","U.S.","Beef","Cattle Cycle","Slaughter"}',
    7,        -- after the BZ / U.S. beef spread trackers
    false,    -- visible_to_all: admin-only for now (flip in the panel when ready)
    false)    -- coming_soon
