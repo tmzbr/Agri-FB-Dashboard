@@ -91,8 +91,10 @@ canvas{max-height:215px;}
 .cp-row{display:flex;align-items:center;margin-bottom:6px;gap:6px;}
 .cp-lbl{font-size:11px;color:var(--bk);width:80px;flex-shrink:0;}
 .cp-lbl.auto{color:var(--gy);font-style:italic;}
-.cp-slider{flex:1;accent-color:var(--or);cursor:pointer;}
-.cp-val{font-size:11px;font-weight:700;color:var(--or);width:38px;text-align:right;flex-shrink:0;}
+/* min-width:0 — a range input has an intrinsic width (~130px in Safari) that
+   flex:1 won't shrink below, which pushed the % value out of the card. */
+.cp-slider{flex:1;min-width:0;width:100%;margin:0;accent-color:var(--or);cursor:pointer;}
+.cp-val{font-size:11px;font-weight:700;color:var(--or);width:38px;text-align:right;flex-shrink:0;white-space:nowrap;}
 .cp-val.auto{color:var(--gy);font-weight:400;}
 .cp-divider{border:none;border-top:1px solid var(--bd);margin:10px 0;}
 .btn-reset{width:100%;padding:7px;background:transparent;border:1.5px solid var(--or);color:var(--or);font-size:11px;font-weight:700;cursor:pointer;border-radius:4px;transition:all .15s;font-family:var(--font);}
