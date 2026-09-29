@@ -88,6 +88,13 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.new-badge{display:inline-block;margin-left:6px;padding:1px 6px 2px;border-radius:9px;
+  background:var(--orange);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;
+  line-height:13px;vertical-align:2px;box-shadow:0 0 0 0 rgba(255,85,0,.55);
+  animation:newPulse 1.8s ease-out infinite;}
+@keyframes newPulse{0%{box-shadow:0 0 0 0 rgba(255,85,0,.55);}
+  70%{box-shadow:0 0 0 7px rgba(255,85,0,0);}100%{box-shadow:0 0 0 0 rgba(255,85,0,0);}}
+@media (prefers-reduced-motion:reduce){.new-badge{animation:none;}}
 
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
@@ -284,7 +291,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: both views of the BZ Chicken Spread Tracker (portal module 10) -->
 <div class="subtab-bar">
   <button class="subtab" onclick="location.replace('chicken_bz_dashboard.html')">Exports</button>
-  <button class="subtab active">Domestic</button>
+  <button class="subtab active">Domestic<span class="new-badge">NEW</span></button>
 </div>
 
 <!-- VIEW CONTROLS -->
