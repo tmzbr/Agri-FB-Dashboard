@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Brazil NDVI Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.1/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;--gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;--green:#27AE60;--red:#C0392B;--blue:#2C6FB5;--brown:#A0552B;--font:'Segoe UI',Helvetica,Arial,sans-serif;}
+html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);min-height:100%;overflow-y:auto;font-size:13px;}
+.top-bar{background:var(--white);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;height:48px;gap:14px;}
+.back-btn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-mid);cursor:pointer;padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:none;font-family:var(--font);}
+.back-btn:hover{color:var(--gray-dark);border-color:#ccc;}.back-btn svg{width:14px;height:14px;}
+.top-bar-divider{width:1px;height:22px;background:var(--border);}
+.top-title{font-size:15px;font-weight:700;color:var(--black);}.top-sub{font-size:11.5px;color:var(--gray-mid);}
+.top-latest{margin-left:auto;font-size:11px;color:var(--gray-mid);background:#F9F9F9;border:1px solid var(--border);border-radius:4px;padding:4px 10px;white-space:nowrap;}
+.top-latest strong{color:var(--orange);}
+.orange-rule{height:3px;background:var(--orange);}
+.controls-bar{background:var(--white);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:8px 20px;gap:10px;flex-wrap:wrap;}
+.view-label{font-size:11px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.5px;}
+.view-btns{display:flex;gap:4px;}
+.view-btn{padding:4px 11px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--gray-mid);font-family:var(--font);transition:all .12s;}
+.view-btn.active{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700;}
+.view-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+/* pai de um subgrupo aberto: marcado sem competir com o filho selecionado */
+.view-btn.parent{border-color:var(--orange);color:var(--orange);font-weight:700;}
+.sub-btns{padding-left:8px;border-left:2px solid var(--orange);}
+/* ── clusters do usuário ── */
+.ctrl-break{flex-basis:100%;height:0;}
+.view-btn.mine{border-style:dashed;}
+.view-btn.mine.active{border-style:solid;}
+.mine-add{color:var(--orange);border-color:#FFD9C8;font-weight:700;}
+.mdl-bg{position:fixed;inset:0;background:rgba(26,26,26,.45);display:none;align-items:center;justify-content:center;z-index:60;}
+.mdl-bg.open{display:flex;}
+.mdl{background:var(--white);border-radius:6px;width:min(560px,94vw);max-height:88vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.22);}
+.mdl-hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);}
+.mdl-hd h3{font-size:14px;color:var(--black);}
+.mdl-hd .x{margin-left:auto;cursor:pointer;border:none;background:none;font-size:18px;color:var(--gray-mid);font-family:var(--font);}
+.mdl-bd{padding:16px 18px;display:flex;flex-direction:column;gap:14px;}
+.mdl-ft{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.fld{display:flex;flex-direction:column;gap:4px;}
+.fld label{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.4px;}
+.fld input,.fld select{padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:12.5px;color:var(--gray-dark);background:var(--white);}
+.fld input:focus,.fld select:focus{outline:none;border-color:var(--orange);}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.btn{padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--gray-mid);font-family:var(--font);}
+.btn:hover{border-color:#ccc;color:var(--gray-dark);}
+.btn.pri{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700;}
+.btn.pri:disabled{opacity:.5;cursor:default;}
+.btn.dgr{color:var(--red);border-color:#F0CFCB;}
+.flist{border:1px solid var(--border);border-radius:4px;max-height:220px;overflow:auto;}
+.flist .fr{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;}
+.flist .fr:last-child{border-bottom:none;}
+.flist .fr .nm{font-weight:600;color:var(--gray-dark);}
+.flist .fr .co{color:var(--gray-mid);font-size:10.5px;}
+.flist .fr .rm{cursor:pointer;border:none;background:none;color:var(--gray-mid);font-size:14px;font-family:var(--font);}
+.flist .fr .rm:hover{color:var(--red);}
+.flist .fr .sh{margin-left:auto;min-width:52px;text-align:right;font-weight:700;color:var(--orange);font-size:11.5px;font-variant-numeric:tabular-nums;}
+.flist .fr .sh.zero{color:var(--gray-mid);font-weight:400;}
+.flist .fr .wi{width:92px;margin-left:auto;padding:3px 6px;border:1px solid var(--border);border-radius:3px;
+  font-family:var(--font);font-size:11.5px;text-align:right;color:var(--gray-dark);background:var(--white);font-variant-numeric:tabular-nums;}
+.flist .fr .wi:focus{outline:none;border-color:var(--orange);}
+.flist .fr .wi+.sh{margin-left:0;}
+.flist .fr:not(:has(.sh)) .rm{margin-left:auto;}
+.flist .fr.hd{background:#FAFAFA;color:var(--gray-mid);text-transform:uppercase;font-size:9.5px;letter-spacing:.4px;font-weight:700;}
+.flist .fr.hd .nm{color:var(--gray-mid);font-weight:700;}
+.flist .fr.hd .wi-h{width:92px;margin-left:auto;text-align:right;}
+.flist .fr.hd .sh{margin-left:0;color:var(--gray-mid);font-weight:700;font-size:9.5px;}
+.flist .fr.hd .rm-h{width:14px;}
+.flist .fr.tot{background:#FAFAFA;border-top:1px solid var(--border);}
+.flist .fr.tot .nm{color:var(--gray-mid);text-transform:uppercase;font-size:10px;letter-spacing:.4px;}
+.flist .fr.tot .sh{padding-right:20px;}
+.mdl-msg{font-size:11.5px;color:var(--red);min-height:14px;}
+.mdl-hint{font-size:11px;color:var(--gray-mid);line-height:1.5;}
+.ctrl-sep{width:1px;height:22px;background:var(--border);}
+.main{display:grid;grid-template-columns:minmax(380px,44fr) 56fr;gap:12px;padding:12px 16px;align-items:stretch;}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;min-height:0;}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap;}
+.card-title{font-size:12.5px;font-weight:700;color:var(--black);}.card-sub{font-size:10.5px;color:var(--gray-mid);}
+/* TABLE */
+.table-wrap{overflow:auto;max-height:520px;}
+.table-wrap::-webkit-scrollbar{width:6px;height:6px;}.table-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
+table{width:100%;border-collapse:collapse;font-size:11.5px;}
+thead tr{background:#FAFAFA;border-bottom:2px solid var(--border);}
+th{padding:7px 8px;text-align:right;font-weight:700;font-size:10px;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.3px;position:sticky;top:0;background:#FAFAFA;cursor:pointer;white-space:nowrap;}
+th:first-child{text-align:left;}th .arr{color:var(--orange);font-size:8px;}
+td{padding:5px 8px;text-align:right;border-bottom:1px solid #F5F5F5;color:var(--gray-dark);white-space:nowrap;}
+td:first-child{text-align:left;font-weight:600;color:var(--black);}
+tbody tr{cursor:pointer;}tbody tr:hover td{background:#FFF8F5;}
+tbody tr.sel td{background:#FFF1E8;}tbody tr.grp td{background:#FAFAFA;font-weight:700;border-bottom:1.5px solid var(--border);}
+tbody tr.grp.sel td{background:#FFE9DC;}
+.pill{display:inline-block;padding:1px 7px;border-radius:10px;font-weight:700;font-size:11px;min-width:44px;text-align:center;}
+.tag{display:inline-block;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;}
+.muted{color:#bbb;}
+/* CHART */
+.chart-wrap{flex:1;position:relative;min-height:430px;padding:12px 14px 6px;}
+.chart-legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 14px 10px;font-size:11px;color:var(--gray-dark);}
+.chart-legend span{display:inline-flex;align-items:center;gap:6px;}
+.ln{width:18px;height:0;border-top-width:2px;border-top-style:solid;display:inline-block;}
+.sw{width:14px;height:10px;border-radius:2px;display:inline-block;}
+.stat-row{display:flex;gap:18px;flex-wrap:wrap;padding:8px 14px 12px;border-top:1px solid var(--border);}
+.stat{display:flex;flex-direction:column;}.stat .k{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.3px;}
+.stat .v{font-size:17px;font-weight:700;color:var(--black);margin-top:2px;}
+.note-bar{background:#FFFBF8;border-top:1px solid #FFD9C8;padding:6px 20px;font-size:10.5px;color:var(--gray-mid);}
+.note-bar em{color:var(--orange);font-style:normal;font-weight:600;}
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999;}
+.spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#loading p{font-size:13px;color:var(--gray-mid);}.err{color:var(--red);}
+/* `1fr` resolves to minmax(auto,1fr); the nowrap table's min-content was
+   stretching the track and pushing the whole page sideways. Let the cards
+   shrink and scroll the table inside .table-wrap instead. */
+@media(max-width:880px){.main{grid-template-columns:1fr;}.main>*{min-width:0;}}
+
+/* ── MOBILE / NARROW VIEWPORT ── */
+@media(max-width:768px){
+  .main{padding:10px 10px;gap:10px;}
+  /* top bar: let it breathe over two lines */
+  .top-bar{height:auto;padding:10px 12px;flex-wrap:wrap;gap:10px;}
+  .top-title{font-size:13.5px;}
+  .top-sub{font-size:10.5px;}
+  .top-latest{margin-left:0;width:100%;}
+  /* labels and button groups are flat siblings in a wrapping flex row, so a
+     label would trail at the end of the previous line — give each its own
+     line so it heads the group it describes */
+  .controls-bar{padding:8px 12px;gap:6px 8px;}
+  .controls-bar .view-label{flex:0 0 100%;margin-top:2px;}
+  .controls-bar .view-label:first-child{margin-top:0;}
+  .ctrl-sep{display:none;}
+  .view-btn{padding:5px 10px;font-size:11.5px;}
+
+  /* chart needs less forced height on a phone, legend/stats wrap */
+  .chart-wrap{min-height:320px;padding:10px 10px 6px;}
+  .chart-legend{padding:0 10px 10px;gap:10px;}
+  .stat-row{gap:14px;padding:8px 10px 12px;}
+  .stat .v{font-size:15px;}
+  .card-head{padding:10px 12px;}
+
+  /* table: scroll sideways rather than crushing every column */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:420px;}
+  table{min-width:560px;}
+  .note-bar{padding:6px 12px;}
+}
+</style>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><p id="load-msg">Loading data…</p></div>
+
+<div class="top-bar">
+  <button class="back-btn" onclick="goBack()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3L5 8l5 5"/></svg>Back</button>
+  <div class="top-bar-divider"></div>
+  <div><div class="top-title">🌱 Brazil NDVI Monitor</div><div class="top-sub">Current year vs. historical distribution — SLC &amp; BrasilAgro farms · growing regions of RS, PR, MS, MT, GO &amp; MATOPIBA · MODIS Terra + Aqua</div></div>
+  <div class="top-latest" title="Start date of the most recent 16-day composite window with data">Updated: <strong id="updated">—</strong></div>
+</div>
+<div class="orange-rule"></div>
+
+<div class="controls-bar">
+  <span class="view-label" id="lbl-grp">Group:</span>
+  <div class="view-btns" id="grp-btns">
+    <button class="view-btn active" data-grp="slc" onclick="setGrp('slc')">SLC</button>
+    <button class="view-btn" data-grp="ba" onclick="setGrp('ba')">BrasilAgro</button>
+    <button class="view-btn" data-grp="uf-rs" onclick="setGrp('uf-rs')">RS</button>
+    <button class="view-btn" data-grp="uf-pr" onclick="setGrp('uf-pr')">PR</button>
+    <button class="view-btn" data-grp="uf-ms" onclick="setGrp('uf-ms')">MS</button>
+    <button class="view-btn" data-grp="uf-mt" onclick="setGrp('uf-mt')">MT</button>
+    <button class="view-btn" data-grp="uf-go" onclick="setGrp('uf-go')">GO</button>
+    <button class="view-btn" data-grp="uf-matopiba" onclick="setGrp('uf-matopiba')">MATOPIBA</button>
+  </div>
+  <div class="view-btns sub-btns" id="mtp-btns" style="display:none">
+    <button class="view-btn" data-grp="uf-ma" onclick="setGrp('uf-ma')">MA</button>
+    <button class="view-btn" data-grp="uf-to" onclick="setGrp('uf-to')">TO</button>
+    <button class="view-btn" data-grp="uf-pi" onclick="setGrp('uf-pi')">PI</button>
+    <button class="view-btn" data-grp="uf-ba" onclick="setGrp('uf-ba')">BA</button>
+  </div>
+  <div class="ctrl-sep" id="sep-lvl" style="display:none"></div>
+  <span class="view-label" id="lbl-lvl" style="display:none">Rows:</span>
+  <div class="view-btns" id="lvl-btns" style="display:none">
+    <button class="view-btn active" data-lvl="reg" onclick="setLvl('reg')">Regions</button>
+    <button class="view-btn" data-lvl="mun" onclick="setLvl('mun')">Municipalities</button>
+  </div>
+  <div class="ctrl-sep"></div>
+  <span class="view-label">Granularity:</span>
+  <div class="view-btns">
+    <button class="view-btn active" data-gran="m" onclick="setGran('m')">Monthly</button>
+    <button class="view-btn" data-gran="w" onclick="setGran('w')">8-day</button>
+  </div>
+  <div class="ctrl-sep"></div>
+  <span class="view-label">History:</span>
+  <div class="view-btns">
+    <button class="view-btn" data-yrs="5" onclick="setYrs(5)">5y</button>
+    <button class="view-btn" data-yrs="10" onclick="setYrs(10)">10y</button>
+    <button class="view-btn active" data-yrs="15" onclick="setYrs(15)">15y</button>
+    <button class="view-btn" data-yrs="99" onclick="setYrs(99)">All</button>
+  </div>
+  <div class="ctrl-sep"></div>
+  <div class="view-btns">
+    <button class="view-btn" id="enso-btn" onclick="toggleEnso()">🌊 ENSO - El Niño | La Niña</button>
+    <button class="view-btn" id="enso-nino" onclick="setEnsoPhase('nino')" style="display:none">El Niño</button>
+    <button class="view-btn" id="enso-nina" onclick="setEnsoPhase('nina')" style="display:none">La Niña</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="card">
+    <div class="card-head">
+      <div><div class="card-title" id="tbl-title">Points</div><div class="card-sub">click a row to chart it · click a header to sort</div></div>
+    </div>
+    <div class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><div class="card-title" id="chart-title">—</div><div class="card-sub" id="chart-sub">—</div></div></div>
+    <div class="chart-legend" id="chart-legend"></div>
+    <div id="live-warn" style="font-size:11px;color:#b8791f;padding:0 2px 4px"></div>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="stat-row" id="stat-row"></div>
+  </div>
+</div>
+
+<div class="note-bar">
+  Source: <em>NASA MODIS MOD13Q1 / MYD13Q1 v6.1</em> (Terra + Aqua, 250 m, 16-day composites; the two satellites are offset by 8 days, so there is a new value every 8 days),
+  averaged over each municipality polygon (IBGE). Only good / marginal pixels enter the average (cloud, snow and shadow are dropped); a municipality-window with
+  <span id="note-minpct">25</span>% or fewer usable pixels is left out. <em>Observed data only</em>: each point is a composite window dated by its mid-point (start + 8 days).
+  <em>Monthly</em> = average of the windows centred in that month; for the month in progress, earlier years are averaged over the <em>same windows</em> already observed this year, so the comparison is like-for-like.
+  <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over every municipality it contains — switch <em>Rows</em> to <em>Municipalities</em> to see each one;
+  the three ▣ state-average rows weight the regions by municipality count, corn output or soybean output (2022–24 avg), as in the Weather Monitor.
+  <em>Farms</em> show the NDVI of the municipality where they sit (a municipal average — not the farm's own fields).
+  NDVI near 0.2 = bare soil · 0.5 = developing crop · 0.8+ = dense canopy.
+</div>
+
+<script>
+/* Brazil NDVI Monitor — mesmo esqueleto do Weather Monitor (grupos, tabela, espaguete com faixa histórica, ENSO).
+   Dados: ndvi_history.json (regiões e fazendas, gerado por build_ndvi_history.py) + locations.json (pesos e geografia,
+   o mesmo do Weather Monitor) + Supabase ndvi_municipio (só para a visão por município). Cada série é um
+   base64 de int16[46]: uma posição a cada 8 dias do ano, NDVI ×10000, -32768 = sem dado. */
+const SLOTS=46;
+const MES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const GRPLBL={slc:"SLC Agrícola",ba:"BrasilAgro","uf-rs":"Rio Grande do Sul","uf-pr":"Paraná","uf-ms":"Mato Grosso do Sul",
+  "uf-mt":"Mato Grosso","uf-go":"Goiás","uf-matopiba":"MATOPIBA","uf-ma":"Maranhão","uf-to":"Tocantins","uf-pi":"Piauí","uf-ba":"Bahia"};
+const WLBL={slc:"planted area"};
+const LOC_URLS=["../Weather%20Monitor/locations.json","locations.json"];
+const HIST_URL="ndvi_history.json", RONI_URL="../roni.json";
+
+/* ══ geografia (igual ao Weather Monitor) ══ */
+const WGT={n:{suf:"(simple)",              chart:"simple mean of all municipalities", fld:"n"},
+           m:{suf:"— 🌽 corn weighted",    chart:"weighted by corn output (2022–24 avg)", fld:"milho_t"},
+           s:{suf:"— 🌱 soybean weighted", chart:"weighted by soybean output (2022–24 avg)", fld:"soja_t"}};
+const REGGRP={"uf-rs":"RS","uf-pr":"PR","uf-ms":"MS","uf-mt":"MT","uf-go":"GO","uf-matopiba":"MATOPIBA","uf-ma":"MA","uf-to":"TO","uf-pi":"PI","uf-ba":"BA"};
+const isReg=g=>g in REGGRP;
+const MTP="uf-matopiba", MTP_UFS=["uf-ma","uf-to","uf-pi","uf-ba"];
+const inMtp=g=>g===MTP||MTP_UFS.includes(g);
+const wgtRow=k=>"▣ "+(STATE.grp===MTP?"MATOPIBA":"State")+" average "+WGT[k].suf;
+const hasW=g=>g==="slc";
+const singleUF=g=>isReg(g)&&g!==MTP;            // só estados isolados têm a visão por município
+const ufOf=g=>REGGRP[g];
+
+const STATE={grp:"slc",gran:"m",yrs:15,lvl:"reg",entity:"wavg",enso:"off",pts:[],munPts:{},hist:null,years:[],curYear:null,chart:null,sortKey:"vs",sortDir:-1};
+let LOC=null, RONI={}, ENSO_CONF={}, MINPCT=25;
+
+function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
+function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
+function buildEnsoConf(){const flat=[],conf={},yrs=Object.keys(RONI).map(Number).sort((a,b)=>a-b);for(const y of yrs){const a=RONI[y];if(!a)continue;for(let m=1;m<=12;m++)if(a[m-1]!=null)flat.push([y,m,a[m-1]]);}const raw=v=>v>0.5?"nino":v<-0.5?"nina":null;let i=0;while(i<flat.length){const ph=raw(flat[i][2]);if(!ph){i++;continue;}let j=i;while(j<flat.length&&raw(flat[j][2])===ph)j++;if(j-i>=3)for(let k=i;k<j;k++)conf[flat[k][0]+"-"+flat[k][1]]=ph;i=j;}ENSO_CONF=conf;}
+function ensoColor(o,phase,yr,mo){
+  if(o==null)return undefined;
+  const conf=ENSO_CONF[yr+"-"+mo];   // pinta só se faz parte de episódio (run>=3 consecutivos)
+  if(!conf)return undefined;
+  if(phase==="nino")return conf==="nino"?ninoCol(o):undefined;
+  if(phase==="nina")return conf==="nina"?ninaCol(o):undefined;
+  return conf==="nino"?ninoCol(o):ninaCol(o);
+}
+
+/* ══ calendário das 46 posições ══ */
+const CUM=[0,31,59,90,120,151,181,212,243,273,304,334,365];
+const slotMid=s=>Math.min(8*s+9,365);                 // meio da janela de 16 dias (ano não bissexto)
+const slotMonth=s=>{const d=slotMid(s);for(let m=0;m<12;m++)if(d<=CUM[m+1])return m+1;return 12;};
+const slotDate=(y,s)=>new Date(y,0,1+8*s);
+const dmy=d=>String(d.getDate()).padStart(2,"0")+" "+MES[d.getMonth()];
+const slotLabel=s=>dmy(slotDate(2023,s));
+function bucketsDef(){
+  if(STATE.gran==="w")return [...Array(SLOTS).keys()].map(s=>({label:slotLabel(s),slots:[s],m:slotMonth(s)}));
+  const b=MES.map((m,i)=>({label:m,slots:[],m:i+1}));
+  for(let s=0;s<SLOTS;s++)b[slotMonth(s)-1].slots.push(s);
+  return b;
+}
+
+/* base64(int16[46] ×10000) -> array de 46 com null onde não há dado */
+function dec(b64,pctB64){
+  if(!b64)return null;
+  const bin=atob(b64),a=new Array(SLOTS),pb=pctB64?atob(pctB64):null;
+  for(let i=0;i<SLOTS;i++){
+    let v=bin.charCodeAt(i*2)|(bin.charCodeAt(i*2+1)<<8);if(v&0x8000)v-=0x10000;
+    if(v===-32768){a[i]=null;continue;}
+    if(pb){let p=pb.charCodeAt(i*2)|(pb.charCodeAt(i*2+1)<<8);if(p&0x8000)p-=0x10000;if(p===-32768||p<MINPCT*10){a[i]=null;continue;}}
+    a[i]=v/10000;
+  }
+  return a;
+}
+function decSeries(obj){if(!obj)return null;const o={};for(const y in obj)o[+y]=dec(obj[y]);return o;}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ══ Supabase (só a visão por município) — mesmo padrão do Weather Monitor ══ */
+let _sb=null;
+function authToken(){
+  try{const p=window.parent;
+    if(p&&p!==window&&typeof p.__portalAccessToken==="function")return p.__portalAccessToken();
+  }catch(e){}
+  return null;
+}
+function sb(){
+  const token=authToken();
+  if(_sb&&_sb.__tok===token)return _sb;
+  if(typeof supabase==="undefined")return null;
+  try{
+    /* Se o build.sh não trocou os placeholders (arquivo aberto direto do disco), createClient lança — e o
+       dashboard segue servindo regiões e fazendas em vez de morrer no boot. */
+    _sb=supabase.createClient("__SUPABASE_URL__","__SUPABASE_ANON_KEY__",{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},
+      global:token?{headers:{Authorization:"Bearer "+token}}:{}});
+  }catch(e){console.warn("Supabase unavailable:",e);return null;}
+  _sb.__tok=token;
+  return _sb;
+}
+
+/* ══ carga ══ */
+async function fetchFirst(urls,cb){
+  let last=null;
+  for(const u of urls){try{const r=await fetch(u+cb);if(r.ok)return await r.json();last=u+" → HTTP "+r.status;}catch(e){last=u+" → "+e.message;}}
+  throw new Error("could not load "+urls[0]+" ("+last+")");
+}
+async function boot(){
+  try{
+    const cb="?v="+Date.now();
+    const [loc,hist,roni]=await Promise.all([fetchFirst(LOC_URLS,cb),fetch(HIST_URL+cb).then(r=>{if(!r.ok)throw new Error(HIST_URL+" → HTTP "+r.status);return r.json();}),
+      fetch(RONI_URL+cb).then(r=>r.json()).catch(()=>({roni:{}}))]);
+    RONI=roni.roni||roni||{};buildEnsoConf();
+    LOC=loc;STATE.hist=hist;STATE.years=hist.years.slice();STATE.curYear=Math.max(...hist.years);
+    MINPCT=hist.min_pct!=null?hist.min_pct:25;document.getElementById("note-minpct").textContent=MINPCT;
+    STATE.pts=collectPoints(loc,hist);
+    act("grp",STATE.grp);act("gran",STATE.gran);act("yrs",STATE.yrs);act("lvl",STATE.lvl);syncCtrls();
+    document.getElementById("loading").style.display="none";
+    render();
+  }catch(e){document.getElementById("load-msg").innerHTML='<span class="err">Error: '+esc(e.message)+'</span>';console.error(e);}
+}
+function collectPoints(loc,hist){
+  const P=hist.points,pts=[];
+  for(const f of loc.fazendas){
+    const key=f.empresa+"|"+f.fazenda+"|"+f.municipio;
+    pts.push({id:"f|"+key,grp:f.empresa==="SLC"?"slc":"ba",nome:f.fazenda,sub:f.municipio+"/"+f.uf,empresa:f.empresa,
+      area:f.area_ha||0,w:f.empresa==="SLC"?(f.area_ha||0):0,h:decSeries(P["f|"+key])});
+  }
+  const by=new Map();
+  for(const m of loc.regioes){
+    const key=m.uf+"|"+m.regiao;let r=by.get(key);
+    if(!r){r={id:"r|"+key,regKey:key,grp:"uf-"+m.uf.toLowerCase(),nome:m.regiao,uf:m.uf,n:0,milho_t:0,soja_t:0};by.set(key,r);}
+    r.n++;r.milho_t+=m.milho_t||0;r.soja_t+=m.soja_t||0;
+  }
+  for(const r of by.values()){
+    r.hBy={};r.wBy={};
+    for(const k in WGT){r.hBy[k]=decSeries(P[r.regKey+"|"+k]);r.wBy[k]=r[WGT[k].fld]||0;}
+    r.h=r.hBy.n;r.w=r.n;r.sub=r.n+" municipalities";pts.push(r);
+  }
+  return pts;
+}
+/* pontos virtuais da média estadual sob uma ponderação */
+const hasH=p=>p.h&&Object.keys(p.h).length>0;
+function groupPts(){
+  if(STATE.grp===MTP)return STATE.pts.filter(p=>MTP_UFS.includes(p.grp)&&hasH(p));
+  return STATE.pts.filter(p=>p.grp===STATE.grp&&hasH(p));
+}
+function stateSel(k){return groupPts().map(p=>({h:p.hBy[k],w:p.wBy[k]})).filter(x=>x.h&&x.w>0);}
+
+/* ══ visão por município (Supabase) ══ */
+async function ensureMuns(uf){
+  if(STATE.munPts[uf])return STATE.munPts[uf];
+  const c=sb();
+  if(!c)throw new Error("Municipality data needs the Supabase connection — open this dashboard from the portal.");
+  const ms=LOC.regioes.filter(m=>m.uf===uf),H={};
+  const ld=document.getElementById("loading"),msg=document.getElementById("load-msg");
+  msg.textContent="Loading "+ms.length+" municipalities of "+uf+"…";ld.style.display="flex";
+  try{
+    for(let i=0;i<ms.length;i+=100){
+      const codes=ms.slice(i,i+100).map(m=>m.codigo_ibge);
+      for(let from=0;;from+=1000){
+        const {data,error}=await c.from("ndvi_municipio").select("cod_ibge,year,ndvi,pct").eq("model","modis")
+          .in("cod_ibge",codes).order("cod_ibge").order("year").range(from,from+999);
+        if(error)throw new Error(error.message||String(error));
+        for(const r of data){(H[r.cod_ibge]=H[r.cod_ibge]||{})[r.year]=dec(r.ndvi,r.pct);}
+        if(data.length<1000)break;
+      }
+      msg.textContent="Loading municipalities of "+uf+"… "+Math.min(i+100,ms.length)+"/"+ms.length;
+    }
+  }finally{ld.style.display="none";}
+  STATE.munPts[uf]=ms.map(m=>({id:"m|"+m.codigo_ibge,grp:"mun",nome:m.municipio,uf:m.uf,regiao:m.regiao,milho_t:m.milho_t||0,soja_t:m.soja_t||0,
+    sub:m.regiao+" · corn "+((m.milho_t||0)/1000).toFixed(0)+"k t · soy "+((m.soja_t||0)/1000).toFixed(0)+"k t",w:1,h:H[m.codigo_ibge]||null})).filter(hasH);
+  return STATE.munPts[uf];
+}
+function tablePts(){
+  if(STATE.lvl==="mun"&&singleUF(STATE.grp)&&STATE.munPts[ufOf(STATE.grp)])return STATE.munPts[ufOf(STATE.grp)];
+  return groupPts();
+}
+
+/* ══ controles ══ */
+function act(a,v){document.querySelectorAll(`[data-${a}]`).forEach(b=>b.classList.toggle("active",b.dataset[a]==String(v)));}
+function syncCtrls(){
+  const on=inMtp(STATE.grp);document.getElementById("mtp-btns").style.display=on?"":"none";
+  const pai=document.querySelector('[data-grp="'+MTP+'"]');if(pai)pai.classList.toggle("parent",on&&STATE.grp!==MTP);
+  const lv=singleUF(STATE.grp)?"":"none";
+  ["sep-lvl","lbl-lvl","lvl-btns"].forEach(id=>document.getElementById(id).style.display=lv);
+  act("lvl",STATE.lvl);
+}
+function defaultEntity(){return isReg(STATE.grp)?"st|n":hasW(STATE.grp)?"wavg":"group";}
+async function setGrp(v){
+  STATE.grp=v;STATE.lvl="reg";act("grp",v);STATE.entity=defaultEntity();syncCtrls();render();
+}
+async function setLvl(v){
+  if(v===STATE.lvl||!singleUF(STATE.grp))return;
+  if(v==="mun"){
+    try{await ensureMuns(ufOf(STATE.grp));}
+    catch(e){console.error(e);document.getElementById("chart-sub").textContent="";
+      document.getElementById("live-warn").textContent="⚠ "+e.message;return;}
+  }
+  document.getElementById("live-warn").textContent="";
+  STATE.lvl=v;if(v==="reg"&&STATE.entity.startsWith("m|"))STATE.entity=defaultEntity();
+  syncCtrls();render();
+}
+function setGran(v){STATE.gran=v;act("gran",v);render();}
+function setYrs(v){STATE.yrs=v;act("yrs",v);render();}
+function sortBy(k){if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}renderTable();}
+function selectEntity(id){STATE.entity=id;renderTable();renderChart();}
+function goBack(){if(window.parent&&window.parent!==window)window.parent.postMessage({action:"closeDash"},"*");else history.back();}
+function toggleEnso(){STATE.enso=STATE.enso==="off"?"all":"off";syncEnso();}
+function setEnsoPhase(ph){if(STATE.enso==="off")return;let on=STATE.enso==="all"?["nino","nina"]:[STATE.enso];on=on.includes(ph)?on.filter(p=>p!==ph):on.concat(ph);STATE.enso=on.length===0?"off":on.length===2?"all":on[0];syncEnso();}
+function syncEnso(){const on=STATE.enso!=="off";
+  document.getElementById("enso-btn").classList.toggle("active",on);
+  ["enso-nino","enso-nina"].forEach(id=>document.getElementById(id).style.display=on?"":"none");
+  document.getElementById("enso-nino").classList.toggle("active",STATE.enso==="nino"||STATE.enso==="all");
+  document.getElementById("enso-nina").classList.toggle("active",STATE.enso==="nina"||STATE.enso==="all");
+  renderChart();}
+
+
+/* ══ SÉRIE: ano corrente vs. anos anteriores ══ */
+const fmtV=v=>v==null?"—":v.toFixed(2);
+/* média do ponto nas posições `ss` do ano `y` (ignora posições sem dado) */
+function pointVal(p,y,ss){
+  const a=p.h&&p.h[y];if(!a)return null;
+  let s=0,n=0;for(const k of ss){const v=a[k];if(v!=null){s+=v;n++;}}
+  return n?s/n:null;
+}
+function aggVal(sel,y,ss,wtd){
+  let num=0,den=0;
+  for(const p of sel){const v=pointVal(p,y,ss);if(v!=null){const w=wtd?(p.w||0):1;num+=v*w;den+=w;}}
+  return den?num/den:null;
+}
+/* posições do ano corrente com dado em algum ponto da seleção */
+function curSlots(sel){
+  const s=new Set(),y=STATE.curYear;
+  for(const p of sel){const a=p.h&&p.h[y];if(a)for(let k=0;k<SLOTS;k++)if(a[k]!=null)s.add(k);}
+  return s;
+}
+function computeSeries(sel,wtd){
+  const cy=STATE.curYear,buckets=bucketsDef(),obs=curSlots(sel);
+  const histYears=STATE.years.filter(y=>y!==cy),yrs=histYears.slice(Math.max(0,histYears.length-STATE.yrs));
+  // posições observadas no ano corrente em cada balde: o histórico usa as MESMAS posições (comparação justa no mês em curso)
+  const cs=buckets.map(b=>b.slots.filter(s=>obs.has(s)));
+  const labels=buckets.map(b=>b.label);
+  const yearSeries=yrs.map(y=>buckets.map((b,i)=>aggVal(sel,y,cs[i].length?cs[i]:b.slots,wtd)));
+  const bandMin=[],bandMax=[],mean=[];
+  for(let i=0;i<buckets.length;i++){const vv=yearSeries.map(s=>s[i]).filter(v=>v!=null);
+    if(vv.length){bandMin.push(Math.min(...vv));bandMax.push(Math.max(...vv));mean.push(vv.reduce((a,b)=>a+b,0)/vv.length);}else{bandMin.push(null);bandMax.push(null);mean.push(null);}}
+  const curObs=buckets.map((b,i)=>cs[i].length?aggVal(sel,cy,cs[i],wtd):null);
+  const bucketMonth=buckets.map(b=>b.m);
+  return {labels,yearSeries,bandMin,bandMax,mean,curObs,yrs,bucketMonth};
+}
+function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null)return k;return -1;}
+function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);
+  return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};}
+function vsColor(d){
+  if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};
+  const t=Math.max(-1,Math.min(1,d/0.1)),mag=Math.abs(t),al=0.12+0.5*mag;
+  const c=t>=0?"39,174,96":"192,57,43";                      // acima da média = verde; abaixo = vermelho
+  return{bg:`rgba(${c},${al})`,fg:mag>.55?"#fff":(t>=0?"#14693a":"#7a1f15")};
+}
+/* o selo do topo mostra o início da janela mais recente com dado — não a hora do load */
+function stampUpdated(){
+  let last=-1;const y=STATE.curYear;
+  for(const p of STATE.pts){const a=p.h&&p.h[y];if(a)for(let k=SLOTS-1;k>last;k--)if(a[k]!=null){last=k;break;}}
+  document.getElementById("updated").textContent=last<0?"—":dmy(slotDate(y,last))+" "+y;
+}
+
+/* ══ TABELA ══ */
+function render(){renderTable();renderChart();stampUpdated();}
+function renderTable(){
+  const ttl=document.getElementById("tbl-title"),mun=STATE.lvl==="mun"&&singleUF(STATE.grp);
+  ttl.textContent=(mun?"Municipalities":isReg(STATE.grp)?"Regions":"Farms")+" — "+GRPLBL[STATE.grp];
+  const g=groupPts();
+  if(!g.length){
+    document.getElementById("thead").innerHTML="";
+    document.getElementById("tbody").innerHTML=`<tr><td colspan="5" style="padding:16px;text-align:left;font-weight:400;color:var(--gray-mid);white-space:normal;line-height:1.5">No NDVI series for this group yet.</td></tr>`;
+    return;
+  }
+  const head=[];
+  if(isReg(STATE.grp)){
+    const nm=g.reduce((s,p)=>s+p.n,0);
+    for(const k in WGT){
+      const sel=stateSel(k);if(!sel.length)continue;
+      const tot=sel.reduce((s,x)=>s+x.w,0);
+      head.push({id:"st|"+k,nome:wgtRow(k),grpRow:true,
+        sub:k==="n"?"all "+nm+" municipalities":(tot/1e6).toFixed(1)+" Mt "+(k==="m"?"corn":"soy")+" · 2022–24 avg",...summary(sel,true)});
+    }
+  }else{
+    if(hasW(STATE.grp))head.push({id:"wavg",nome:"▣ Weighted by "+WLBL[STATE.grp],sub:g.length+" farms",grpRow:true,...summary(g,true)});
+    head.push({id:"group",nome:"▣ Group average"+(hasW(STATE.grp)?" (simple)":""),sub:g.length+" farms",grpRow:true,...summary(g,false)});
+  }
+  const rows=mun?tablePts():g;
+  const totM=g.reduce((s,p)=>s+(p.milho_t||0),0),totS=g.reduce((s,p)=>s+(p.soja_t||0),0);
+  const rowSub=p=>{
+    if(mun)return p.sub;
+    if(!p.regKey)return p.sub+(p.area?" · "+(p.area/1000).toFixed(0)+"k ha":"");
+    const pc=(v,t)=>t?Math.round(v/t*100)+"%":"—";
+    return `${p.n} municipalities · ${pc(p.milho_t,totM)} corn · ${pc(p.soja_t,totS)} soy`;
+  };
+  const rowName=p=>(STATE.grp===MTP&&p.uf&&!mun?p.uf+" · ":"")+p.nome;
+  const rowsData=head.concat(rows.map(p=>({id:p.id,nome:rowName(p),sub:rowSub(p),empresa:p.empresa,...summary([p],false)})));
+  rowsData.forEach(r=>{r.vs=(r.cur!=null&&r.mean!=null)?r.cur-r.mean:null;r.range=(r.min!=null&&r.max!=null)?r.max-r.min:null;});
+  const nHead=head.length;
+  const body=rowsData.slice(nHead).sort((a,b)=>{let va=a[STATE.sortKey],vb=b[STATE.sortKey];
+    if(STATE.sortKey==="nome")return STATE.sortDir*(""+va).localeCompare(""+vb);
+    if(va==null)return 1;if(vb==null)return -1;return STATE.sortDir*(va-vb);});
+  const cols=[["nome",mun?"Municipality":isReg(STATE.grp)?"Region":"Farm"],["cur","Current"],["mean","Avg "+(STATE.yrs>=99?"all":STATE.yrs+"y")],["vs","vs avg"],["range","Range"]];
+  document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th onclick="sortBy('${c[0]}')">${c[1]}${STATE.sortKey===c[0]?' <span class="arr">'+(STATE.sortDir<0?'▼':'▲')+'</span>':''}</th>`).join("")+"</tr>";
+  const rowHtml=r=>{const vc=vsColor(r.vs);
+    const tag=r.empresa?` <span class="tag" style="background:${r.empresa==='SLC'?'#E8F0FA':'#FDEEE6'};color:${r.empresa==='SLC'?'#2C6FB5':'#C2581F'}">${r.empresa==='SLC'?'SLC':'BA'}</span>`:"";
+    return `<tr class="${r.grpRow?'grp':''}${STATE.entity===r.id?' sel':''}" data-id="${esc(r.id)}">
+      <td>${esc(r.nome)}${tag}<br><span class="muted" style="font-weight:400;font-size:10px">${esc(r.sub)}</span></td>
+      <td style="color:var(--orange);font-weight:700">${fmtV(r.cur)}</td><td>${fmtV(r.mean)}</td>
+      <td><span class="pill" style="background:${vc.bg};color:${vc.fg}">${r.vs==null?"—":(r.vs>0?"+":"−")+fmtV(Math.abs(r.vs))}</span></td>
+      <td class="muted" style="font-size:10.5px">${r.min==null?"—":fmtV(r.min)+"–"+fmtV(r.max)}</td></tr>`;};
+  document.getElementById("tbody").innerHTML=rowsData.slice(0,nHead).map(rowHtml).join("")+body.map(rowHtml).join("");
+}
+document.addEventListener("click",e=>{const tr=e.target.closest&&e.target.closest("#tbody tr[data-id]");if(tr)selectEntity(tr.dataset.id);});
+
+/* ══ GRÁFICO ══ */
+function selEntityPts(){
+  if(STATE.entity.startsWith("st|"))return stateSel(STATE.entity.slice(3));
+  if(STATE.entity==="group"||STATE.entity==="wavg")return groupPts();
+  const all=STATE.pts.concat(...Object.values(STATE.munPts));
+  const p=all.find(x=>x.id===STATE.entity);return p?[p]:[];
+}
+function renderChart(){
+  const sel=selEntityPts();
+  if(!sel.length){
+    if(STATE.chart){STATE.chart.destroy();STATE.chart=null;}
+    document.getElementById("chart-title").textContent="—";document.getElementById("chart-sub").textContent="no data";
+    document.getElementById("chart-legend").innerHTML="";document.getElementById("stat-row").innerHTML="";return;
+  }
+  const st=STATE.entity.startsWith("st|")?STATE.entity.slice(3):null;
+  const wtd=STATE.entity==="wavg"||!!st,isGroup=STATE.entity==="group"||wtd,rg=isReg(STATE.grp);
+  const head=st?`${GRPLBL[STATE.grp]} — ${WGT[st].chart}`
+    :wtd?`${GRPLBL[STATE.grp]} — weighted by ${WLBL[STATE.grp]} (${sel.length})`
+    :isGroup?`Average of ${sel.length} farms · ${GRPLBL[STATE.grp]}`
+    :sel[0].grp==="mun"?`${sel[0].nome} (${sel[0].uf}) — municipality average`
+    :rg?`${sel[0].nome} (${sel[0].uf||REGGRP[STATE.grp]}) — mean of ${sel[0].n} municipalities`
+    :sel[0].nome+" · "+sel[0].sub;
+  document.getElementById("chart-title").textContent="NDVI — "+head;
+  document.getElementById("chart-sub").textContent=`Year ${STATE.curYear} · ${STATE.gran==="m"?"monthly":"8-day"} · ${STATE.yrs>=99?"full":STATE.yrs+"-year"} history · MODIS Terra + Aqua`+(isGroup?" · narrow band (spatial average) — click a row":"");
+  const S=computeSeries(sel,wtd);drawChart(S);drawLegend(S);drawStats(S);
+}
+function drawLegend(S){
+  const elnino=`<span><i class="ln" style="border-color:rgba(230,75,30,.85)"></i>El Niño</span>`;
+  const lanina=`<span><i class="ln" style="border-color:rgba(50,90,210,.85)"></i>La Niña</span>`;
+  const others=`<span><i class="ln" style="border-color:rgba(120,120,120,.4)"></i>${STATE.enso==="all"?"Neutral":"Others (gray)"}</span>`;
+  const credit=`<span style="color:var(--gray-mid)">(ENSO · NOAA RONI by mid-month)</span>`;
+  const tail=STATE.enso!=="off"
+   ?(STATE.enso==="nino"?elnino+others:STATE.enso==="nina"?lanina+others:elnino+others+lanina)+credit
+   :`<span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${S.yrs[S.yrs.length-1]}</span>
+     <span><i class="ln" style="border-color:rgba(165,165,165,.55)"></i>${S.yrs[S.yrs.length-2]}</span>
+     <span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;
+  document.getElementById("chart-legend").innerHTML=
+  `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>${STATE.curYear}</span>
+   <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${S.yrs[0]}–${S.yrs[S.yrs.length-1]}</span>
+   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail;}
+function drawStats(S){const i=lastObsIdx(S);const cur=i>=0?S.curObs[i]:null,mean=i>=0?S.mean[i]:null,mn=i>=0?S.bandMin[i]:null,mx=i>=0?S.bandMax[i]:null;
+  const d=(cur!=null&&mean!=null)?cur-mean:null,dc=d==null?"var(--gray-mid)":(d>0?"var(--green)":"var(--red)");
+  document.getElementById("stat-row").innerHTML=
+   `<div class="stat"><span class="k">Current (${i>=0?S.labels[i]:"—"})</span><span class="v" style="color:var(--orange)">${fmtV(cur)}</span></div>
+    <div class="stat"><span class="k">Avg ${STATE.yrs>=99?"all":STATE.yrs+"y"}</span><span class="v">${fmtV(mean)}</span></div>
+    <div class="stat"><span class="k">vs avg</span><span class="v" style="color:${dc}">${d==null?"—":(d>0?"+":"−")+fmtV(Math.abs(d))}</span></div>
+    <div class="stat"><span class="k">Historical range</span><span class="v" style="font-size:14px">${fmtV(mn)} – ${fmtV(mx)}</span></div>`;}
+function drawChart(S){
+  if(STATE.chart)STATE.chart.destroy();const ds=[];const yl=S.yrs[0]+"–"+(""+S.yrs[S.yrs.length-1]).slice(2);
+  ds.push({label:"Min "+yl,data:S.bandMin,borderColor:"transparent",pointRadius:0,fill:false,order:30,_to:5});
+  ds.push({label:"Max "+yl,data:S.bandMax,borderColor:"transparent",pointRadius:0,backgroundColor:"rgba(120,120,120,.16)",fill:"-1",order:30,_to:4});
+  const lastYr=S.yrs[S.yrs.length-1],secYr=S.yrs[S.yrs.length-2];
+  const ensoOn=STATE.enso!=="off";
+  S.yearSeries.forEach((s,i)=>{const yr=S.yrs[i];
+    const col=ensoOn?"rgba(120,120,120,.28)":(yr===lastYr?"rgba(70,70,70,.62)":yr===secYr?"rgba(155,155,155,.3)":"rgba(120,120,120,.3)");
+    const d={label:String(yr),data:s,borderColor:col,borderWidth:(!ensoOn&&yr===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:ensoOn?20:(yr===lastYr?18:yr===secYr?19:20),_to:6+(lastYr-yr),tension:.3,spanGaps:true};
+    if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr],mo=S.bucketMonth[ctx.p0DataIndex];return a?ensoColor(a[mo-1],STATE.enso,yr,mo):undefined;}};
+    ds.push(d);});
+  ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
+  ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:1.5,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
+  if(!Chart.Tooltip.positioners.awayCursor)Chart.Tooltip.positioners.awayCursor=function(items,ev){const a=this.chart.chartArea;if(!a)return ev;const midX=(a.left+a.right)/2;return{x:ev.x<midX?a.right:a.left,y:a.top+2};};
+  STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:S.labels,datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
+    plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
+      label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
+      labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
+        if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const mo=S.bucketMonth[c.dataIndex],col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][mo-1],STATE.enso,+ds.label,mo)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
+        return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
+    }}},
+    scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
+            y:{title:{display:true,text:"NDVI",font:{size:10},color:"#888"},suggestedMin:0.1,suggestedMax:0.95,ticks:{font:{size:9},color:"#999",callback:v=>v.toFixed(2)},grid:{color:"#f2f2f2"}}}}});
+}
+boot();
+</script>
+</body>
+</html>
