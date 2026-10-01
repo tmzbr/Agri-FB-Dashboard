@@ -1,0 +1,55 @@
+name: Test NDVI AppEEARS (Sorriso)
+
+# Teste manual (não roda sozinho, não escreve em nenhum banco nem faz commit).
+# Submete 2 tarefas ao AppEEARS da NASA para Sorriso/MT, baixa o resultado e compara com os
+# valores já obtidos pelo Planetary Computer. Requer os secrets EARTHDATA_USER e EARTHDATA_PASS
+# (login do NASA Earthdata) em Settings > Secrets and variables > Actions.
+#
+# Caminho esperado do script no repositório: ndvi_test/test_appeears_sorriso.py
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_min:
+        description: "Espera máxima por tarefa na fila da NASA (minutos)"
+        required: false
+        default: "150"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instala dependências
+        run: pip install requests numpy shapely rasterio
+
+      - name: Valida camadas (sem login)
+        run: python ndvi_test/test_appeears_sorriso.py --dry-run
+
+      - name: Executa o teste com o login da NASA
+        shell: bash
+        env:
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+        run: |
+          python ndvi_test/test_appeears_sorriso.py --max-min "${{ github.event.inputs.max_min || '150' }}" 2>&1 | tee ndvi_test.log
+
+      - name: Guarda o log e o CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado-teste-ndvi
+          path: |
+            ndvi_test.log
+            appeears_resultado.csv
+          if-no-files-found: ignore
