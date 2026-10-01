@@ -13,12 +13,16 @@ on:
       max_min:
         description: "Espera máxima por tarefa na fila da NASA (minutos)"
         required: false
-        default: "150"
+        default: "30"
+      resume:
+        description: "Só na 2ª execução, se a fila passou do tempo: IDs das tarefas impressos no log da 1ª (formato ID_A,ID_B)"
+        required: false
+        default: ""
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 200
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -41,8 +45,12 @@ jobs:
         env:
           EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
           EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+          MAX_MIN: ${{ github.event.inputs.max_min || '30' }}
+          RESUME: ${{ github.event.inputs.resume }}
         run: |
-          python ndvi_test/test_appeears_sorriso.py --max-min "${{ github.event.inputs.max_min || '150' }}" 2>&1 | tee ndvi_test.log
+          ARGS="--max-min $MAX_MIN"
+          if [ -n "$RESUME" ]; then ARGS="$ARGS --resume $RESUME"; fi
+          python ndvi_test/test_appeears_sorriso.py $ARGS 2>&1 | tee ndvi_test.log
 
       - name: Guarda o log e o CSV
         if: always()
