@@ -1,0 +1,97 @@
+name: Update NDVI (weekly → Supabase + ndvi_history.json)
+
+# Rotina semanal. NÃO rebaixa o histórico: o histórico fechado fica no Supabase e só muda se a NASA reprocessar a
+# coleção. A cada semana:
+#   1) ndvi_monitor.py seed --mode tail: pergunta ao catálogo da NASA quais janelas já foram publicadas, busca as que
+#      ainda não estão no banco e REPROCESSA as últimas N já gravadas (a NASA reemite compostos recentes);
+#   2) ndvi_monitor.py build: refaz as séries das 51 regiões e 45 fazendas a partir do banco;
+#   3) commita ndvi_history.json (~0,7 MB), só se mudou e se passou na checagem.
+# Quando não há janela nova, o passo 1 só reprocessa as últimas N (minutos).
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, EARTHDATA_USER, EARTHDATA_PASS (AppEEARS = janelas de 2025 em diante).
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"          # toda segunda, 12:00 UTC (depois do update_climate.yml e da grade, às 11:00)
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Reprocessar as últimas N janelas já gravadas, por satélite"
+        default: "2"
+      source:
+        type: choice
+        options: [auto, pc, appeears]
+        default: auto
+
+concurrency:
+  group: ndvi-load
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "Climate Monitor/NDVI Monitor/requirements-ndvi.txt"
+      - run: pip install -r "Climate Monitor/NDVI Monitor/requirements-ndvi.txt"
+
+      - name: Tail (novas janelas + reprocessa as últimas)
+        id: seed
+        continue-on-error: true       # mesmo com falha parcial, o que entrou no banco vira série; o job fica vermelho no fim
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+        run: |
+          python "Climate Monitor/NDVI Monitor/ndvi_monitor.py" seed \
+            --mode tail --refresh "${{ inputs.refresh || '2' }}" --source "${{ inputs.source || 'auto' }}" \
+            --workers 4 --flush-every 4 --max-wait 90
+
+      - name: Build ndvi_history.json
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python "Climate Monitor/NDVI Monitor/ndvi_monitor.py" build \
+            --locations "Climate Monitor/Weather Monitor/locations.json" \
+            --out "Climate Monitor/NDVI Monitor/ndvi_history.json.new"
+
+      - name: Sanity check (não commita lixo)
+        run: |
+          python - <<'PY'
+          import json, os, sys, datetime as dt
+          d = "Climate Monitor/NDVI Monitor/"
+          new = json.load(open(d + "ndvi_history.json.new"))
+          assert len(new["points"]) >= 150, f"poucas séries: {len(new['points'])}"
+          assert new["years"][0] <= 2002 and new["years"][-1] >= dt.date.today().year - 1, f"anos: {new['years'][0]}–{new['years'][-1]}"
+          size = os.path.getsize(d + "ndvi_history.json.new")
+          if os.path.exists(d + "ndvi_history.json"):
+              old = os.path.getsize(d + "ndvi_history.json")
+              assert size >= 0.9 * old, f"arquivo novo muito menor ({size} vs {old} bytes)"
+          print(f"OK: {len(new['points'])} séries, anos {new['years'][0]}–{new['years'][-1]}, {size/1e6:.2f} MB")
+          PY
+          mv "Climate Monitor/NDVI Monitor/ndvi_history.json.new" "Climate Monitor/NDVI Monitor/ndvi_history.json"
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Climate Monitor/NDVI Monitor/ndvi_history.json"
+          if git diff --cached --quiet; then echo "sem mudanças"; exit 0; fi
+          git commit -m "chore(ndvi): update ndvi_history.json [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+
+      - name: Falha parcial do tail?
+        if: steps.seed.outcome == 'failure'
+        run: |
+          echo "::error::O tail teve falhas (janelas indisponíveis ou erro de rede). O que entrou já está nas séries; rode o seed com mode=missing."
+          exit 1

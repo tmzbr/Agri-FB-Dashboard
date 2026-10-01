@@ -1,0 +1,96 @@
+name: Seed NDVI (history → Supabase)
+
+# Carga HISTÓRICA do NDVI por município (2.363 municípios) em public.ndvi_municipio. Manual.
+# Uma tarefa por ano, em paralelo: cada ano grava só as linhas dele (município, modelo, ano), então as tarefas
+# não se pisam. É idempotente — rodar de novo regrava as mesmas linhas — e retomável: o modo `missing` só
+# busca o que ainda não está no banco (use depois de qualquer falha).
+#
+# Primeira vez, nesta ordem:
+#   1) years=2023, mode=full, limit_windows=2   → teste de fumaça (~3 min). Confira a tabela no Supabase.
+#   2) years=2023, mode=full                    → um ano inteiro; ANOTE O TEMPO e confira os minutos do plano.
+#   3) years=2000-2026, mode=full               → a carga completa.
+#   4) years=2000-2026, mode=missing            → só se algo falhou; completa as lacunas.
+#
+# Fontes: o Planetary Computer (sem login) cobre 2000–2021 por inteiro e quase todo 2022–24; o que ele não tem
+# (a maior parte de 2025–26) vai para o AppEEARS da NASA, que precisa dos secrets EARTHDATA_USER e EARTHDATA_PASS
+# (usuário do Earthdata, não o e-mail). Sem eles, essas janelas ficam registradas como "indisponíveis".
+#
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (service role — ignora a RLS), EARTHDATA_USER, EARTHDATA_PASS.
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Anos: 2023 | 2000-2026 | 2022,2025"
+        default: "2000-2026"
+      mode:
+        description: "full = todas as janelas publicadas · missing = só as que faltam no banco"
+        type: choice
+        options: [full, missing]
+        default: full
+      source:
+        description: "auto = Planetary Computer, depois AppEEARS · pc · appeears"
+        type: choice
+        options: [auto, pc, appeears]
+        default: auto
+      limit_windows:
+        description: "Teste: processa só N janelas por ano (vazio = todas)"
+        default: ""
+
+# compartilha o grupo com o update_ndvi.yml: um grava a linha do ano corrente por inteiro, então não podem rodar juntos
+concurrency:
+  group: ndvi-load
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.m.outputs.years }}
+    steps:
+      - id: m
+        env:
+          YEARS: ${{ inputs.years }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          ys = set()
+          for part in os.environ["YEARS"].replace(" ", "").split(","):
+              if "-" in part:
+                  a, b = part.split("-"); ys |= set(range(int(a), int(b) + 1))
+              elif part:
+                  ys.add(int(part))
+          ys = sorted(y for y in ys if 2000 <= y <= 2100)
+          assert ys, "nenhum ano válido em 'years'"
+          print("years=" + json.dumps(ys))
+          PY
+
+  seed:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 345          # limite do GitHub: 360. ~1 h por ano é a estimativa; meça no teste 2)
+    strategy:
+      fail-fast: false            # um ano que falha não cancela os outros
+      max-parallel: 6             # gentil com o Planetary Computer; suba depois de medir
+      matrix:
+        year: ${{ fromJSON(needs.plan.outputs.years) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "Climate Monitor/NDVI Monitor/requirements-ndvi.txt"
+      - run: pip install -r "Climate Monitor/NDVI Monitor/requirements-ndvi.txt"
+      - name: Seed ${{ matrix.year }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+          LIMIT: ${{ inputs.limit_windows }}
+        run: |
+          python "Climate Monitor/NDVI Monitor/ndvi_monitor.py" seed \
+            --mode "${{ inputs.mode }}" --years "${{ matrix.year }}" --source "${{ inputs.source }}" \
+            --workers 4 --flush-every 8 --max-wait 120 \
+            ${LIMIT:+--limit-windows "$LIMIT"}
