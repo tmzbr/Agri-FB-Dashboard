@@ -15,6 +15,7 @@ Uso:
   python test_appeears_sorriso.py --dry-run          # valida camadas (API pública) e monta as tarefas
   python test_appeears_sorriso.py                    # submete 2 tarefas, aguarda, baixa e calcula
   python test_appeears_sorriso.py --resume ID_A,ID_B # retoma tarefas já submetidas (fila lenta)
+  (espera máxima padrão: 30 min por tarefa; as tarefas continuam na NASA mesmo se o script parar de esperar)
 """
 import argparse, csv, datetime, json, os, re, sys, time
 import numpy as np
@@ -121,7 +122,7 @@ def agrupar(pasta):
 def montar(nome, ini, fim, geom):
     return {
         "task_type": "area",
-        "task_name": f"{nome}_{datetime.datetime.utcnow():%Y%m%d%H%M%S}",
+        "task_name": f"{nome}_{datetime.datetime.now(datetime.timezone.utc):%Y%m%d%H%M%S}",
         "params": {
             "dates": [{"startDate": ini, "endDate": fim}],
             "layers": [{"product": p, "layer": c} for p in PRODUTOS for c in CAMADAS],
@@ -148,9 +149,13 @@ def validar_camadas():
 def login(user, pw):
     r = requests.post(f"{API}/login", auth=(user, pw), timeout=60)
     if r.status_code != 200:
-        sys.exit(f"Login recusado (HTTP {r.status_code}): {r.text[:200]}\n"
-                 "Confira usuário/senha. Se for o primeiro uso, entre uma vez em "
-                 "https://appeears.earthdatacloud.nasa.gov/ com o seu login para aceitar os termos.")
+        sys.exit(f"Login recusado (HTTP {r.status_code}). Causas mais comuns:\n"
+                 "  1) usar o e-mail em vez do NOME DE USUÁRIO do Earthdata;\n"
+                 "  2) conta ainda não ativada (confirme o e-mail de verificação do Earthdata);\n"
+                 "  3) senha incorreta no secret.\n"
+                 "Teste entrando em https://appeears.earthdatacloud.nasa.gov/ com o mesmo usuário e senha: "
+                 "se funcionar lá, recrie os secrets; se não, o problema é a conta. "
+                 "No primeiro uso, aceite os termos do AppEEARS nessa página.")
     return {"Authorization": "Bearer " + r.json()["token"]}
 
 
@@ -188,7 +193,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--resume", help="IDs das tarefas A,B já submetidas")
-    ap.add_argument("--max-min", type=int, default=150, help="espera máxima por tarefa (min)")
+    ap.add_argument("--max-min", type=int, default=30, help="espera máxima por tarefa (min); depois disso, retome com --resume")
     a = ap.parse_args()
 
     print("Validando camadas na API pública do AppEEARS...")
@@ -203,9 +208,16 @@ def main():
         print("[dry-run] nada foi enviado.")
         return
 
-    user, pw = os.environ.get("EARTHDATA_USER"), os.environ.get("EARTHDATA_PASS")
+    raw_u, raw_p = os.environ.get("EARTHDATA_USER", ""), os.environ.get("EARTHDATA_PASS", "")
+    user, pw = raw_u.strip(), raw_p.strip()
     if not (user and pw):
         sys.exit("Defina EARTHDATA_USER e EARTHDATA_PASS (ou use --dry-run).")
+    # Diagnóstico sem expor segredos: só indica se havia espaço/quebra de linha sobrando
+    print("Credenciais: "
+          f"usuário {'tinha espaço/linha extra (removido)' if raw_u != user else 'sem espaço extra'}; "
+          f"senha {'tinha espaço/linha extra (removido)' if raw_p != pw else 'sem espaço extra'}.")
+    if "@" in user:
+        print("ATENÇÃO: o usuário parece um e-mail. O Earthdata pede o NOME DE USUÁRIO, não o e-mail.")
     H = login(user, pw)
     t0 = time.time()
     ids = dict(zip(TAREFAS, a.resume.split(","))) if a.resume else {}
