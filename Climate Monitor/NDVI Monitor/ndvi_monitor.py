@@ -90,11 +90,19 @@ def load_municipios(cache_path=None, quality="intermediaria"):
         fc = json.loads(gzip.open(cache_path, "rt", encoding="utf-8").read())
     changed = False
     if fc is None:
+        print(f"AVISO: {cache_path} não existe — baixando a malha do IBGE (pode falhar a partir do GitHub; "
+              "suba o arquivo cache/municipios_intermediaria.geojson.gz no repositório).", flush=True)
         feats = []
         for ufc, uf in UF_CODES.items():
             url = (f"https://servicodados.ibge.gov.br/api/v3/malhas/estados/{ufc}"
                    f"?intrarregiao=municipio&formato=application/vnd.geo+json&qualidade={quality}")
-            for f in http_json(url, timeout=180)["features"]:
+            try:
+                feats_uf = http_json(url, tries=3, timeout=40)["features"]
+            except RuntimeError as e:
+                raise RuntimeError("Não consegui baixar a malha municipal do IBGE. Suba o arquivo "
+                                   "'cache/municipios_intermediaria.geojson.gz' (pasta NDVI Monitor) no repositório — "
+                                   f"assim o código não depende do IBGE. Detalhe: {e}")
+            for f in feats_uf:
                 f["properties"] = {"cod": int(f["properties"]["codarea"]), "uf": uf}
                 feats.append(f)
         fc, changed = {"type": "FeatureCollection", "features": feats}, True
