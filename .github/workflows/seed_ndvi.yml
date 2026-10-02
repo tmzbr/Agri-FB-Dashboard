@@ -1,22 +1,5 @@
 name: Seed NDVI (history → Supabase)
 
-# Carga HISTÓRICA do NDVI por município (2.363 municípios) em public.ndvi_municipio. Manual.
-# Uma tarefa por ano, em paralelo: cada ano grava só as linhas dele (município, modelo, ano), então as tarefas
-# não se pisam. É idempotente — rodar de novo regrava as mesmas linhas — e retomável: o modo `missing` só
-# busca o que ainda não está no banco (use depois de qualquer falha).
-#
-# Primeira vez, nesta ordem:
-#   1) years=2023, mode=full, limit_windows=2   → teste de fumaça (~3 min). Confira a tabela no Supabase.
-#   2) years=2023, mode=full                    → um ano inteiro; ANOTE O TEMPO e confira os minutos do plano.
-#   3) years=2000-2026, mode=full               → a carga completa.
-#   4) years=2000-2026, mode=missing            → só se algo falhou; completa as lacunas.
-#
-# Fontes: o Planetary Computer (sem login) cobre 2000–2021 por inteiro e quase todo 2022–24; o que ele não tem
-# (a maior parte de 2025–26) vai para o AppEEARS da NASA, que precisa dos secrets EARTHDATA_USER e EARTHDATA_PASS
-# (usuário do Earthdata, não o e-mail). Sem eles, essas janelas ficam registradas como "indisponíveis".
-#
-# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (service role — ignora a RLS), EARTHDATA_USER, EARTHDATA_PASS.
-
 on:
   workflow_dispatch:
     inputs:
@@ -37,7 +20,6 @@ on:
         description: "Teste: processa só N janelas por ano (vazio = todas)"
         default: ""
 
-# compartilha o grupo com o update_ndvi.yml: um grava a linha do ano corrente por inteiro, então não podem rodar juntos
 concurrency:
   group: ndvi-load
   cancel-in-progress: false
@@ -68,10 +50,10 @@ jobs:
   seed:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 345          # limite do GitHub: 360. ~1 h por ano é a estimativa; meça no teste 2)
+    timeout-minutes: 345
     strategy:
-      fail-fast: false            # um ano que falha não cancela os outros
-      max-parallel: 6             # gentil com o Planetary Computer; suba depois de medir
+      fail-fast: false
+      max-parallel: 6
       matrix:
         year: ${{ fromJSON(needs.plan.outputs.years) }}
     steps:
