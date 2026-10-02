@@ -559,6 +559,37 @@ def uf_polygons(municipios, pad=0.02):
     return out
 
 
+# ══════════════════════════════════════════════════════════════════════
+# 3) SEED (NASA → Supabase)
+# ══════════════════════════════════════════════════════════════════════
+
+SEED_DOC = r"""
+seed_ndvi_supabase.py — carrega o NDVI por município (2.363: 2.359 dos 9 estados + 4 das fazendas) em public.ndvi_municipio (Supabase).
+
+Modos (mesma ideia do seed_grid_supabase.py):
+  --mode full     processa TODAS as janelas publicadas nos anos de --years (carga histórica; idempotente)
+  --mode missing  só as janelas publicadas que ainda não estão no banco (reparo / completar lacunas)
+  --mode tail     rotina semanal: janelas novas + reprocessa as últimas --refresh já gravadas (reemissões)
+
+Fontes (--source):
+  pc        Microsoft Planetary Computer (sem login; completo até ~2021, com lacunas desde 2022)
+  appeears  NASA AppEEARS (login Earthdata: EARTHDATA_USER / EARTHDATA_PASS)
+  auto      Planetary Computer primeiro; o que ele não tem vai para o AppEEARS (se houver login)
+
+O banco é a memória: o que já foi gravado é lido do Supabase (o runner do GitHub é novo a cada execução).
+Cada linha é (município, modelo, ano) com 46 posições de 8 dias — janelas de anos diferentes não se tocam, então
+jobs de anos distintos podem rodar em paralelo.
+
+Uso local (teste):
+  export SUPABASE_URL=https://xxxx.supabase.co SUPABASE_SERVICE_ROLE_KEY=...
+  python seed_ndvi_supabase.py --mode full --years 2023 --dry-run          # só mostra o plano
+  python seed_ndvi_supabase.py --mode full --years 2023 --local-out out.json  # grava num JSON, não no banco
+"""
+
+DEFAULT_CACHE = os.path.join(HERE, "cache", "municipios_intermediaria.geojson.gz")
+FIRST_YEAR = {"MOD13Q1": 2000, "MYD13Q1": 2002}
+
+
 # ───────────────────────────── Supabase ─────────────────────────────
 class Supa:
     def __init__(self, url, key):
@@ -943,7 +974,7 @@ def cmd_build(argv=None):
     ap = argparse.ArgumentParser(description=BUILD_DOC, prog="ndvi_monitor.py build", formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--locations", required=True)
     ap.add_argument("--out", default=os.path.join(HERE, "ndvi_history.json"))
-    ap.add_argument("--min-pct", type=float, default=25.0, help="% mínimo de pixels utilizáveis por município-janela")
+    ap.add_argument("--min-pct", type=float, default=25.0, help="%% mínimo de pixels utilizáveis por município-janela")
     ap.add_argument("--from-year", type=int, default=2000)
     ap.add_argument("--local-json", help="rows gravadas pelo seed com --local-out (teste); senão lê o Supabase")
     ap.add_argument("--cache", default=os.path.join(HERE, "cache", "municipios_intermediaria.geojson.gz"))
