@@ -697,22 +697,31 @@ def plan_todo(mode, years, store, today, refresh):
 
 
 # ───────────────────────────── processamento ─────────────────────────────
+class LowCoverage(RuntimeError):
+    """Janela lida sem erro, mas com NDVI em menos da metade dos municípios: dado ruim na fonte, não falha do código."""
+
+
 def check_window(vals, nmun, label):
     cov = float((vals["ndvi"] != MISSING).sum()) / nmun
     if cov < 0.5:
-        raise RuntimeError(f"{label}: só {cov:.0%} dos municípios com NDVI — janela descartada (provável leitura incompleta)")
+        raise LowCoverage(f"{label}: só {cov:.0%} dos municípios com NDVI — janela descartada (dado ruim ou incompleto na fonte)")
     return cov
 
 
 def process_pc(pc, plans, split, nmun, start, items, workers):
     acc = WindowAccumulator(nmun, split, start)
+    diag = {}                                   # tile -> % dos pixels de município com NDVI válido e confiabilidade 0/1
     with ThreadPoolExecutor(workers) as ex:
         futs = {ex.submit(pc.read_tile, items[p.name], p): p for p in plans}
         for f in as_completed(futs):
             nd, rel, dy = f.result()
-            acc.add_raster(nd, rel, dy, futs[f].labels)
+            p = futs[f]
+            ins = p.labels > 0
+            ok = (nd[ins] >= -2000) & (nd[ins] <= 10000) & ((rel[ins] == 0) | (rel[ins] == 1))
+            diag[p.name] = float(ok.mean()) if ins.any() else 1.0
+            acc.add_raster(nd, rel, dy, p.labels)
             del nd, rel, dy
-    return acc.finish()
+    return acc.finish(), diag
 
 
 def run_pc(todo, a, ctx, commit):
@@ -733,8 +742,13 @@ def run_pc(todo, a, ctx, commit):
                 unavailable.append((prod, start)); continue
             t0 = time.time()
             try:
-                vals = process_pc(pc, plans, split, len(muns), start, items, a.workers)
+                vals, diag = process_pc(pc, plans, split, len(muns), start, items, a.workers)
                 cov = check_window(vals, len(muns), f"{prod} {start}")
+            except LowCoverage as e:
+                # não é falha do código: o dado do Planetary Computer está ruim/incompleto. Vai para o próximo (AppEEARS, no auto)
+                print(f"  [PC] {prod} {start} sem dado utilizável: {e}")
+                print("       pixels utilizáveis por tile: " + ", ".join(f"{t} {v:.0%}" for t, v in sorted(diag.items())), flush=True)
+                unavailable.append((prod, start)); continue
             except Exception as e:
                 print(f"  [PC] {prod} {start} FALHOU: {e}"); failed.append((prod, start)); continue
             ctx["store"].set_window(start.year, slot_of(start), vals)
@@ -766,7 +780,7 @@ def run_appeears(todo, a, ctx, commit):
         groups.append(cur)
     par = max(1, getattr(a, "appeears_parallel", 6))
     ufs = list(polys.items())
-    done, failed = [], []
+    done, failed, bad = [], [], []
     for gi, grp in enumerate(groups):
         d0, d1 = min(x[1] for x in grp), max(x[1] for x in grp)
         want = set(grp)
@@ -803,13 +817,15 @@ def run_appeears(todo, a, ctx, commit):
                     raise RuntimeError(f"UFs incompletas ({len(ok_ufs)}/{len(polys)}) — janela não gravada para não deixar buracos")
                 vals = acc.finish()
                 check_window(vals, len(muns), f"{w[0]} {w[1]}")
+            except LowCoverage as e:
+                print(f"  [AppEEARS] {w[0]} {w[1]} dado ruim também aqui: {e}"); bad.append(w); continue
             except Exception as e:
                 print(f"  [AppEEARS] {w[0]} {w[1]} FALHOU: {e}"); failed.append(w); continue
             ctx["store"].set_window(w[1].year, slot_of(w[1]), vals)
             done.append(w)
             print(f"  [AppEEARS] {w[0]} {w[1]} ok", flush=True)
             commit(len(done))
-    return done, [], failed
+    return done, bad, failed
 
 
 # ───────────────────────────── main ─────────────────────────────
