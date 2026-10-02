@@ -5,6 +5,7 @@ ndvi_monitor.py — NDVI por município (MODIS Terra + Aqua) num único arquivo.
   python ndvi_monitor.py sql                 imprime o SQL que cria a tabela no Supabase (rode no SQL Editor, uma vez)
   python ndvi_monitor.py seed  --mode ...    baixa a NASA e grava o NDVI por município no Supabase (full | missing | tail)
   python ndvi_monitor.py build --locations . gera ndvi_history.json (regiões e fazendas) a partir do Supabase
+  python ndvi_monitor.py xlsx  --locations . gera o histórico em Excel (ndvi_historico.xlsx), sem Supabase
   python ndvi_monitor.py seed --help         (ou build --help) para as opções
 
 Onde as coisas ficam: o NDVI por município vive no SUPABASE (tabela ndvi_municipio, criada pelo `sql`); no GITHUB
@@ -273,7 +274,7 @@ class WindowAccumulator:
         meas = self.seen[1:] & (self.tot[1:] > 0)
         have = meas & (self.cnt[1:] > 0)
         out = {v: np.full(n, MISSING, dtype=np.int16) for v in VARS}
-        r = lambda x: np.rint(x[1:]).astype(np.int64)
+        r = lambda x: np.rint(np.nan_to_num(x[1:], nan=0.0)).astype(np.int64)
         out["ndvi"][have] = np.clip(r(self.mean), -2000, 10000)[have]
         out["p10"][have] = np.clip(r(self.p10), -2000, 10000)[have]
         out["p90"][have] = np.clip(r(self.p90), -2000, 10000)[have]
@@ -546,45 +547,16 @@ class AppEEARSSource:
 
 
 def uf_polygons(municipios, pad=0.02):
-    """Retângulo (lon/lat) que cobre os municípios de cada UF — o AppEEARS recorta nesta caixa."""
+    """Retângulo (lon/lat) que cobre os municípios de cada UF — o AppEEARS recorta nesta caixa.
+    Usa só os limites (bounds) de cada município: não depende de a geometria ser válida (unary_union quebrava em MT)."""
     from shapely.geometry import box, mapping
-    from shapely.ops import unary_union
     out = {}
     for uf in sorted({m["uf"] for m in municipios}):
-        g = unary_union([m["geom"] for m in municipios if m["uf"] == uf])
-        x0, y0, x1, y1 = g.bounds
+        b = [m["geom"].bounds for m in municipios if m["uf"] == uf]
+        x0, y0 = min(t[0] for t in b), min(t[1] for t in b)
+        x1, y1 = max(t[2] for t in b), max(t[3] for t in b)
         out[uf] = mapping(box(x0 - pad, y0 - pad, x1 + pad, y1 + pad))
     return out
-
-# ══════════════════════════════════════════════════════════════════════
-# 3) SEED (NASA → Supabase)
-# ══════════════════════════════════════════════════════════════════════
-
-SEED_DOC = r"""
-ndvi_monitor.py seed — carrega o NDVI por município (2.363: 2.359 dos 9 estados + 4 das fazendas) em public.ndvi_municipio (Supabase).
-
-Modos (mesma ideia do seed_grid_supabase.py):
-  --mode full     processa TODAS as janelas publicadas nos anos de --years (carga histórica; idempotente)
-  --mode missing  só as janelas publicadas que ainda não estão no banco (reparo / completar lacunas)
-  --mode tail     rotina semanal: janelas novas + reprocessa as últimas --refresh já gravadas (reemissões)
-
-Fontes (--source):
-  pc        Microsoft Planetary Computer (sem login; completo até ~2021, com lacunas desde 2022)
-  appeears  NASA AppEEARS (login Earthdata: EARTHDATA_USER / EARTHDATA_PASS)
-  auto      Planetary Computer primeiro; o que ele não tem vai para o AppEEARS (se houver login)
-
-O banco é a memória: o que já foi gravado é lido do Supabase (o runner do GitHub é novo a cada execução).
-Cada linha é (município, modelo, ano) com 46 posições de 8 dias — janelas de anos diferentes não se tocam, então
-jobs de anos distintos podem rodar em paralelo.
-
-Uso local (teste):
-  export SUPABASE_URL=https://xxxx.supabase.co SUPABASE_SERVICE_ROLE_KEY=...
-  python ndvi_monitor.py seed --mode full --years 2023 --dry-run          # só mostra o plano
-  python ndvi_monitor.py seed --mode full --years 2023 --local-out out.json  # grava num JSON, não no banco
-"""
-
-DEFAULT_CACHE = os.path.join(HERE, "cache", "municipios_intermediaria.geojson.gz")
-FIRST_YEAR = {"MOD13Q1": 2000, "MYD13Q1": 2002}
 
 
 # ───────────────────────────── Supabase ─────────────────────────────
@@ -1044,6 +1016,81 @@ def cmd_build(argv=None):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# 4b) XLSX (histórico em Excel, sem Supabase)
+# ══════════════════════════════════════════════════════════════════════
+XLSX_DOC = """Gera o Excel com o histórico: abas Regioes, Fazendas, Municipios e Leia-me.
+Entrada: o JSON gravado por `seed --local-out rows.json` (use --local-json) ou o Supabase (sem --local-json).
+  python ndvi_monitor.py xlsx --locations "../Weather Monitor/locations.json" --local-json rows.json --out ndvi_historico.xlsx"""
+
+
+def cmd_xlsx(argv=None):
+    import tempfile
+    from openpyxl import Workbook
+    ap = argparse.ArgumentParser(prog="ndvi_monitor.py xlsx", description=XLSX_DOC, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--locations", required=True)
+    ap.add_argument("--local-json")
+    ap.add_argument("--out", default=os.path.join(HERE, "ndvi_historico.xlsx"))
+    ap.add_argument("--min-pct", type=float, default=25.0)
+    ap.add_argument("--from-year", type=int, default=2000)
+    ap.add_argument("--cache", default=os.path.join(HERE, "cache", "municipios_intermediaria.geojson.gz"))
+    a = ap.parse_args(argv)
+    tmp = os.path.join(tempfile.mkdtemp(), "h.json")
+    cmd_build(["--locations", a.locations, "--out", tmp, "--min-pct", str(a.min_pct), "--from-year", str(a.from_year),
+               "--cache", a.cache] + (["--local-json", a.local_json] if a.local_json else []))
+    h = json.load(open(tmp))
+    loc = json.load(open(a.locations, encoding="utf-8"))
+    muns = load_municipios(cache_path=a.cache)
+    cods = [m["cod"] for m in muns]
+    years = h["years"]
+    store = load_store(argparse.Namespace(local_json=a.local_json), cods, years)
+    info = {m["codigo_ibge"]: (m["uf"], m["municipio"]) for m in loc["regioes"]}
+    info.update({c: (u, "(município de fazenda)") for c, u in EXTRA_MUNICIPIOS.items()})
+
+    def series(key, y):
+        r = h["points"].get(key, {}).get(str(y))
+        return [None if v == MISSING else round(v / 1e4, 4) for v in dec(r)] if r else [None] * SLOTS
+
+    suf = {"n": "simples", "m": "milho", "s": "soja"}
+    rkeys = sorted(k for k in h["points"] if not k.startswith("f|"))
+    fkeys = sorted(k for k in h["points"] if k.startswith("f|"))
+    wb = Workbook(write_only=True)
+    ws_i = wb.create_sheet("Leia-me")
+    for line in ["NDVI MODIS (Terra + Aqua, 250 m, composições de 16 dias, uma a cada 8 dias) por município",
+                 "Cada linha = uma janela; 'Data' = início da janela de 16 dias; 'Satélite' = Terra (MOD13Q1) ou Aqua (MYD13Q1).",
+                 "NDVI médio dos pixels bons/marginais do município (sem nuvem/neve). Vazio = sem dado.",
+                 f"Regioes/Fazendas: município-janela com <= {a.min_pct:g}% de pixels usados é descartado; regiões ponderadas por nº de municípios (simples), milho ou soja.",
+                 "Municipios: mesma regra de corte. Fazendas = NDVI do município onde a fazenda está.",
+                 f"Gerado em {h['generated']}. Fonte: NASA MODIS v6.1."]:
+        ws_i.append([line])
+    sheets = {n: wb.create_sheet(n) for n in ("Regioes", "Fazendas", "Municipios")}
+    sheets["Regioes"].append(["Data", "Satélite"] + [f"{k.rsplit('|', 1)[0]} ({suf[k.rsplit('|', 1)[1]]})" for k in rkeys])
+    sheets["Fazendas"].append(["Data", "Satélite"] + [k[2:].replace("|", " · ") for k in fkeys])
+    for lbl, f in (("cod_ibge", lambda c: c), ("UF", lambda c: info.get(c, ("", ""))[0]), ("Município", lambda c: info.get(c, ("", ""))[1])):
+        sheets["Municipios"].append([lbl, ""] + [f(c) for c in cods])
+    n_rows = 0
+    for y in years:
+        nd = store.data.get(y, {}).get("ndvi")
+        pc = store.data.get(y, {}).get("pct")
+        if nd is None:
+            continue
+        v = np.where((nd == MISSING) | (pc < a.min_pct * 10), np.nan, nd / 1e4)
+        reg = {k: series(k, y) for k in rkeys}
+        far = {k: series(k, y) for k in fkeys}
+        for sl in range(SLOTS):
+            col = v[:, sl]
+            if np.isnan(col).all():
+                continue
+            d, sat = slot_start(y, sl), sensor_of_slot(sl)
+            sheets["Regioes"].append([d, sat] + [reg[k][sl] for k in rkeys])
+            sheets["Fazendas"].append([d, sat] + [far[k][sl] for k in fkeys])
+            sheets["Municipios"].append([d, sat] + [None if np.isnan(x) else round(float(x), 4) for x in col])
+            n_rows += 1
+    wb.save(a.out)
+    print(f"{n_rows} janelas × {len(cods)} municípios → {a.out} ({os.path.getsize(a.out)/1e6:.1f} MB)")
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════════════
 # 5) SQL da tabela + ponto de entrada
 # ══════════════════════════════════════════════════════════════════════
 SQL = r"""
@@ -1106,8 +1153,8 @@ create policy "modify_admin" on public.ndvi_municipio
 
 
 def main():
-    cmds = {"seed": cmd_seed, "build": cmd_build}
-    if len(sys.argv) < 2 or sys.argv[1] not in ("seed", "build", "sql"):
+    cmds = {"seed": cmd_seed, "build": cmd_build, "xlsx": cmd_xlsx}
+    if len(sys.argv) < 2 or sys.argv[1] not in ("seed", "build", "xlsx", "sql"):
         sys.exit(__doc__)
     if sys.argv[1] == "sql":
         print(SQL.strip())
