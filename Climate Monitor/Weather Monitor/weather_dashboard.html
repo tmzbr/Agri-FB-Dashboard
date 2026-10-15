@@ -166,8 +166,9 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 .sp-row input[type=range]{flex:1;min-width:0;accent-color:var(--orange);}
 .sp-row .val{min-width:38px;text-align:right;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums;}
 .sp-days{display:flex;gap:3px;margin-top:6px;}
-.sp-days span{flex:1;text-align:center;font-size:9.5px;padding:3px 0;border-radius:3px;background:#F4F4F4;color:var(--gray-mid);}
-.sp-days span.we{background:#FFE9DC;color:var(--orange);font-weight:700;}
+.sp-days button{flex:1;text-align:center;font-size:9.5px;padding:4px 0;border-radius:3px;background:#F4F4F4;color:var(--gray-mid);border:1px solid transparent;cursor:pointer;font-family:var(--font);}
+.sp-days button:hover{border-color:#ddd;}
+.sp-days button.we{background:#FFE9DC;color:var(--orange);font-weight:700;border-color:#FFC9AE;}
 .sp-hint{font-size:10.5px;color:var(--gray-mid);line-height:1.5;}
 .sp-hint b{color:var(--gray-dark);}
 .sc-v{display:block;font-size:9.5px;color:#aaa;margin-top:1px;}
@@ -297,10 +298,10 @@ th.sc,td.sc{text-align:center;}
         <div class="sp-hint" style="margin-top:6px" id="sp-mode-h"></div>
       </div>
       <div class="sp-sec">
-        <h4>Weekend weight (Thu–Sun)</h4>
+        <h4>Extra weight for <span id="sp-days-lbl"></span></h4>
         <div class="sp-row"><input type="range" id="sp-we" min="1" max="5" step="0.5" oninput="setScoreCfg()"><span class="val" id="sp-we-v"></span></div>
-        <div class="sp-days"><span>Mon</span><span>Tue</span><span>Wed</span><span class="we">Thu</span><span class="we">Fri</span><span class="we">Sat</span><span class="we">Sun</span></div>
-        <div class="sp-hint" style="margin-top:6px">Each Thu–Sun day counts <b id="sp-we-h"></b> a Mon–Wed day when building the month's rainfall, rain days and temperature.</div>
+        <div class="sp-days" id="sp-days"></div>
+        <div class="sp-hint" style="margin-top:6px">Click the days to choose which ones get the extra weight. Each highlighted day counts <b id="sp-we-h"></b> a regular day when building the month's rainfall, rain days and temperature.</div>
       </div>
       <div class="sp-sec">
         <h4>Category weights</h4>
@@ -335,7 +336,7 @@ th.sc,td.sc{text-align:center;}
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
   Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month.
-  <em>Beer Score</em> (capitals): each month scores 1–10 per category by decile against the previous N years (History button) — by default pooled with <em>all months</em> of the window (absolute level, shows seasonality), or only the <em>same month</em> (anomaly, year-on-year), selectable in the side panel — top 10% = 10 … bottom 10% = 1, where less rain, fewer rain days and more heat score higher. Within the month, Thu–Sun days carry the weekend weight set in the side panel (default 2× Mon–Wed); the final score is the weighted mean of the three categories. Older years in the chart have a shorter window where the history starts (2010). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
+  <em>Beer Score</em> (capitals): each month scores 1–10 per category by decile against the previous N years (History button) — by default pooled with <em>all months</em> of the window (absolute level, shows seasonality), or only the <em>same month</em> (anomaly, year-on-year), selectable in the side panel — top 10% = 10 … bottom 10% = 1, where less rain, fewer rain days and more heat score higher. Within the month, the days picked in the side panel carry extra weight (default Thu–Sun at 2× the other days); the final score is the weighted mean of the three categories. Older years in the chart have a shorter window where the history starts (2010). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
   <span id="note-mine"><em>My farms</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two farms less than ~50 km apart legitimately share the same series.</span>
   <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over <em>every</em> municipality it contains (2,359 in total, 51 regions) — MT by the 7 <em>Imea</em> macro-regions (official municipal list, 141/141), the other eight states by <em>IBGE</em> meso-regions. MATOPIBA pools MA, TO, PI and BA, and opens buttons to isolate each. The three ▣ rows are the state mean under different municipal weights: simple, corn output and soybean output (IBGE/SIDRA 1612, average of 2022–24 to damp a single bad harvest) — the crop-weighted ones pull the state average toward where that crop actually is, which matters most where output is concentrated (Extremo Oeste Baiano alone is 99.6% of BA soybean). The live observed layer samples the highest-weight grid cells of each region; the historical series uses all of them.
 </div>
@@ -1259,12 +1260,13 @@ function drawChart(S){
    absoluta, mostra a sazonalidade (julho frio tem teto baixo em temperatura);
    "month" ranqueia só contra o mesmo mês dos N anos — anomalia, para o
    comparativo ano contra ano. */
-const SCORE_DEF={we:2,cw:{p:1,d:1,t:1},mode:"pool"};
+const SCORE_DEF={we:2,cw:{p:1,d:1,t:1},mode:"pool",days:[4,5,6,0]};
 const SCORE_KEY="wm-beer-score-cfg";
 const SCORE_CAT=[{k:"p",lbl:"Rainfall",ico:"🌧️",dir:-1,col:"#2C6FB5"},
                  {k:"d",lbl:"Rain days",ico:"☔",dir:-1,col:"#1A9E8F"},
                  {k:"t",lbl:"Temperature",ico:"🌡️",dir:1,col:"#C0392B"}];
-const WE_DOW=[4,5,6,0];   // qui, sex, sáb, dom
+/* dias da semana (getDay: 0=dom) que ganham o peso extra; default qui–dom */
+const DOW_LBL=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],DOW_ORDER=[1,2,3,4,5,6,0];
 const SCORE_MIN_YRS=3;    // abaixo disso não há percentil que se sustente
 let SCORE_CFG=loadScoreCfg();
 function loadScoreCfg(){
@@ -1272,13 +1274,16 @@ function loadScoreCfg(){
   try{const s=JSON.parse(localStorage.getItem(SCORE_KEY)||"null");
     if(s){const n=(v,lo,hi,df)=>Number.isFinite(+v)&&+v>=lo&&+v<=hi?+v:df;
       d.we=n(s.we,1,5,d.we);for(const k in d.cw)d.cw[k]=n(s.cw&&s.cw[k],0,5,d.cw[k]);
-      if(s.mode==="pool"||s.mode==="month")d.mode=s.mode;}}catch(e){}
+      if(s.mode==="pool"||s.mode==="month")d.mode=s.mode;
+      if(Array.isArray(s.days))d.days=[...new Set(s.days.map(Number).filter(x=>x>=0&&x<=6))];}}catch(e){}
   return d;
 }
 function saveScoreCfg(){try{localStorage.setItem(SCORE_KEY,JSON.stringify(SCORE_CFG));}catch(e){}}
 function syncScorePanel(){
   const el=id=>document.getElementById(id);
   el("sp-we").value=SCORE_CFG.we;el("sp-we-v").textContent=SCORE_CFG.we+"×";el("sp-we-h").textContent=SCORE_CFG.we+"×";
+  el("sp-days").innerHTML=DOW_ORDER.map(d=>`<button class="${SCORE_CFG.days.includes(d)?"we":""}" onclick="toggleDay(${d})">${DOW_LBL[d]}</button>`).join("");
+  el("sp-days-lbl").textContent=daysLbl();
   const tot=SCORE_CAT.reduce((s,c)=>s+SCORE_CFG.cw[c.k],0);
   for(const c of SCORE_CAT){el("sp-cw-"+c.k).value=SCORE_CFG.cw[c.k];
     el("sp-cw-"+c.k+"-v").textContent=tot?Math.round(SCORE_CFG.cw[c.k]/tot*100)+"%":"—";}
@@ -1288,6 +1293,14 @@ function syncScorePanel(){
     ?`Absolute level: pooled with <b>all ${12*STATE.yrs} months</b> of the window, so seasonality shows — a hot January scores high, July is capped by winter.`
     :`Anomaly: only the <b>same month</b> of the ${STATE.yrs} years — “good for an October?”, for year-on-year comps.`;
 }
+/* rótulo compacto: sequência contígua vira "Thu–Sun", o resto lista */
+function daysLbl(){
+  const sel=DOW_ORDER.filter(d=>SCORE_CFG.days.includes(d));
+  if(!sel.length)return "no days";if(sel.length===7)return "every day";
+  const pos=sel.map(d=>DOW_ORDER.indexOf(d)),run=pos.every((p,i)=>!i||p===pos[i-1]+1);
+  return run&&sel.length>2?DOW_LBL[sel[0]]+"–"+DOW_LBL[sel[sel.length-1]]:sel.map(d=>DOW_LBL[d]).join(", ");
+}
+function toggleDay(d){const a=SCORE_CFG.days;SCORE_CFG.days=a.includes(d)?a.filter(x=>x!==d):a.concat(d);saveScoreCfg();syncScorePanel();render();}
 function setScoreMode(md){SCORE_CFG.mode=md;saveScoreCfg();syncScorePanel();render();}
 const medLbl=()=>SCORE_CFG.mode==="pool"?"median all months":"median";
 function setScoreCfg(){
@@ -1302,7 +1315,7 @@ const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
 const MON_IDX=(()=>{const r=[];for(let m=0;m<12;m++)r.push([]);for(let i=0;i<366;i++){const md=IDX2MD[i];if(md)r[md[0]-1].push(i);}return r;})();
 function dayW(y,idx){const md=IDX2MD[idx],dt=new Date(y,md[0]-1,md[1]);
   if(dt.getMonth()!==md[0]-1)return 0;            // 29/02 em ano não bissexto
-  return WE_DOW.includes(dt.getDay())?SCORE_CFG.we:1;}
+  return SCORE_CFG.days.includes(dt.getDay())?SCORE_CFG.we:1;}
 function rawV(p,y,k,idx){const src=k==="t"?"t":"p",a=p.h[src]&&p.h[src][y];let v=a?a[idx]:null;
   if(v==null&&y===STATE.curYear&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][src];return dayVal(v,k);}
 /* métrica do mês (dias 1..maxDay; 0 = mês inteiro) por categoria */
@@ -1388,7 +1401,7 @@ function renderScoreChart(){
   const head=STATE.entity==="wavg"?`Capitals — weighted by population (${sel.length})`
     :STATE.entity==="group"?`Average of ${sel.length} capitals`:sel[0].nome+" · "+sel[0].sub;
   document.getElementById("chart-title").textContent="🍺 Beer Score — "+head;
-  document.getElementById("chart-sub").textContent=`${SCORE_CFG.mode==="pool"?`each month ranked vs. all ${12*STATE.yrs} months`:"each month ranked vs. the same month"} of the previous ${STATE.yrs} years · Thu–Sun ×${SCORE_CFG.we} · ${MODELLBL[STATE.model]} · click a month to rank the table`;
+  document.getElementById("chart-sub").textContent=`${SCORE_CFG.mode==="pool"?`each month ranked vs. all ${12*STATE.yrs} months`:"each month ranked vs. the same month"} of the previous ${STATE.yrs} years · ${daysLbl()} ×${SCORE_CFG.we} · ${MODELLBL[STATE.model]} · click a month to rank the table`;
   const cy=STATE.curYear,m=scoreMonth(sc),months=[...Array(12).keys()].map(i=>i+1);
   const histYears=STATE.years.filter(y=>y!==cy),yrs=histYears.slice(Math.max(0,histYears.length-STATE.yrs));
   const lastYr=yrs[yrs.length-1];
