@@ -747,7 +747,8 @@ async function boot(){
     STATE.pts=collectPoints(loc);
     applyHist(hist);
     document.getElementById("loading").style.display="none";
-    render();
+    /* Staples abre direto no Beer Score; setVar monta o painel e o layout */
+    if(SCOPE==="fnb")setVar("s");else render();
     /* Os clusters não bloqueiam o load: os grupos padrão já estão na tela
        quando os botões do usuário aparecem. Se o Supabase estiver fora, o
        dashboard segue funcionando sem eles. */
