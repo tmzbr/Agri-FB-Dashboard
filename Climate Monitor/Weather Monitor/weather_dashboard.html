@@ -289,6 +289,14 @@ th.sc,td.sc{text-align:center;}
     <div class="card-head"><div><div class="card-title">Score settings</div><div class="card-sub">saved in this browser · applies to table and chart</div></div></div>
     <div class="sp-bd">
       <div class="sp-sec">
+        <h4>Rank each month against</h4>
+        <div class="view-btns">
+          <button class="view-btn" data-smode="pool" onclick="setScoreMode('pool')">All months</button>
+          <button class="view-btn" data-smode="month" onclick="setScoreMode('month')">Same month</button>
+        </div>
+        <div class="sp-hint" style="margin-top:6px" id="sp-mode-h"></div>
+      </div>
+      <div class="sp-sec">
         <h4>Weekend weight (Thu–Sun)</h4>
         <div class="sp-row"><input type="range" id="sp-we" min="1" max="5" step="0.5" oninput="setScoreCfg()"><span class="val" id="sp-we-v"></span></div>
         <div class="sp-days"><span>Mon</span><span>Tue</span><span>Wed</span><span class="we">Thu</span><span class="we">Fri</span><span class="we">Sat</span><span class="we">Sun</span></div>
@@ -303,8 +311,8 @@ th.sc,td.sc{text-align:center;}
       <div class="sp-sec">
         <button class="btn" onclick="resetScoreCfg()">Reset to default</button>
         <div class="sp-hint" style="margin-top:10px">
-          Each month is ranked against the <b>same month of the previous <span id="sp-n"></span> years</b> (History button). Top 10% = <b>10</b>, top 20% = <b>9</b> … bottom 10% = <b>1</b>.
-          Less rain, fewer rain days and higher temperature score higher (beer demand). A month still in progress is compared with the same days of past years.
+          Window = the <b>previous <span id="sp-n"></span> years</b> (History button). Top 10% = <b>10</b>, top 20% = <b>9</b> … bottom 10% = <b>1</b>.
+          Less rain, fewer rain days and higher temperature score higher (beer demand). A month still in progress uses its days so far (per-day average); in Same month mode it is compared with the same days of past years.
         </div>
       </div>
     </div>
@@ -327,7 +335,7 @@ th.sc,td.sc{text-align:center;}
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
   Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month.
-  <em>Beer Score</em> (capitals): each month scores 1–10 per category by decile against the same month of the previous N years (History button) — top 10% = 10 … bottom 10% = 1, where less rain, fewer rain days and more heat score higher. Within the month, Thu–Sun days carry the weekend weight set in the side panel (default 2× Mon–Wed); the final score is the weighted mean of the three categories. Older years in the chart have a shorter window where the history starts (2010). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
+  <em>Beer Score</em> (capitals): each month scores 1–10 per category by decile against the previous N years (History button) — by default pooled with <em>all months</em> of the window (absolute level, shows seasonality), or only the <em>same month</em> (anomaly, year-on-year), selectable in the side panel — top 10% = 10 … bottom 10% = 1, where less rain, fewer rain days and more heat score higher. Within the month, Thu–Sun days carry the weekend weight set in the side panel (default 2× Mon–Wed); the final score is the weighted mean of the three categories. Older years in the chart have a shorter window where the history starts (2010). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
   <span id="note-mine"><em>My farms</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two farms less than ~50 km apart legitimately share the same series.</span>
   <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over <em>every</em> municipality it contains (2,359 in total, 51 regions) — MT by the 7 <em>Imea</em> macro-regions (official municipal list, 141/141), the other eight states by <em>IBGE</em> meso-regions. MATOPIBA pools MA, TO, PI and BA, and opens buttons to isolate each. The three ▣ rows are the state mean under different municipal weights: simple, corn output and soybean output (IBGE/SIDRA 1612, average of 2022–24 to damp a single bad harvest) — the crop-weighted ones pull the state average toward where that crop actually is, which matters most where output is concentrated (Extremo Oeste Baiano alone is 99.6% of BA soybean). The live observed layer samples the highest-weight grid cells of each region; the historical series uses all of them.
 </div>
@@ -1247,7 +1255,11 @@ function drawChart(S){
    ficam comparáveis. Cada ano usa o próprio calendário (o dia 12/10 cai num
    dia da semana diferente a cada ano). Num grupo, primeiro a média espacial do
    dia (ponderada por população no "wavg"), depois a ponderação por dia. */
-const SCORE_DEF={we:2,cw:{p:1,d:1,t:1}};
+/* mode: "pool" ranqueia o mês contra TODOS os meses (12×N) da janela — nota
+   absoluta, mostra a sazonalidade (julho frio tem teto baixo em temperatura);
+   "month" ranqueia só contra o mesmo mês dos N anos — anomalia, para o
+   comparativo ano contra ano. */
+const SCORE_DEF={we:2,cw:{p:1,d:1,t:1},mode:"pool"};
 const SCORE_KEY="wm-beer-score-cfg";
 const SCORE_CAT=[{k:"p",lbl:"Rainfall",ico:"🌧️",dir:-1,col:"#2C6FB5"},
                  {k:"d",lbl:"Rain days",ico:"☔",dir:-1,col:"#1A9E8F"},
@@ -1259,7 +1271,8 @@ function loadScoreCfg(){
   const d=JSON.parse(JSON.stringify(SCORE_DEF));
   try{const s=JSON.parse(localStorage.getItem(SCORE_KEY)||"null");
     if(s){const n=(v,lo,hi,df)=>Number.isFinite(+v)&&+v>=lo&&+v<=hi?+v:df;
-      d.we=n(s.we,1,5,d.we);for(const k in d.cw)d.cw[k]=n(s.cw&&s.cw[k],0,5,d.cw[k]);}}catch(e){}
+      d.we=n(s.we,1,5,d.we);for(const k in d.cw)d.cw[k]=n(s.cw&&s.cw[k],0,5,d.cw[k]);
+      if(s.mode==="pool"||s.mode==="month")d.mode=s.mode;}}catch(e){}
   return d;
 }
 function saveScoreCfg(){try{localStorage.setItem(SCORE_KEY,JSON.stringify(SCORE_CFG));}catch(e){}}
@@ -1270,7 +1283,13 @@ function syncScorePanel(){
   for(const c of SCORE_CAT){el("sp-cw-"+c.k).value=SCORE_CFG.cw[c.k];
     el("sp-cw-"+c.k+"-v").textContent=tot?Math.round(SCORE_CFG.cw[c.k]/tot*100)+"%":"—";}
   el("sp-n").textContent=STATE.yrs;
+  act("smode",SCORE_CFG.mode);
+  el("sp-mode-h").innerHTML=SCORE_CFG.mode==="pool"
+    ?`Absolute level: pooled with <b>all ${12*STATE.yrs} months</b> of the window, so seasonality shows — a hot January scores high, July is capped by winter.`
+    :`Anomaly: only the <b>same month</b> of the ${STATE.yrs} years — “good for an October?”, for year-on-year comps.`;
 }
+function setScoreMode(md){SCORE_CFG.mode=md;saveScoreCfg();syncScorePanel();render();}
+const medLbl=()=>SCORE_CFG.mode==="pool"?"median all months":"median";
 function setScoreCfg(){
   const el=id=>document.getElementById(id);
   SCORE_CFG.we=+el("sp-we").value;
@@ -1279,6 +1298,7 @@ function setScoreCfg(){
 }
 function resetScoreCfg(){SCORE_CFG=JSON.parse(JSON.stringify(SCORE_DEF));saveScoreCfg();syncScorePanel();render();}
 
+const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
 const MON_IDX=(()=>{const r=[];for(let m=0;m<12;m++)r.push([]);for(let i=0;i<366;i++){const md=IDX2MD[i];if(md)r[md[0]-1].push(i);}return r;})();
 function dayW(y,idx){const md=IDX2MD[idx],dt=new Date(y,md[0]-1,md[1]);
   if(dt.getMonth()!==md[0]-1)return 0;            // 29/02 em ano não bissexto
@@ -1314,9 +1334,11 @@ function makeScorer(sel,wtd){
     const md=(y===cy&&m===lm)?partial:0;
     const win=STATE.years.filter(x=>x<y&&x>=y-N);
     if(win.length<SCORE_MIN_YRS)return null;
-    const cur=met(y,m,md),cat={};let ts=0,tw=0;
+    const cur=met(y,m,md),cat={},pool=SCORE_CFG.mode==="pool";let ts=0,tw=0;
     for(const c of SCORE_CAT){
-      const x=cur[c.k],H=win.map(w=>met(w,m,md)[c.k]).filter(v=>v!=null);
+      /* pool: meses cheios de toda a janela (a métrica é média por dia, então
+         o mês corrente parcial já é comparável a um mês cheio) */
+      const x=cur[c.k],H=(pool?win.flatMap(w=>MONTHS.map(mo=>met(w,mo,0)[c.k])):win.map(w=>met(w,m,md)[c.k])).filter(v=>v!=null);
       const s=(x!=null&&H.length>=SCORE_MIN_YRS)?decileScore(x,H,c.dir):null;
       cat[c.k]={v:x,s,med:median(H),n:H.length};
       const cw=SCORE_CFG.cw[c.k]||0;if(s!=null&&cw>0){ts+=s*cw;tw+=cw;}
@@ -1354,7 +1376,7 @@ function renderScoreTable(){
   const rowHtml=r=>`<tr class="${r.grpRow?'grp':''}${STATE.entity===r.id?' sel':''}" onclick="selectEntity('${r.id}')">
       <td>${r.nome}<br><span class="muted" style="font-weight:400;font-size:10px">${r.sub}</span></td>
       <td class="sc">${scorePill(r.score)}</td>
-      ${SCORE_CAT.map(c=>{const x=r.cat[c.k]||{};return `<td class="sc" title="${c.lbl}: ${fmtCat(c.k,x.v)} vs median ${fmtCat(c.k,x.med)} (${x.n||0}y)">${scorePill(x.s)}<span class="sc-v">${fmtCat(c.k,x.v)}</span></td>`;}).join("")}
+      ${SCORE_CAT.map(c=>{const x=r.cat[c.k]||{};return `<td class="sc" title="${c.lbl}: ${fmtCat(c.k,x.v)} vs ${medLbl()} ${fmtCat(c.k,x.med)} (${x.n||0} obs)">${scorePill(x.s)}<span class="sc-v">${fmtCat(c.k,x.v)}</span></td>`;}).join("")}
     </tr>`;
   document.getElementById("tbody").innerHTML=head.map(rowHtml).join("")+body.map(rowHtml).join("");
 }
@@ -1366,7 +1388,7 @@ function renderScoreChart(){
   const head=STATE.entity==="wavg"?`Capitals — weighted by population (${sel.length})`
     :STATE.entity==="group"?`Average of ${sel.length} capitals`:sel[0].nome+" · "+sel[0].sub;
   document.getElementById("chart-title").textContent="🍺 Beer Score — "+head;
-  document.getElementById("chart-sub").textContent=`each month ranked vs. the same month of the previous ${STATE.yrs} years · Thu–Sun ×${SCORE_CFG.we} · ${MODELLBL[STATE.model]} · click a month to rank the table`;
+  document.getElementById("chart-sub").textContent=`${SCORE_CFG.mode==="pool"?`each month ranked vs. all ${12*STATE.yrs} months`:"each month ranked vs. the same month"} of the previous ${STATE.yrs} years · Thu–Sun ×${SCORE_CFG.we} · ${MODELLBL[STATE.model]} · click a month to rank the table`;
   const cy=STATE.curYear,m=scoreMonth(sc),months=[...Array(12).keys()].map(i=>i+1);
   const histYears=STATE.years.filter(y=>y!==cy),yrs=histYears.slice(Math.max(0,histYears.length-STATE.yrs));
   const lastYr=yrs[yrs.length-1];
@@ -1387,7 +1409,7 @@ function renderScoreChart(){
     onClick:(e,els,ch)=>{const pts=ch.getElementsAtEventForMode(e,"index",{intersect:false},false);if(!pts.length)return;
       const mo=pts[0].index+1;if(mo>sc.lm)return;STATE.scoreM=mo;renderScoreTable();renderScoreChart();},
     plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
-      label:c=>{const d=c.dataset;if(d._cat){const x=d._raw[c.dataIndex].cat[d._cat];return `${d.label}: ${fmtSc(c.parsed.y)}  (${fmtCat(d._cat,x.v)} vs median ${fmtCat(d._cat,x.med)})`;}
+      label:c=>{const d=c.dataset;if(d._cat){const x=d._raw[c.dataIndex].cat[d._cat];return `${d.label}: ${fmtSc(c.parsed.y)}  (${fmtCat(d._cat,x.v)} vs ${medLbl()} ${fmtCat(d._cat,x.med)})`;}
         return `${d.label}: ${fmtSc(c.parsed.y)}`;},
       labelColor:c=>({borderColor:c.dataset.borderColor,backgroundColor:c.dataset.borderColor,borderWidth:2})}}},
     scales:{x:{ticks:{font:{size:9},color:"#999"},grid:{display:false}},
@@ -1399,7 +1421,7 @@ function renderScoreChart(){
   const r=sc.at(cy,m);
   document.getElementById("stat-row").innerHTML=
     `<div class="stat"><span class="k">Score · ${monthLbl(sc,m)}</span><span class="v" style="color:var(--orange)">${r?fmtSc(r.total):"—"}</span></div>`+
-    SCORE_CAT.map(c=>{const x=r&&r.cat[c.k];return `<div class="stat"><span class="k">${c.ico} ${c.lbl}</span><span class="v">${x?fmtSc(x.s):"—"} <span style="font-size:11px;font-weight:400;color:var(--gray-mid)">${x?fmtCat(c.k,x.v)+" vs "+fmtCat(c.k,x.med):""}</span></span></div>`;}).join("");
+    SCORE_CAT.map(c=>{const x=r&&r.cat[c.k];return `<div class="stat"><span class="k">${c.ico} ${c.lbl}</span><span class="v">${x?fmtSc(x.s):"—"} <span style="font-size:11px;font-weight:400;color:var(--gray-mid)">${x?fmtCat(c.k,x.v)+" vs "+medLbl()+" "+fmtCat(c.k,x.med):""}</span></span></div>`;}).join("");
 }
 function goBack(){if(window.parent&&window.parent!==window)window.parent.postMessage({action:"closeDash"},"*");else history.back();}
 boot();
