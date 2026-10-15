@@ -81,6 +81,10 @@ table.det{border-collapse:collapse;font-size:12px;width:100%;}
 .det tr.sub td{color:var(--gray-mid);font-size:11px;}
 .det tr.sub td.l{padding-left:22px;}
 .det tr.hd td{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--orange);padding-top:14px;border-bottom:1px solid var(--border);}
+.display-box{margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;}
+.hide-opt{font-size:12px;color:var(--gray-dark);cursor:pointer;display:flex;align-items:center;gap:4px;}
+.hide-opt input{accent-color:var(--orange);}
+.hide-note{font-size:11px;color:#c0392b;}
 .msg{padding:40px;text-align:center;color:var(--gray-mid);font-size:13px;}
 /* modal de conferência */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;}
@@ -228,18 +232,33 @@ function priceOf(c) {
   if (ok(c.model_price)) return { v: Number(c.model_price), date: c.model_date, live: false };
   return null;
 }
+/* O que o admin escolheu NÃO mostrar daquela empresa (comps_company.hidden,
+   migration_comps_hidden_adecoagro.sql): some da consolidada e do detalhe.
+   Para estimativas, deixar a linha vazia no upload já resolve; isto é para
+   o que é calculado aqui — P/E, EV/EBITDA, FCFE yield, upside. */
+const HIDE_OPTS = [['target', 'Target & upside'], ['pe', 'P/E'], ['ev_ebitda', 'EV/EBITDA'], ['fcfe_yld', 'FCFE Yield'],
+  ['revenue', 'Net Revenues'], ['ebitda', 'EBITDA'], ['net_income', 'Net Income']];
+const isHidden = (c, k) => (c.hidden || []).indexOf(k) >= 0;
+const shown = (c, e) => {
+  const o = Object.assign({}, e || {});
+  ['revenue', 'ebitda', 'net_income'].forEach(k => { if (isHidden(c, k)) o[k] = null; });
+  return o;
+};
 function metrics(c) {
   const px = priceOf(c);
   const mc = px && ok(c.shares_mn) ? px.v * c.shares_mn : null;
-  const out = { px, mc, upside: px && ok(c.target_price) ? c.target_price / px.v - 1 : null, y: {} };
+  const tp = isHidden(c, 'target') ? null : c.target_price;
+  const out = { px, mc, tp, upside: px && ok(tp) ? tp / px.v - 1 : null, y: {} };
   DETAIL_YEARS.forEach(y => {
-    const e = (S.est[c.ticker] || {})[y] || {};
-    const ev = ok(mc) && ok(e.net_debt) ? mc + Number(e.net_debt) + Number(e.minorities || 0) : null;
+    const raw = (S.est[c.ticker] || {})[y] || {};
+    const e = shown(c, raw);
+    // Múltiplos usam o dado cru: esconder a receita não pode apagar o P/E.
+    const ev = ok(mc) && ok(raw.net_debt) ? mc + Number(raw.net_debt) + Number(raw.minorities || 0) : null;
     out.y[y] = {
       e, ev,
-      pe: ok(mc) && ok(e.net_income) ? mc / e.net_income : null,
-      ev_ebitda: ok(ev) && ok(e.ebitda) ? ev / e.ebitda : null,
-      fcfe_yld: ok(mc) && ok(e.fcfe) ? e.fcfe / mc : null,
+      pe: !isHidden(c, 'pe') && ok(mc) && ok(raw.net_income) ? mc / raw.net_income : null,
+      ev_ebitda: !isHidden(c, 'ev_ebitda') && ok(ev) && ok(raw.ebitda) ? ev / raw.ebitda : null,
+      fcfe_yld: !isHidden(c, 'fcfe_yld') && ok(mc) && ok(raw.fcfe) ? raw.fcfe / mc : null,
     };
   });
   return out;
@@ -287,8 +306,7 @@ function renderOverview() {
   const groups = [['Net Revenues', 'm'], ['EBITDA', 'm'], ['Net Income', 'm'], ['P/E', 'x'], ['EV/EBITDA', 'x'], ['FCFE Yield', '%']];
   let h = `<table class="comps"><thead><tr>
     <th class="l sticky" rowspan="2">Company</th><th rowspan="2">Rec.</th><th rowspan="2">Price</th><th rowspan="2">Target</th><th rowspan="2">Upside</th>
-    ${groups.map(g => `<th class="grp gs" colspan="${yrs.length}">${g[0]}</th>`).join('')}
-    <th class="l gs" rowspan="2">Uploaded</th></tr><tr>
+    ${groups.map(g => `<th class="grp gs" colspan="${yrs.length}">${g[0]}</th>`).join('')}</tr><tr>
     ${groups.map(() => yrs.map((y, i) => `<th class="${i === 0 ? 'gs' : ''}">${fyLab(y)}</th>`).join('')).join('')}</tr></thead><tbody>`;
   let stale = false;
   S.companies.forEach(c => {
@@ -301,7 +319,7 @@ function renderOverview() {
       <td class="l sticky">${up}<span class="tkr">${esc(c.ticker)}</span><span class="cname">${esc(c.name)}</span>${c.currency !== 'BRL' ? `<span class="ccy">${esc(c.currency)}</span>` : ''}</td>
       <td>${c.recommendation ? `<span class="rec ${esc(c.recommendation)}">${esc(c.recommendation)}</span>` : '<span class="muted">—</span>'}</td>
       <td class="${m.px && !m.px.live ? 'stale' : ''}" title="${m.px ? (m.px.live ? 'Close ' + m.px.date : 'Model price — no close stored yet') : ''}">${m.px ? fmtPx(m.px.v) : fmtPx(null)}</td>
-      <td>${fmtPx(c.target_price)}</td>
+      <td>${fmtPx(m.tp)}</td>
       <td>${fmtPct(m.upside, true)}</td>
       ${yrs.map((y, i) => cell(y, r => r.e.revenue, fmtN, i)).join('')}
       ${yrs.map((y, i) => cell(y, r => r.e.ebitda, fmtN, i)).join('')}
@@ -309,7 +327,6 @@ function renderOverview() {
       ${yrs.map((y, i) => cell(y, r => r.pe, fmtX, i)).join('')}
       ${yrs.map((y, i) => cell(y, r => r.ev_ebitda, fmtX, i)).join('')}
       ${yrs.map((y, i) => cell(y, r => r.fcfe_yld, v => fmtPct(v), i)).join('')}
-      <td class="l gs" style="color:var(--gray-mid);font-size:11px">${modelDate(c) ? fmtDate(modelDate(c)) : (has ? '' : 'not uploaded')}</td>
     </tr>`;
   });
   h += '</tbody></table>';
@@ -342,7 +359,7 @@ function renderDetail() {
   const Y = DETAIL_YEARS;
   const per = y => (est[y] && est[y].period_label && est[y].period_label.replace(/[aAeE]$/, '') !== String(y)) ? `<small>${esc(est[y].period_label)}</small>` : '';
   const row = (label, f, cls = '') => `<tr class="${cls}"><td class="l">${label}</td>${Y.map(y => `<td>${f(y)}</td>`).join('')}</tr>`;
-  const e = y => (est[y] || {});
+  const e = y => shown(c, est[y]);
   const prev = y => y === Y[0] ? null : e(y - 1);
   const growth = k => y => { const a = e(y)[k], b = (prev(y) || {})[k]; return ok(a) && ok(b) && b > 0 ? fmtPct(a / b - 1) : '<span class="muted">—</span>'; };
   const margin = k => y => ok(e(y)[k]) && ok(e(y).revenue) && e(y).revenue ? fmtPct(e(y)[k] / e(y).revenue) : '<span class="muted">—</span>';
@@ -354,7 +371,7 @@ function renderDetail() {
     <div class="kpis">
       <div class="kpi"><span class="kpi-l">Price</span><span class="kpi-v ${m.px && !m.px.live ? 'stale' : ''}">${m.px ? ccy + ' ' + m.px.v.toFixed(2) : '—'}</span>
         <span class="kpi-s">${m.px ? (m.px.live ? 'close ' + fmtDate(m.px.date) : 'model price') : ''}</span></div>
-      <div class="kpi"><span class="kpi-l">Target${c.target_label ? ' ' + esc(c.target_label) : ''}</span><span class="kpi-v">${ok(c.target_price) ? ccy + ' ' + Number(c.target_price).toFixed(2) : '—'}</span></div>
+      <div class="kpi"><span class="kpi-l">Target${c.target_label ? ' ' + esc(c.target_label) : ''}</span><span class="kpi-v">${ok(m.tp) ? ccy + ' ' + Number(m.tp).toFixed(2) : '—'}</span></div>
       <div class="kpi"><span class="kpi-l">Upside</span><span class="kpi-v or">${fmtPct(m.upside, true)}</span></div>
       <div class="kpi"><span class="kpi-l">Market cap</span><span class="kpi-v">${ok(m.mc) ? fmtN(m.mc) : '—'}</span><span class="kpi-s">${ccy} m · ${fmtN(c.shares_mn, 1)}m shares</span></div>
       <div class="kpi"><span class="kpi-l">Uploaded</span><span class="kpi-v" style="font-size:13px">${fmtDate(modelDate(c))}</span><span class="kpi-s">${esc(c.source_file || '')}</span></div>
@@ -378,7 +395,26 @@ function renderDetail() {
         ${row('P/E', y => fmtX(m.y[y].pe))}
         ${row('EV/EBITDA', y => fmtX(m.y[y].ev_ebitda))}
         ${row('FCFE Yield', y => fmtPct(m.y[y].fcfe_yld))}
-      </tbody></table></div>`;
+      </tbody></table></div>
+    ${S.isAdmin ? `<div class="display-box"><span class="kpi-l">Display · hide for ${esc(c.ticker)}</span>
+      ${HIDE_OPTS.map(([k, lab]) => `<label class="hide-opt"><input type="checkbox" ${isHidden(c, k) ? 'checked' : ''} onchange="toggleHidden('${esc(c.ticker)}','${k}',this.checked)"/> ${lab}</label>`).join('')}
+      <span class="hide-note" id="hide-note"></span></div>` : ''}`;
+}
+
+async function toggleHidden(ticker, key, on) {
+  const c = S.companies.find(x => x.ticker === ticker);
+  if (!c || !S.isAdmin) return;
+  const prev = c.hidden || [];
+  const next = on ? prev.filter(k => k !== key).concat([key]) : prev.filter(k => k !== key);
+  c.hidden = next;
+  render();
+  const { error } = await sb().from('comps_company').update({ hidden: next }).eq('ticker', ticker);
+  if (error) {
+    c.hidden = prev;
+    render();
+    const n = document.getElementById('hide-note');
+    if (n) n.textContent = 'Not saved: ' + error.message + (/hidden/.test(error.message) ? ' — run migration_comps_hidden_adecoagro.sql' : '');
+  }
 }
 
 // ── upload + conferência ────────────────────────────────────────────
