@@ -28,6 +28,10 @@ sed -i "s|__SUPABASE_ANON_KEY__|${SUPABASE_ANON_KEY}|g" "Market Watch/Sector New
 # emprestado do portal — a RLS é que segmenta por dono.
 sed -i "s|__SUPABASE_URL__|${SUPABASE_URL}|g" "Climate Monitor/Weather Monitor/weather_dashboard.html"
 sed -i "s|__SUPABASE_ANON_KEY__|${SUPABASE_ANON_KEY}|g" "Climate Monitor/Weather Monitor/weather_dashboard.html"
+# Comps Table lê/grava comps_* direto no Supabase com o JWT do portal (RLS
+# restringe a admin).
+sed -i "s|__SUPABASE_URL__|${SUPABASE_URL}|g" "Market Watch/Comps Table/comps_table.html"
+sed -i "s|__SUPABASE_ANON_KEY__|${SUPABASE_ANON_KEY}|g" "Market Watch/Comps Table/comps_table.html"
 sed -i "s|__SUPABASE_URL__|${SUPABASE_URL}|g" "Climate Monitor/Sugar Monitor/sugar_dashboard.html"
 sed -i "s|__SUPABASE_ANON_KEY__|${SUPABASE_ANON_KEY}|g" "Climate Monitor/Sugar Monitor/sugar_dashboard.html"
 

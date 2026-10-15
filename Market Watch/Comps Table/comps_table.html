@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Comps Table</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.1/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="comps_parser.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
+  --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;--sel:#fff4ee;
+  --font:'Segoe UI',Helvetica,Arial,sans-serif;--radius:8px;}
+html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);}
+.hdr{background:var(--white);border-bottom:3px solid var(--orange);
+  padding:13px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.hdr-title{font-size:14px;font-weight:700;color:var(--orange);}
+.hdr-sub{font-size:10px;color:var(--gray-mid);margin-top:2px;}
+.hdr-right{font-size:11px;color:var(--gray-mid);text-align:right;}
+.hdr-right b{color:var(--gray-dark);}
+.body{padding:16px 20px 60px;}
+.section-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px;flex-wrap:wrap;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--gray-mid);border-left:3px solid var(--orange);padding-left:8px;}
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0;}
+.card-pad{padding:16px 18px;}
+.btn{padding:6px 12px;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;font-family:var(--font);
+  border:1px solid var(--orange);background:var(--white);color:var(--orange);white-space:nowrap;}
+.btn:hover{background:var(--sel);}
+.btn.primary{background:var(--orange);color:var(--white);}
+.btn.primary:hover{background:#e04b00;}
+.btn:disabled{opacity:.5;cursor:default;}
+.up-btn{border:none;background:none;cursor:pointer;color:var(--gray-mid);font-size:13px;padding:0 4px;line-height:1;}
+.up-btn:hover{color:var(--orange);}
+.scroll-x{overflow-x:auto;}
+table.comps{border-collapse:separate;border-spacing:0;font-size:12px;width:100%;}
+.comps th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-mid);
+  padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;background:var(--white);}
+.comps thead tr:first-child th{border-bottom:none;padding-bottom:2px;}
+.comps th.grp{text-align:center;color:var(--gray-dark);border-bottom:2px solid var(--orange);}
+.comps td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+.comps .l{text-align:left;}
+.comps .sticky{position:sticky;left:0;z-index:2;background:var(--white);}
+.comps th.sticky{z-index:3;}
+.comps .gs{border-left:1px solid var(--border);}
+.comps tbody tr{cursor:pointer;}
+.comps tbody tr:hover td{background:#fafafa;}
+.comps tbody tr.sel td{background:var(--sel);}
+.comps tbody tr.sel td.sticky{box-shadow:inset 3px 0 0 var(--orange);}
+.tkr{font-weight:700;color:var(--black);}
+.cname{color:var(--gray-mid);font-size:11px;margin-left:4px;}
+.ccy{font-size:9px;font-weight:700;color:var(--gray-mid);border:1px solid var(--border);border-radius:3px;padding:0 3px;margin-left:4px;}
+.rec{display:inline-block;min-width:26px;text-align:center;font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;}
+.rec.OP{background:#e9f7ef;color:#0a8f3c;}.rec.MP{background:#f2f2f2;color:#555;}.rec.UP{background:#fdece9;color:#c0392b;}
+.pos{color:#0a8f3c;font-weight:600;}.neg{color:#c0392b;font-weight:600;}
+.muted{color:#bbb;}
+.stale{font-style:italic;color:#b07a00;}
+.empty-row td{color:var(--gray-mid);}
+.foot{font-size:10px;color:#aaa;padding:8px 12px;line-height:1.5;}
+/* detalhe */
+.pills{display:flex;gap:6px;flex-wrap:wrap;}
+.pill{padding:5px 10px;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:14px;cursor:pointer;
+  background:var(--white);color:var(--gray-dark);font-family:var(--font);}
+.pill:hover{border-color:var(--orange);}
+.pill.active{background:var(--orange);border-color:var(--orange);color:var(--white);}
+.co-hdr{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.co-hdr .big{font-size:20px;font-weight:700;color:var(--black);}
+.co-hdr .nm{font-size:13px;color:var(--gray-mid);}
+.kpis{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px;}
+.kpi{display:flex;flex-direction:column;gap:1px;min-width:90px;}
+.kpi-l{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-mid);}
+.kpi-v{font-size:18px;font-weight:700;color:var(--black);}
+.kpi-v.or{color:var(--orange);}
+.kpi-s{font-size:10px;color:var(--gray-mid);}
+table.det{border-collapse:collapse;font-size:12px;width:100%;}
+.det th{font-size:10px;font-weight:700;color:var(--gray-mid);padding:6px 10px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;}
+.det th small{display:block;font-weight:400;color:#aaa;font-size:9px;}
+.det td{padding:6px 10px;text-align:right;border-bottom:1px solid #f0f0f0;white-space:nowrap;}
+.det td.l,.det th.l{text-align:left;}
+.det tr.sub td{color:var(--gray-mid);font-size:11px;}
+.det tr.sub td.l{padding-left:22px;}
+.det tr.hd td{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--orange);padding-top:14px;border-bottom:1px solid var(--border);}
+.msg{padding:40px;text-align:center;color:var(--gray-mid);font-size:13px;}
+/* modal de conferência */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;}
+.modal{background:var(--white);border-radius:var(--radius);width:min(1100px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25);}
+.modal-h{padding:14px 20px;border-bottom:3px solid var(--orange);display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.modal-h .t{font-size:14px;font-weight:700;color:var(--black);}
+.modal-h .s{font-size:11px;color:var(--gray-mid);}
+.modal-b{padding:16px 20px;}
+.modal-f{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;align-items:center;}
+.modal-f .note{flex:1;font-size:11px;color:var(--gray-mid);}
+.warn{background:#fff8e6;border:1px solid #f3dca0;border-radius:6px;padding:8px 12px;font-size:11px;color:#7a5a00;margin-bottom:12px;}
+.warn li{margin-left:16px;}
+.err{background:#fdece9;border:1px solid #f2c7c0;color:#a12;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:12px;}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 14px;margin-bottom:16px;}
+.f label{display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-mid);margin-bottom:3px;}
+.f input,.f select{width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:12px;}
+.f input:focus,.f select:focus{outline:none;border-color:var(--orange);}
+.f .src{font-size:9.5px;color:#aaa;margin-top:2px;}
+.f.miss input,.f.miss select{border-color:#e9a03b;background:#fffaf0;}
+table.rev{border-collapse:collapse;font-size:11.5px;width:100%;margin-bottom:12px;}
+.rev th{font-size:10px;color:var(--gray-mid);padding:5px 6px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;}
+.rev th small{display:block;font-weight:400;color:#aaa;}
+.rev td{padding:3px 6px;border-bottom:1px solid #f2f2f2;text-align:right;}
+.rev td.l,.rev th.l{text-align:left;white-space:nowrap;}
+.rev td.l small{display:block;color:#aaa;font-size:9.5px;}
+.rev input{width:92px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;text-align:right;font-family:var(--font);font-size:11.5px;}
+.rev input.mask{background:#f3f7ff;}
+.rev input.miss{border-color:#e9a03b;background:#fffaf0;}
+.chk{font-size:11px;}
+.chk .ok{color:#0a8f3c;font-weight:700;}
+.chk .bad{color:#c0392b;font-weight:700;}
+.legend{font-size:10px;color:var(--gray-mid);margin:-4px 0 12px;}
+.legend span{display:inline-block;width:10px;height:10px;border:1px solid var(--border);vertical-align:-1px;margin:0 3px 0 10px;}
+@media(max-width:700px){.body{padding:12px 10px 40px;}.hdr{padding:12px 14px;}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div>
+    <div class="hdr-title">Comps Table</div>
+    <div class="hdr-sub">Itaú BBA coverage · estimates from our models, multiples re-priced at the previous close</div>
+  </div>
+  <div class="hdr-right">Prices: <b id="px-date">—</b><br><span id="px-src"></span></div>
+</div>
+
+<div class="body">
+  <div class="section-hdr">
+    <div class="section-title">Coverage overview</div>
+    <div id="admin-bar" style="display:none">
+      <button class="btn" onclick="pickFile(null)">+ Upload model</button>
+    </div>
+  </div>
+  <div class="card"><div class="scroll-x" id="overview"><div class="msg">Loading…</div></div>
+    <div class="foot" id="overview-foot"></div></div>
+
+  <div class="section-hdr">
+    <div class="section-title">Company detail · FY26–FY30</div>
+    <div class="pills" id="pills"></div>
+  </div>
+  <div class="card card-pad" id="detail"><div class="msg">Select a company above.</div></div>
+</div>
+
+<input type="file" id="file" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFile(this)"/>
+<div id="modal-root"></div>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════════
+   Comps Table — dados em Supabase (migration_comps_table.sql):
+     comps_company  rating, TP, # ações, preço do modelo
+     comps_estimate receita, EBITDA, LL, FCFE, DL, minoritários (2026-30)
+     comps_price    fechamento diário (workflow comps_prices.yml)
+   Os múltiplos são calculados aqui, sempre com o fechamento mais recente:
+     Mkt Cap = preço × # ações · EV_t = Mkt Cap + DL_t + Minoritários_t
+     P/E_t = Mkt Cap / LL_t · EV/EBITDA_t = EV_t / EBITDA_t · FCFE Yld_t = FCFE_t / Mkt Cap
+   Upload (só admin): o Excel é lido aqui mesmo (comps_parser.js), o admin
+   confere/edita tudo num modal e só então gravamos via rpc comps_save_model.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const SUMMARY_YEARS = [2026, 2027, 2028];
+const DETAIL_YEARS = [2026, 2027, 2028, 2029, 2030];
+const S = { companies: [], est: {}, px: {}, sel: null, isAdmin: false, review: null, uploadFor: null };
+
+/* Cliente isolado do portal, com o JWT emprestado (mesmo padrão do Climate
+   Monitor / Sector News): dois clientes renovando o mesmo token no mesmo
+   localStorage derrubariam a sessão um do outro. */
+let _sb = null;
+function authToken() {
+  try { const p = window.parent; if (p && typeof p.__portalAccessToken === 'function') return p.__portalAccessToken(); } catch (e) {}
+  return null;
+}
+function sb() {
+  const token = authToken();
+  if (_sb && _sb.__tok === token) return _sb;
+  if (typeof supabase === 'undefined') return null;
+  try {
+    _sb = supabase.createClient('__SUPABASE_URL__', '__SUPABASE_ANON_KEY__', {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: token ? { headers: { Authorization: 'Bearer ' + token } } : {} });
+  } catch (e) { console.warn('Supabase unavailable:', e); return null; }
+  _sb.__tok = token;
+  return _sb;
+}
+function portalIsAdmin() {
+  try { const p = window.parent; return !!(p && typeof p.__portalIsAdmin === 'function' && p.__portalIsAdmin()); } catch (e) { return false; }
+}
+
+// ── formatação ──────────────────────────────────────────────────────
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ok = v => v != null && isFinite(v);
+const fmtN = (v, d = 0) => ok(v) ? Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '<span class="muted">—</span>';
+const fmtPx = v => ok(v) ? Number(v).toFixed(2) : '<span class="muted">—</span>';
+const fmtX = v => !ok(v) ? '<span class="muted">—</span>' : v <= 0 || v > 200 ? '<span class="muted">n.m.</span>' : v.toFixed(1) + 'x';
+const fmtPct = (v, sign) => !ok(v) ? '<span class="muted">—</span>'
+  : `<span class="${sign ? (v > 0.0005 ? 'pos' : v < -0.0005 ? 'neg' : '') : (v < 0 ? 'neg' : '')}">${(sign && v > 0 ? '+' : '') + (v * 100).toFixed(1)}%</span>`;
+const fyLab = y => 'FY' + String(y).slice(-2);
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+// ── contas ──────────────────────────────────────────────────────────
+function priceOf(c) {
+  const p = S.px[c.price_symbol];
+  if (p) return { v: Number(p.close), date: p.date, live: true };
+  if (ok(c.model_price)) return { v: Number(c.model_price), date: c.model_date, live: false };
+  return null;
+}
+function metrics(c) {
+  const px = priceOf(c);
+  const mc = px && ok(c.shares_mn) ? px.v * c.shares_mn : null;
+  const out = { px, mc, upside: px && ok(c.target_price) ? c.target_price / px.v - 1 : null, y: {} };
+  DETAIL_YEARS.forEach(y => {
+    const e = (S.est[c.ticker] || {})[y] || {};
+    const ev = ok(mc) && ok(e.net_debt) ? mc + Number(e.net_debt) + Number(e.minorities || 0) : null;
+    out.y[y] = {
+      e, ev,
+      pe: ok(mc) && ok(e.net_income) ? mc / e.net_income : null,
+      ev_ebitda: ok(ev) && ok(e.ebitda) ? ev / e.ebitda : null,
+      fcfe_yld: ok(mc) && ok(e.fcfe) ? e.fcfe / mc : null,
+    };
+  });
+  return out;
+}
+
+// ── carga ───────────────────────────────────────────────────────────
+async function load() {
+  S.isAdmin = portalIsAdmin();
+  document.getElementById('admin-bar').style.display = S.isAdmin ? '' : 'none';
+  const c = sb();
+  if (!c) { document.getElementById('overview').innerHTML = '<div class="msg">Database unavailable — open this module from the portal.</div>'; return; }
+  const since = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10);
+  const [co, es, px] = await Promise.all([
+    c.from('comps_company').select('*').order('display_order').order('ticker'),
+    c.from('comps_estimate').select('*'),
+    c.from('comps_price').select('price_symbol,date,close,currency,source').gte('date', since).order('date', { ascending: false }),
+  ]);
+  const err = co.error || es.error || px.error;
+  if (err) { document.getElementById('overview').innerHTML = `<div class="msg">Could not load comps: ${esc(err.message)}</div>`; return; }
+  S.companies = co.data || [];
+  S.est = {};
+  (es.data || []).forEach(r => { (S.est[r.ticker] = S.est[r.ticker] || {})[r.year] = r; });
+  S.px = {};
+  (px.data || []).forEach(r => { if (!S.px[r.price_symbol]) S.px[r.price_symbol] = r; });
+  if (!S.sel || !S.companies.some(x => x.ticker === S.sel)) {
+    S.sel = (S.companies.find(x => S.est[x.ticker]) || S.companies[0] || {}).ticker || null;
+  }
+  render();
+}
+
+function render() { renderHeader(); renderOverview(); renderPills(); renderDetail(); }
+
+function renderHeader() {
+  const dates = Object.values(S.px).map(p => p.date).sort();
+  const last = dates[dates.length - 1];
+  document.getElementById('px-date').textContent = last ? 'close of ' + fmtDate(last) : 'no closes yet';
+  const srcs = [...new Set(Object.values(S.px).map(p => p.source))].filter(Boolean);
+  document.getElementById('px-src').textContent = srcs.length ? 'Source: ' + srcs.map(s => s === 'yahoo' ? 'Yahoo Finance' : 'Google Finance').join(', ') : '';
+}
+
+function renderOverview() {
+  const el = document.getElementById('overview');
+  if (!S.companies.length) { el.innerHTML = '<div class="msg">No companies yet.' + (S.isAdmin ? ' Use “Upload model” to add one.' : '') + '</div>'; return; }
+  const yrs = SUMMARY_YEARS;
+  const groups = [['Net Revenues', 'm'], ['EBITDA', 'm'], ['Net Income', 'm'], ['P/E', 'x'], ['EV/EBITDA', 'x'], ['FCFE Yield', '%']];
+  let h = `<table class="comps"><thead><tr>
+    <th class="l sticky" rowspan="2">Company</th><th rowspan="2">Rec.</th><th rowspan="2">Price</th><th rowspan="2">Target</th><th rowspan="2">Upside</th>
+    ${groups.map(g => `<th class="grp gs" colspan="${yrs.length}">${g[0]}</th>`).join('')}
+    <th class="l gs" rowspan="2">Model</th></tr><tr>
+    ${groups.map(() => yrs.map((y, i) => `<th class="${i === 0 ? 'gs' : ''}">${fyLab(y)}</th>`).join('')).join('')}</tr></thead><tbody>`;
+  let stale = false;
+  S.companies.forEach(c => {
+    const m = metrics(c);
+    const has = !!S.est[c.ticker];
+    if (m.px && !m.px.live) stale = true;
+    const up = S.isAdmin ? `<button class="up-btn" title="Upload ${esc(c.ticker)} model" onclick="event.stopPropagation();pickFile('${esc(c.ticker)}')">&#8682;</button>` : '';
+    const cell = (y, k, f, i) => `<td class="${i === 0 ? 'gs' : ''}">${f(k(m.y[y]))}</td>`;
+    h += `<tr class="${c.ticker === S.sel ? 'sel' : ''} ${has ? '' : 'empty-row'}" onclick="selectCo('${esc(c.ticker)}')">
+      <td class="l sticky">${up}<span class="tkr">${esc(c.ticker)}</span><span class="cname">${esc(c.name)}</span>${c.currency !== 'BRL' ? `<span class="ccy">${esc(c.currency)}</span>` : ''}</td>
+      <td>${c.recommendation ? `<span class="rec ${esc(c.recommendation)}">${esc(c.recommendation)}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="${m.px && !m.px.live ? 'stale' : ''}" title="${m.px ? (m.px.live ? 'Close ' + m.px.date : 'Model price — no close stored yet') : ''}">${m.px ? fmtPx(m.px.v) : fmtPx(null)}</td>
+      <td>${fmtPx(c.target_price)}</td>
+      <td>${fmtPct(m.upside, true)}</td>
+      ${yrs.map((y, i) => cell(y, r => r.e.revenue, fmtN, i)).join('')}
+      ${yrs.map((y, i) => cell(y, r => r.e.ebitda, fmtN, i)).join('')}
+      ${yrs.map((y, i) => cell(y, r => r.e.net_income, fmtN, i)).join('')}
+      ${yrs.map((y, i) => cell(y, r => r.pe, fmtX, i)).join('')}
+      ${yrs.map((y, i) => cell(y, r => r.ev_ebitda, fmtX, i)).join('')}
+      ${yrs.map((y, i) => cell(y, r => r.fcfe_yld, v => fmtPct(v), i)).join('')}
+      <td class="l gs" style="color:var(--gray-mid);font-size:11px">${c.model_date ? fmtDate(c.model_date) : (has ? '' : 'not uploaded')}</td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  el.innerHTML = h;
+  document.getElementById('overview-foot').innerHTML =
+    'Financials in millions of each company’s reporting currency (BRL unless tagged). Fiscal years labelled by year-end (SMTO3 FY26 = 2025/26). ' +
+    'EV = market cap at last close + net debt + minorities of each year, following each model’s own EV bridge. n.m. = negative or not meaningful.' +
+    (stale ? ' <span class="stale">Italic price</span> = model price (no close stored yet).' : '');
+}
+
+function renderPills() {
+  document.getElementById('pills').innerHTML = S.companies.filter(c => S.est[c.ticker]).map(c =>
+    `<button class="pill ${c.ticker === S.sel ? 'active' : ''}" onclick="selectCo('${esc(c.ticker)}')">${esc(c.ticker)}</button>`).join('');
+}
+
+function selectCo(t) { S.sel = t; renderOverview(); renderPills(); renderDetail(); }
+
+function renderDetail() {
+  const el = document.getElementById('detail');
+  const c = S.companies.find(x => x.ticker === S.sel);
+  if (!c) { el.innerHTML = '<div class="msg">Select a company above.</div>'; return; }
+  const est = S.est[c.ticker];
+  const up = S.isAdmin ? `<button class="btn" onclick="pickFile('${esc(c.ticker)}')">Upload ${esc(c.ticker)} model</button>` : '';
+  if (!est) {
+    el.innerHTML = `<div class="co-hdr"><span class="big">${esc(c.ticker)}</span><span class="nm">${esc(c.name)}</span></div>
+      <div class="msg">No model uploaded for ${esc(c.ticker)} yet. ${up}</div>`;
+    return;
+  }
+  const m = metrics(c);
+  const Y = DETAIL_YEARS;
+  const per = y => (est[y] && est[y].period_label && est[y].period_label.replace(/[aAeE]$/, '') !== String(y)) ? `<small>${esc(est[y].period_label)}</small>` : '';
+  const row = (label, f, cls = '') => `<tr class="${cls}"><td class="l">${label}</td>${Y.map(y => `<td>${f(y)}</td>`).join('')}</tr>`;
+  const e = y => (est[y] || {});
+  const prev = y => y === Y[0] ? null : e(y - 1);
+  const growth = k => y => { const a = e(y)[k], b = (prev(y) || {})[k]; return ok(a) && ok(b) && b > 0 ? fmtPct(a / b - 1) : '<span class="muted">—</span>'; };
+  const margin = k => y => ok(e(y)[k]) && ok(e(y).revenue) && e(y).revenue ? fmtPct(e(y)[k] / e(y).revenue) : '<span class="muted">—</span>';
+  const ccy = c.currency === 'BRL' ? 'R$' : c.currency === 'USD' ? 'US$' : c.currency;
+  el.innerHTML = `
+    <div class="co-hdr"><span class="big">${esc(c.ticker)}</span><span class="nm">${esc(c.name)}</span>
+      ${c.recommendation ? `<span class="rec ${esc(c.recommendation)}">${esc(c.recommendation)}</span>` : ''}
+      <span style="flex:1"></span>${up}</div>
+    <div class="kpis">
+      <div class="kpi"><span class="kpi-l">Price</span><span class="kpi-v ${m.px && !m.px.live ? 'stale' : ''}">${m.px ? ccy + ' ' + m.px.v.toFixed(2) : '—'}</span>
+        <span class="kpi-s">${m.px ? (m.px.live ? 'close ' + fmtDate(m.px.date) : 'model price') : ''}</span></div>
+      <div class="kpi"><span class="kpi-l">Target${c.target_label ? ' ' + esc(c.target_label) : ''}</span><span class="kpi-v">${ok(c.target_price) ? ccy + ' ' + Number(c.target_price).toFixed(2) : '—'}</span></div>
+      <div class="kpi"><span class="kpi-l">Upside</span><span class="kpi-v or">${fmtPct(m.upside, true)}</span></div>
+      <div class="kpi"><span class="kpi-l">Market cap</span><span class="kpi-v">${ok(m.mc) ? fmtN(m.mc) : '—'}</span><span class="kpi-s">${ccy} m · ${fmtN(c.shares_mn, 1)}m shares</span></div>
+      <div class="kpi"><span class="kpi-l">Model</span><span class="kpi-v" style="font-size:13px">${fmtDate(c.model_date)}</span><span class="kpi-s">${esc(c.source_file || '')}</span></div>
+    </div>
+    <div class="scroll-x"><table class="det">
+      <thead><tr><th class="l">${ccy} million</th>${Y.map(y => `<th>${fyLab(y)}${per(y)}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr class="hd"><td colspan="${Y.length + 1}">Estimates</td></tr>
+        ${row('Net Revenues', y => fmtN(e(y).revenue))}
+        ${row('growth', growth('revenue'), 'sub')}
+        ${row('EBITDA', y => fmtN(e(y).ebitda))}
+        ${row('margin', margin('ebitda'), 'sub')}
+        ${row('Net Income', y => fmtN(e(y).net_income))}
+        ${row('margin', margin('net_income'), 'sub')}
+        ${row('FCFE', y => fmtN(e(y).fcfe))}
+        ${row('Net Debt', y => fmtN(e(y).net_debt))}
+        ${row('Net Debt / EBITDA', y => ok(e(y).net_debt) && ok(e(y).ebitda) && e(y).ebitda > 0 ? (e(y).net_debt / e(y).ebitda).toFixed(1) + 'x' : '<span class="muted">—</span>', 'sub')}
+        ${row('Minorities (in EV)', y => fmtN(e(y).minorities))}
+        <tr class="hd"><td colspan="${Y.length + 1}">Valuation at ${m.px && m.px.live ? 'last close' : 'model price'}</td></tr>
+        ${row('Enterprise Value', y => fmtN(m.y[y].ev))}
+        ${row('P/E', y => fmtX(m.y[y].pe))}
+        ${row('EV/EBITDA', y => fmtX(m.y[y].ev_ebitda))}
+        ${row('FCFE Yield', y => fmtPct(m.y[y].fcfe_yld))}
+      </tbody></table></div>`;
+}
+
+// ── upload + conferência ────────────────────────────────────────────
+function pickFile(ticker) {
+  if (!S.isAdmin) return;
+  S.uploadFor = ticker;
+  const f = document.getElementById('file');
+  f.value = '';
+  f.click();
+}
+
+async function onFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  showModal(`<div class="modal-h"><div><div class="t">Reading ${esc(file.name)}…</div><div class="s">Parsing Output, DCF/Valuation and Mask-UploadModel tabs</div></div></div><div class="modal-b"><div class="msg">Reading workbook…</div></div>`);
+  try {
+    const buf = await file.arrayBuffer();
+    // Só as abas que o parser usa: os modelos têm abas de base com 65 mil
+    // linhas × 253 colunas que travariam o browser à toa.
+    const wb = XLSX.read(buf, { type: 'array', sheets: CompsParser.READ_SHEETS, cellDates: true });
+    const r = CompsParser.parseWorkbook(XLSX, wb, file.name);
+    r.source_file = file.name;
+    S.review = r;
+    renderReview();
+  } catch (e) {
+    console.error(e);
+    showModal(`<div class="modal-h"><div class="t">Could not read ${esc(file.name)}</div></div>
+      <div class="modal-b"><div class="err">${esc(e.message || e)}</div></div>
+      <div class="modal-f"><button class="btn" onclick="closeModal()">Close</button></div>`);
+  }
+}
+
+const METRIC_ROWS = [['revenue', 'Net Revenues'], ['ebitda', 'EBITDA'], ['net_income', 'Net Income'],
+  ['fcfe', 'FCFE'], ['net_debt', 'Net Debt'], ['minorities', 'Minorities (in EV)']];
+
+function renderReview() {
+  const r = S.review;
+  const v = x => x && ok(x.v) ? x.v : '';
+  const src = x => x && x.src ? esc(x.src) : 'not found — fill in';
+  const fld = (id, label, val, s, type = 'text', extra = '') =>
+    `<div class="f ${val === '' || val == null ? 'miss' : ''}"><label>${label}</label><input id="rv-${id}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(val)}" ${extra} oninput="reviewCheck()"/><div class="src">${s}</div></div>`;
+  const existing = S.companies.find(c => c.ticker === r.ticker);
+  const mismatch = S.uploadFor && S.uploadFor !== r.ticker;
+  const recSel = `<div class="f ${r.recommendation ? '' : 'miss'}"><label>Recommendation</label><select id="rv-rec">
+      ${['', 'OP', 'MP', 'UP'].map(o => `<option ${r.recommendation && r.recommendation.v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+      <div class="src">${src(r.recommendation)}</div></div>`;
+  const yrs = DETAIL_YEARS;
+  const per = y => r.years[y].period && r.years[y].period.replace(/[aAeE]$/, '') !== String(y) ? `<small>${esc(r.years[y].period)}</small>` : '';
+  const estRows = METRIC_ROWS.map(([k, lab]) => {
+    const from = k === 'minorities' ? r.minorities_note : (r.series_labels[k] || 'not found');
+    return `<tr><td class="l">${lab}<small>${esc(from)}</small></td>${yrs.map(y => {
+      const c = r.years[y][k];
+      const cls = !c ? 'miss' : (c.from && c.from.indexOf('Mask') === 0 ? 'mask' : '');
+      return `<td><input id="rv-${k}-${y}" type="number" step="any" class="${cls}" value="${c && ok(c.v) ? +c.v.toFixed(2) : ''}" title="${c ? esc((c.src || '') + ' · ' + c.from) : 'not found'}" oninput="reviewCheck()"/></td>`;
+    }).join('')}</tr>`;
+  }).join('');
+
+  showModal(`
+    <div class="modal-h"><div><div class="t">Review before saving — ${esc(r.ticker)} · ${esc(r.name)}</div>
+      <div class="s">${esc(r.source_file)}${r.model_date ? ' · model of ' + fmtDate(r.model_date) : ''} · nothing is stored until you confirm</div></div>
+      <button class="btn" onclick="closeModal()">Cancel</button></div>
+    <div class="modal-b">
+      ${mismatch ? `<div class="err">You clicked upload on <b>${esc(S.uploadFor)}</b> but this file is <b>${esc(r.ticker)}</b>. Saving will update ${esc(r.ticker)}${existing ? '' : ' (new company)'}.</div>` : ''}
+      ${!existing && !mismatch ? `<div class="warn"><b>${esc(r.ticker)}</b> is not in the table yet — it will be added.</div>` : ''}
+      ${r.warnings.length ? `<div class="warn"><b>Check:</b><ul>${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
+      <div class="fgrid">
+        ${fld('ticker', 'Ticker', r.ticker, 'Mask / Cover / file name')}
+        ${fld('name', 'Company', r.name, 'Mask / Cover')}
+        ${fld('currency', 'Currency', r.currency, 'Output units')}
+        ${fld('symbol', 'Price symbol (Yahoo)', existing ? existing.price_symbol : r.price_symbol, 'used for the daily close')}
+        ${recSel}
+        ${fld('tp', 'Target price', v(r.target_price), src(r.target_price), 'number')}
+        ${fld('tplab', 'Target horizon', r.target_label || '', 'Mask YearEnd')}
+        ${fld('shares', '# Shares (m)', v(r.shares_mn), src(r.shares_mn), 'number')}
+        ${fld('mpx', 'Price in model', v(r.model_price), src(r.model_price), 'number')}
+      </div>
+      <div class="legend">Hover a cell for its source.<span style="background:#f3f7ff"></span>from Mask-UploadModel (validated against Output)<span style="background:#fffaf0;border-color:#e9a03b"></span>not found</div>
+      <div class="scroll-x"><table class="rev"><thead><tr><th class="l">Millions</th>${yrs.map(y => `<th>${fyLab(y)}${per(y)}</th>`).join('')}</tr></thead>
+        <tbody>${estRows}</tbody></table></div>
+      <div class="chk" id="rv-check"></div>
+    </div>
+    <div class="modal-f"><span class="note" id="rv-note"></span>
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" id="rv-save" onclick="saveReview()">Confirm &amp; save</button></div>`);
+  reviewCheck();
+}
+
+function readReview() {
+  const g = id => { const el = document.getElementById('rv-' + id); return el ? el.value.trim() : ''; };
+  const n = id => { const s = g(id); return s === '' ? null : Number(s); };
+  const r = S.review;
+  const company = {
+    ticker: g('ticker').toUpperCase(), name: g('name'), currency: g('currency').toUpperCase() || 'BRL',
+    price_symbol: g('symbol'), recommendation: g('rec') || null,
+    target_price: n('tp'), target_label: g('tplab') || null, shares_mn: n('shares'), model_price: n('mpx'),
+    model_date: r.model_date, source_file: r.source_file,
+    sources: {
+      target_price: r.target_price && r.target_price.src, shares_mn: r.shares_mn && r.shares_mn.src,
+      model_price: r.model_price && r.model_price.src, recommendation: r.recommendation && r.recommendation.src,
+      series: r.series_labels, minorities: r.minorities_note, warnings: r.warnings,
+    },
+  };
+  const estimates = DETAIL_YEARS.map(y => {
+    const o = { year: y, period_label: r.years[y].period, sources: {} };
+    METRIC_ROWS.forEach(([k]) => {
+      o[k] = n(k + '-' + y);
+      const c = r.years[y][k];
+      if (c) o.sources[k] = c.src ? c.src : c.from;
+    });
+    return o;
+  }).filter(o => METRIC_ROWS.some(([k]) => o[k] != null));
+  return { company, estimates };
+}
+
+// Múltiplos ao preço DO MODELO, lado a lado com os que o próprio modelo
+// calcula: se bater, a extração (e a ponte do EV) está certa.
+function reviewCheck() {
+  const { company: c, estimates } = readReview();
+  const el = document.getElementById('rv-check');
+  const save = document.getElementById('rv-save');
+  const missing = ['ticker', 'name', 'price_symbol'].filter(k => !c[k]).concat(['target_price', 'shares_mn'].filter(k => !ok(c[k])));
+  save.disabled = missing.length > 0;
+  document.getElementById('rv-note').textContent = missing.length ? 'Missing: ' + missing.join(', ') : `${estimates.length} fiscal years will be stored.`;
+  if (!ok(c.model_price) || !ok(c.shares_mn)) { el.innerHTML = ''; return; }
+  const mc = c.model_price * c.shares_mn;
+  const mm = S.review.model_multiples || {};
+  const cmp = (calc, model, f) => {
+    if (!ok(calc)) return '—';
+    if (!model || !ok(model.v)) return f(calc);
+    const good = Math.abs(calc - model.v) <= Math.max(0.1, Math.abs(model.v) * 0.02);
+    return `${f(calc)} <span class="${good ? 'ok' : 'bad'}" title="model: ${f(model.v)} (${esc(model.src)})">${good ? '✓' : '≠ ' + f(model.v)}</span>`;
+  };
+  const x = v => v.toFixed(1) + 'x';
+  const p = v => (v * 100).toFixed(1) + '%';
+  const rows = SUMMARY_YEARS.map(y => {
+    const e = estimates.find(o => o.year === y) || {};
+    const ev = ok(e.net_debt) ? mc + e.net_debt + (e.minorities || 0) : null;
+    return `<tr><td class="l">${fyLab(y)}</td>
+      <td>${cmp(ok(e.net_income) ? mc / e.net_income : null, (mm.pe || {})[y], x)}</td>
+      <td>${cmp(ok(ev) && ok(e.ebitda) ? ev / e.ebitda : null, (mm.ev_ebitda || {})[y], x)}</td>
+      <td>${cmp(ok(e.fcfe) ? e.fcfe / mc : null, (mm.fcfe_yield || {})[y], p)}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<div class="section-title" style="margin:6px 0 8px">Sanity check — multiples at the model price (${c.model_price}) vs the model’s own</div>
+    <table class="rev" style="max-width:520px"><thead><tr><th class="l"></th><th>P/E</th><th>EV/EBITDA</th><th>FCFE Yield</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function saveReview() {
+  const { company, estimates } = readReview();
+  const btn = document.getElementById('rv-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const existing = S.companies.find(c => c.ticker === company.ticker);
+  company.display_order = existing ? existing.display_order : 100;
+  const { error } = await sb().rpc('comps_save_model', { p_company: company, p_estimates: estimates });
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Confirm & save';
+    document.getElementById('rv-note').innerHTML = `<span style="color:#c0392b">Save failed: ${esc(error.message)}</span>`;
+    return;
+  }
+  closeModal();
+  S.sel = company.ticker;
+  await load();
+}
+
+function showModal(html) {
+  document.getElementById('modal-root').innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+}
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; S.review = null; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.review) closeModal(); });
+
+load();
+</script>
+</body>
+</html>

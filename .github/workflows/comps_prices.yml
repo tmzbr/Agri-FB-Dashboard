@@ -1,0 +1,43 @@
+name: Update Comps Table prices (D-1 close → Supabase)
+
+# 1x por dia, antes da abertura da B3: o último candle completo é o D-1.
+# Não commita nada — grava em comps_price (Supabase) com a service role.
+# Os múltiplos (P/E, EV/EBITDA, FCFE yield, upside) são recalculados no
+# front com esse fechamento.
+
+on:
+  schedule:
+    - cron: "30 10 * * 2-6"   # 07:30 BRT, ter–sáb (pega o pregão de seg–sex)
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Janela de pregões a regravar"
+        required: false
+        default: "10"
+        type: string
+
+concurrency:
+  group: comps-prices
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Fetch closes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python "Market Watch/Comps Table/comps_prices.py" --days "${{ github.event.inputs.days || '10' }}"
