@@ -287,7 +287,7 @@ th.sc,td.sc{text-align:center;}
 
 <div class="main">
   <div class="card" id="score-panel">
-    <div class="card-head"><div><div class="card-title">Score settings</div><div class="card-sub">saved in this browser · applies to table and chart</div></div></div>
+    <div class="card-head"><div><div class="card-title">Score settings</div><div class="card-sub">applies to table and chart · resets when you leave the module</div></div></div>
     <div class="sp-bd">
       <div class="sp-sec">
         <h4>Extra weight for <span id="sp-days-lbl"></span></h4>
@@ -1256,23 +1256,18 @@ function drawChart(S){
    ranking "mesmo mês" (anomalia) foi testado e descartado: toda curva oscilava
    de 1 a 10 em qualquer mês e escondia o padrão. */
 const SCORE_DEF={we:2,cw:{p:1,d:1,t:1},days:[4,5,6,0]};
+/* Preferências só em memória: o portal destrói o iframe ao sair do módulo,
+   então tudo volta ao padrão na próxima abertura (mesmo comportamento do US
+   Beef). A chave antiga do localStorage é apagada para não sobrar lixo. */
 const SCORE_KEY="wm-beer-score-cfg";
+try{localStorage.removeItem(SCORE_KEY);}catch(e){}
 const SCORE_CAT=[{k:"p",lbl:"Rainfall",ico:"🌧️",dir:-1,col:"#2C6FB5"},
                  {k:"d",lbl:"Rain days",ico:"☔",dir:-1,col:"#1A9E8F"},
                  {k:"t",lbl:"Temperature",ico:"🌡️",dir:1,col:"#C0392B"}];
 /* dias da semana (getDay: 0=dom) que ganham o peso extra; default qui–dom */
 const DOW_LBL=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],DOW_ORDER=[1,2,3,4,5,6,0];
 const SCORE_MIN_YRS=3;    // abaixo disso não há percentil que se sustente
-let SCORE_CFG=loadScoreCfg();
-function loadScoreCfg(){
-  const d=JSON.parse(JSON.stringify(SCORE_DEF));
-  try{const s=JSON.parse(localStorage.getItem(SCORE_KEY)||"null");
-    if(s){const n=(v,lo,hi,df)=>Number.isFinite(+v)&&+v>=lo&&+v<=hi?+v:df;
-      d.we=n(s.we,1,5,d.we);for(const k in d.cw)d.cw[k]=n(s.cw&&s.cw[k],0,5,d.cw[k]);
-      if(Array.isArray(s.days))d.days=[...new Set(s.days.map(Number).filter(x=>x>=0&&x<=6))];}}catch(e){}
-  return d;
-}
-function saveScoreCfg(){try{localStorage.setItem(SCORE_KEY,JSON.stringify(SCORE_CFG));}catch(e){}}
+let SCORE_CFG=JSON.parse(JSON.stringify(SCORE_DEF));
 function syncScorePanel(){
   const el=id=>document.getElementById(id);
   el("sp-we").value=SCORE_CFG.we;el("sp-we-v").textContent=SCORE_CFG.we+"×";el("sp-we-h").textContent=SCORE_CFG.we+"×";
@@ -1290,15 +1285,15 @@ function daysLbl(){
   const pos=sel.map(d=>DOW_ORDER.indexOf(d)),run=pos.every((p,i)=>!i||p===pos[i-1]+1);
   return run&&sel.length>2?DOW_LBL[sel[0]]+"–"+DOW_LBL[sel[sel.length-1]]:sel.map(d=>DOW_LBL[d]).join(", ");
 }
-function toggleDay(d){const a=SCORE_CFG.days;SCORE_CFG.days=a.includes(d)?a.filter(x=>x!==d):a.concat(d);saveScoreCfg();syncScorePanel();render();}
+function toggleDay(d){const a=SCORE_CFG.days;SCORE_CFG.days=a.includes(d)?a.filter(x=>x!==d):a.concat(d);syncScorePanel();render();}
 const medLbl=()=>"median all months";
 function setScoreCfg(){
   const el=id=>document.getElementById(id);
   SCORE_CFG.we=+el("sp-we").value;
   for(const c of SCORE_CAT)SCORE_CFG.cw[c.k]=+el("sp-cw-"+c.k).value;
-  saveScoreCfg();syncScorePanel();render();
+  syncScorePanel();render();
 }
-function resetScoreCfg(){SCORE_CFG=JSON.parse(JSON.stringify(SCORE_DEF));saveScoreCfg();syncScorePanel();render();}
+function resetScoreCfg(){SCORE_CFG=JSON.parse(JSON.stringify(SCORE_DEF));syncScorePanel();render();}
 
 const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
 const MON_IDX=(()=>{const r=[];for(let m=0;m<12;m++)r.push([]);for(let i=0;i<366;i++){const md=IDX2MD[i];if(md)r[md[0]-1].push(i);}return r;})();
@@ -1395,9 +1390,16 @@ function renderScoreChart(){
   const histYears=STATE.years.filter(y=>y!==cy),yrs=histYears.slice(Math.max(0,histYears.length-STATE.yrs));
   const lastYr=yrs[yrs.length-1];
   const cur=months.map(mo=>sc.at(cy,mo));
-  const ds=[];
+  const ds=[],yl=yrs[0]+"–"+(""+lastYr).slice(2);
+  /* banda min–máx e média dos anos da janela, igual às outras abas */
+  const hist=yrs.map(y=>months.map(mo=>{const r=sc.at(y,mo);return r?r.total:null;}));
+  const band=months.map((_,i)=>{const v=hist.map(h=>h[i]).filter(x=>x!=null);
+    return v.length?{mn:Math.min(...v),mx:Math.max(...v),mean:v.reduce((a,b)=>a+b,0)/v.length}:{mn:null,mx:null,mean:null};});
+  ds.push({label:"Min "+yl,data:band.map(b=>b.mn),borderColor:"transparent",pointRadius:0,fill:false,order:30,_to:5});
+  ds.push({label:"Max "+yl,data:band.map(b=>b.mx),borderColor:"transparent",pointRadius:0,backgroundColor:"rgba(120,120,120,.16)",fill:"-1",order:30,_to:4});
+  ds.push({label:"Mean "+yl,data:band.map(b=>b.mean),borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,cubicInterpolationMode:"monotone",spanGaps:true});
   const ensoOn=STATE.enso!=="off";
-  yrs.forEach(y=>{const d=months.map(mo=>{const r=sc.at(y,mo);return r?r.total:null;});
+  yrs.forEach((y,yi)=>{const d=hist[yi];
     const o={label:String(y),data:d,borderColor:ensoOn?"rgba(120,120,120,.22)":y===lastYr?"rgba(70,70,70,.62)":"rgba(120,120,120,.16)",
       borderWidth:(!ensoOn&&y===lastYr)?1.7:1.1,pointRadius:0,fill:false,order:(!ensoOn&&y===lastYr)?18:20,_to:6+(lastYr-y),cubicInterpolationMode:"monotone",spanGaps:true};
     /* mesma regra das outras abas: o segmento do mês ganha a cor da fase só se
@@ -1417,12 +1419,14 @@ function renderScoreChart(){
         if(d._raw){const r=d._raw[c.dataIndex];if(r)t+="  ("+SCORE_CAT.filter(k=>SCORE_CFG.cw[k.k]>0).map(k=>k.ico+" "+fmtSc(r.cat[k.k].s)).join(" · ")+")";}
         return t;},
       labelColor:c=>{const ds=c.dataset,yr=+ds.label;
-        if(ensoOn&&!ds._raw){const col=ensoColor(RONI[yr]&&RONI[yr][c.dataIndex],STATE.enso,yr,c.dataIndex+1)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
+        if(ensoOn&&!ds._raw&&/^\d{4}$/.test(ds.label||"")){const col=ensoColor(RONI[yr]&&RONI[yr][c.dataIndex],STATE.enso,yr,c.dataIndex+1)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
         return{borderColor:ds.borderColor,backgroundColor:ds.borderColor,borderWidth:2};}}}},
     scales:{x:{ticks:{font:{size:9},color:"#999"},grid:{display:false}},
             y:{min:0,max:10,title:{display:true,text:"score (1–10)",font:{size:10},color:"#888"},ticks:{stepSize:1,font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
   document.getElementById("chart-legend").innerHTML=
-    `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>Score ${cy}</span>`+
+    `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>Score ${cy}</span>
+     <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${yrs[0]}–${lastYr}</span>
+     <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+
     (ensoLegend()||`<span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${lastYr}</span><span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`);
   const r=sc.at(cy,m);
   document.getElementById("stat-row").innerHTML=
