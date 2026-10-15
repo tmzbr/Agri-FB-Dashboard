@@ -225,11 +225,11 @@ th.sc,td.sc{text-align:center;}
 <div class="controls-bar">
   <span class="view-label">Variable:</span>
   <div class="view-btns">
-    <button class="view-btn" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
-    <button class="view-btn active" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
-    <span class="var-gap"></span>
-    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days<span class="new-badge">NEW</span></button>
     <button class="view-btn" data-var="s" id="var-s" onclick="setVar('s')">🍺 Beer Score<span class="new-badge">NEW</span></button>
+    <span class="var-gap" id="var-gap"></span>
+    <button class="view-btn" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
+    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days<span class="new-badge">NEW</span></button>
+    <button class="view-btn active" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
   </div>
   <div class="ctrl-sep" id="sep-grp"></div>
   <span class="view-label" id="lbl-grp">Group:</span>
@@ -945,6 +945,7 @@ function setVar(v){
 function syncVarBtns(){
   const ok=STATE.grp==="cap";
   document.getElementById("var-s").style.display=ok?"":"none";
+  document.getElementById("var-gap").style.display=ok?"":"none";
   if(!ok&&STATE.vr==="s")setVar("p");
 }
 async function setGrp(v){
