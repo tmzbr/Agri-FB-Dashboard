@@ -276,7 +276,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
-  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month/week with ≥1 mm of rain (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
+  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month/week with ≥1 mm of rain (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month. A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
   <span id="note-mine"><em>My farms</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two farms less than ~50 km apart legitimately share the same series.</span>
   <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over <em>every</em> municipality it contains (2,359 in total, 51 regions) — MT by the 7 <em>Imea</em> macro-regions (official municipal list, 141/141), the other eight states by <em>IBGE</em> meso-regions. MATOPIBA pools MA, TO, PI and BA, and opens buttons to isolate each. The three ▣ rows are the state mean under different municipal weights: simple, corn output and soybean output (IBGE/SIDRA 1612, average of 2022–24 to damp a single bad harvest) — the crop-weighted ones pull the state average toward where that crop actually is, which matters most where output is concentrated (Extremo Oeste Baiano alone is 99.6% of BA soybean). The live observed layer samples the highest-weight grid cells of each region; the historical series uses all of them.
 </div>
@@ -957,7 +957,27 @@ function computeSeries(sel,wtd){
   const curObs=buckets.map(b=>{const obs=b.days.filter(d=>!d.future);
     return obs.length?aggCur(obs,vr,sel,wtd):null;});
   const bucketMonth=buckets.map(b=>b.m!=null?b.m:b.days[Math.floor(b.days.length/2)].m);
-  return {labels,yearSeries,bandMin,bandMax,mean,curObs,yrs,bucketMonth};
+  /* Mês/semana corrente pela metade: em chuva (mm e dias) o total parcial não se
+     compara com o do bucket inteiro — "14 de 31 dias" sempre pareceria seco.
+     Recalcula o histórico só com os mesmos dias (até o último dia observado
+     do ano corrente, que pode ser ontem se o Open-Meteo ainda não fechou hoje).
+     As linhas do gráfico seguem com o bucket cheio (é o formato da sazonalidade);
+     o MTD vai para tabela, stats e um marcador no ponto corrente. */
+  let mtd=null;
+  if(vr!=="t"){
+    const i=buckets.findIndex(b=>b.days.some(d=>d.future)&&b.days.some(d=>!d.future));
+    if(i>=0){
+      const b=buckets[i];let last=null;
+      for(const d of b.days)if(!d.future&&sel.some(p=>curVal(p,d.idx,vr)!=null))last=d;
+      if(last){
+        const md=b.days.filter(d=>d.idx<=last.idx);
+        const vv=yrs.map(y=>aggHist(md,y,vr,sel,wtd)).filter(v=>v!=null);
+        if(vv.length)mtd={i,mean:vv.reduce((a,c)=>a+c,0)/vv.length,min:Math.min(...vv),max:Math.max(...vv),
+          label:dm(md[0].date)+"–"+dm(last.date)};
+      }
+    }
+  }
+  return {labels,yearSeries,bandMin,bandMax,mean,curObs,yrs,bucketMonth,mtd};
 }
 function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null)return k;return -1;}
 
@@ -965,7 +985,12 @@ function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null
 function groupPts(){
   if(STATE.grp===MTP)return STATE.pts.filter(p=>MTP_UFS.includes(p.grp)&&p.h);
   return STATE.pts.filter(p=>p.grp===STATE.grp&&p.h);}
-function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};}
+/* base de comparação do ponto corrente: MTD se o bucket está pela metade */
+function cmpAt(S,i){
+  if(S.mtd&&S.mtd.i===i)return{mean:S.mtd.mean,min:S.mtd.min,max:S.mtd.max,lbl:S.labels[i]+", "+S.mtd.label};
+  return{mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};
+}
+function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],...cmpAt(S,i)};}
 /* dias de chuva: inteiro num ponto só, 1 casa na média de grupo (fracionário) */
 const fmtV=v=>v==null?"—":(STATE.vr==="t"?v.toFixed(1)+"°":STATE.vr==="d"?(Math.abs(v-Math.round(v))<.05?Math.round(v):v.toFixed(1))+"d":Math.round(v)+"mm");
 function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const sc=STATE.vr==="t"?3:STATE.vr==="d"?(STATE.gran==="m"?5:2):40,t=Math.max(-1,Math.min(1,d/sc));
@@ -1100,12 +1125,13 @@ function drawLegend(S){
   document.getElementById("chart-legend").innerHTML=
   `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>${STATE.curYear}</span>
    <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${S.yrs[0]}–${S.yrs[S.yrs.length-1]}</span>
-   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail;}
-function drawStats(S){const i=lastObsIdx(S);const cur=i>=0?S.curObs[i]:null,mean=i>=0?S.mean[i]:null,mn=i>=0?S.bandMin[i]:null,mx=i>=0?S.bandMax[i]:null;
+   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail+
+  (S.mtd?`<span><span style="color:#555;font-size:12px;line-height:1">◇</span>Mean same days (${S.mtd.label})</span>`:"");}
+function drawStats(S){const i=lastObsIdx(S),c=i>=0?cmpAt(S,i):{};const cur=i>=0?S.curObs[i]:null,mean=i>=0?c.mean:null,mn=i>=0?c.min:null,mx=i>=0?c.max:null;
   const d=(cur!=null&&mean!=null)?cur-mean:null,dc=d==null?"var(--gray-mid)":(STATE.vr==="t"?(d>0?"var(--red)":"var(--blue)"):(d>0?"var(--blue)":"var(--brown)"));
   document.getElementById("stat-row").innerHTML=
-   `<div class="stat"><span class="k">Current (${i>=0?S.labels[i]:"—"})</span><span class="v" style="color:var(--orange)">${fmtV(cur)}</span></div>
-    <div class="stat"><span class="k">Avg ${STATE.yrs}y</span><span class="v">${fmtV(mean)}</span></div>
+   `<div class="stat"><span class="k">Current (${i>=0?c.lbl:"—"})</span><span class="v" style="color:var(--orange)">${fmtV(cur)}</span></div>
+    <div class="stat"><span class="k">Avg ${STATE.yrs}y${S.mtd&&S.mtd.i===i?" · same days":""}</span><span class="v">${fmtV(mean)}</span></div>
     <div class="stat"><span class="k">vs avg</span><span class="v" style="color:${dc}">${d==null?"—":(d>0?"+":"−")+fmtV(Math.abs(d))}</span></div>
     <div class="stat"><span class="k">Historical range</span><span class="v" style="font-size:14px">${fmtV(mn)} – ${fmtV(mx)}</span></div>`;}
 function drawChart(S){
@@ -1120,12 +1146,15 @@ function drawChart(S){
     if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr],mo=S.bucketMonth[ctx.p0DataIndex];return a?ensoColor(a[mo-1],STATE.enso,yr,mo):undefined;}};
     ds.push(d);});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
+  if(S.mtd){const at=a=>S.labels.map((_,k)=>k===S.mtd.i?a:null);
+    ds.push({label:"Mean "+S.mtd.label,data:at(S.mtd.mean),borderColor:"#555",backgroundColor:"#fff",borderWidth:1.6,pointStyle:"rectRot",pointRadius:5,pointHoverRadius:6,showLine:false,order:2,_to:2});
+    ds.push({label:"Range "+S.mtd.label,data:at(S.mtd.max),_min:S.mtd.min,borderColor:"transparent",pointRadius:0,showLine:false,order:2,_to:2.5});}
   ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:0,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
   if(!Chart.Tooltip.positioners.awayCursor)Chart.Tooltip.positioners.awayCursor=function(items,ev){const a=this.chart.chartArea;if(!a)return ev;const midX=(a.left+a.right)/2;return{x:ev.x<midX?a.right:a.left,y:a.top+2};};
   STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:S.labels,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
     plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
-      label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
+      label:c=>c.dataset._min!=null?`${c.dataset.label}: ${fmtV(c.dataset._min)} – ${fmtV(c.parsed.y)}`:`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
       labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
         if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const mo=S.bucketMonth[c.dataIndex],col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][mo-1],STATE.enso,+ds.label,mo)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
         return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
