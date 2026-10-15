@@ -34,7 +34,14 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .up-btn{border:none;background:none;cursor:pointer;color:var(--gray-mid);font-size:13px;padding:0 4px;line-height:1;}
 .up-btn:hover{color:var(--orange);}
 .scroll-x{overflow-x:auto;}
-table.comps{border-collapse:separate;border-spacing:0;font-size:12px;width:100%;}
+/* Layout fixo: as tabelas F&B e Agri ficam com as colunas exatamente
+   alinhadas uma embaixo da outra. */
+table.comps{border-collapse:separate;border-spacing:0;font-size:12px;width:100%;min-width:1320px;table-layout:fixed;}
+.comps col.c-co{width:220px;}.comps col.c-rec{width:48px;}
+.sec-title{font-size:12px;font-weight:700;color:var(--black);padding:14px 12px 4px;border-top:1px solid var(--border);}
+.sec-title:first-child{border-top:none;}
+.sec-title span{font-size:10px;font-weight:600;color:var(--gray-mid);margin-left:6px;}
+.comps td.l.sticky{overflow:hidden;text-overflow:ellipsis;}
 .comps th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-mid);
   padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;background:var(--white);}
 .comps thead tr:first-child th{border-bottom:none;padding-bottom:2px;}
@@ -62,6 +69,7 @@ table.comps{border-collapse:separate;border-spacing:0;font-size:12px;width:100%;
 .pills{display:flex;gap:6px;flex-wrap:wrap;}
 .pill{padding:5px 10px;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:14px;cursor:pointer;
   background:var(--white);color:var(--gray-dark);font-family:var(--font);}
+.pill-sep{width:1px;background:var(--border);margin:2px 4px;}
 .pill:hover{border-color:var(--orange);}
 .pill.active{background:var(--orange);border-color:var(--orange);color:var(--white);}
 .co-hdr{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
@@ -156,7 +164,7 @@ input.ref.sm{display:inline-block;width:46px;min-width:0;margin:0;border-color:v
       <button class="btn" onclick="pickFile(null)">+ Upload model</button>
     </div>
   </div>
-  <div class="card"><div class="scroll-x" id="overview"><div class="msg">Loading…</div></div>
+  <div class="card"><div id="overview"><div class="msg">Loading…</div></div>
     <div class="foot" id="overview-foot"></div></div>
 
   <div class="section-hdr">
@@ -281,7 +289,8 @@ async function load() {
   S.px = {};
   (px.data || []).forEach(r => { if (!S.px[r.price_symbol]) S.px[r.price_symbol] = r; });
   if (!S.sel || !S.companies.some(x => x.ticker === S.sel)) {
-    S.sel = (S.companies.find(x => S.est[x.ticker]) || S.companies[0] || {}).ticker || null;
+    const ordered = bySector().flatMap(g => g[2]);
+    S.sel = (ordered.find(x => S.est[x.ticker]) || ordered[0] || {}).ticker || null;
   }
   render();
 }
@@ -296,17 +305,44 @@ function renderHeader() {
   document.getElementById('px-src').textContent = srcs.length ? 'Source: ' + srcs.map(s => s === 'yahoo' ? 'Yahoo Finance' : 'Google Finance').join(', ') : '';
 }
 
+/* Duas tabelas: Food & Beverage e Agribusiness (comps_company.sector,
+   migration_comps_sector.sql). Antes da migration — ou empresa sem setor —
+   vale o mapeamento padrão abaixo, na ordem pedida pelo Bruno. */
+const SECTORS = [['fnb', 'Food & Beverage'], ['agri', 'Agribusiness'], ['other', 'Other']];
+const SECTOR_DEFAULT = {
+  ABEV3: ['fnb', 1], MDIA3: ['fnb', 2], CAML3: ['fnb', 3], JBS: ['fnb', 4], BEEF3: ['fnb', 5], MBRF3: ['fnb', 6],
+  SLCE3: ['agri', 1], AGRO3: ['agri', 2], TTEN3: ['agri', 3], VITT3: ['agri', 4], SOJA3: ['agri', 5],
+  SMTO3: ['agri', 6], JALL3: ['agri', 7], AGRO: ['agri', 8],
+};
+const sectorOf = c => c.sector || (SECTOR_DEFAULT[c.ticker] || [])[0] || 'other';
+const orderOf = c => c.sector ? c.display_order : ((SECTOR_DEFAULT[c.ticker] || [])[1] || c.display_order || 100);
+const bySector = () => SECTORS.map(([k, lab]) => [k, lab, S.companies.filter(c => sectorOf(c) === k)
+  .sort((a, b) => (orderOf(a) - orderOf(b)) || a.ticker.localeCompare(b.ticker))]).filter(g => g[2].length);
+
 function renderOverview() {
   const el = document.getElementById('overview');
   if (!S.companies.length) { el.innerHTML = '<div class="msg">No companies yet.' + (S.isAdmin ? ' Use “Upload model” to add one.' : '') + '</div>'; return; }
+  let stale = false;
+  el.innerHTML = bySector().map(([k, lab, list]) => {
+    const t = compsTable(list);
+    stale = stale || t.stale;
+    return `<div class="sec-title">${lab}<span>${list.length} ${list.length === 1 ? 'company' : 'companies'}</span></div><div class="scroll-x">${t.html}</div>`;
+  }).join('');
+  document.getElementById('overview-foot').innerHTML =
+    'Financials in millions of each company’s reporting currency (BRL unless tagged). Fiscal years labelled by year-end (SMTO3 FY26 = 2025/26). ' +
+    'EV = market cap at last close + net debt + minorities of each year, following each model’s own EV bridge. n.m. = negative or not meaningful.' +
+    (stale ? ' <span class="stale">Italic price</span> = model price (no close stored yet).' : '');
+}
+
+function compsTable(list) {
   const yrs = SUMMARY_YEARS;
   const groups = [['Net Revenues', 'm'], ['EBITDA', 'm'], ['Net Income', 'm'], ['P/E', 'x'], ['EV/EBITDA', 'x'], ['FCFE Yield', '%']];
-  let h = `<table class="comps"><thead><tr>
+  let h = `<table class="comps"><colgroup><col class="c-co"><col class="c-rec"></colgroup><thead><tr>
     <th class="l sticky" rowspan="2">Company</th><th rowspan="2">Rec.</th><th rowspan="2">Price</th><th rowspan="2">Target</th><th rowspan="2">Upside</th>
     ${groups.map(g => `<th class="grp gs" colspan="${yrs.length}">${g[0]}</th>`).join('')}</tr><tr>
     ${groups.map(() => yrs.map((y, i) => `<th class="${i === 0 ? 'gs' : ''}">${fyLab(y)}</th>`).join('')).join('')}</tr></thead><tbody>`;
   let stale = false;
-  S.companies.forEach(c => {
+  list.forEach(c => {
     const m = metrics(c);
     const has = !!S.est[c.ticker];
     if (m.px && !m.px.live) stale = true;
@@ -327,16 +363,13 @@ function renderOverview() {
     </tr>`;
   });
   h += '</tbody></table>';
-  el.innerHTML = h;
-  document.getElementById('overview-foot').innerHTML =
-    'Financials in millions of each company’s reporting currency (BRL unless tagged). Fiscal years labelled by year-end (SMTO3 FY26 = 2025/26). ' +
-    'EV = market cap at last close + net debt + minorities of each year, following each model’s own EV bridge. n.m. = negative or not meaningful.' +
-    (stale ? ' <span class="stale">Italic price</span> = model price (no close stored yet).' : '');
+  return { html: h, stale };
 }
 
 function renderPills() {
-  document.getElementById('pills').innerHTML = S.companies.filter(c => S.est[c.ticker]).map(c =>
-    `<button class="pill ${c.ticker === S.sel ? 'active' : ''}" onclick="selectCo('${esc(c.ticker)}')">${esc(c.ticker)}</button>`).join('');
+  document.getElementById('pills').innerHTML = bySector().map(([k, lab, list]) => list.filter(c => S.est[c.ticker]).map(c =>
+    `<button class="pill ${c.ticker === S.sel ? 'active' : ''}" onclick="selectCo('${esc(c.ticker)}')">${esc(c.ticker)}</button>`).join(''))
+    .filter(Boolean).join('<span class="pill-sep"></span>');
 }
 
 function selectCo(t) { S.sel = t; renderOverview(); renderPills(); renderDetail(); }
@@ -492,6 +525,12 @@ function setNum(key, ref) {
   renderReview();
 }
 
+function defaultSector(r) {
+  const t = String((r.edit && r.edit.ticker) || S.uploadFor || r.ticker || '').toUpperCase();
+  const ex = S.companies.find(c => c.ticker === t);
+  return ex ? sectorOf(ex) === 'other' ? '' : sectorOf(ex) : ((SECTOR_DEFAULT[t] || [])[0] || '');
+}
+
 function editText(id, v) { S.review.edit[id] = v; reviewCheck(); }
 
 function renderReview() {
@@ -516,6 +555,10 @@ function renderReview() {
   const recSel = `<div class="f ${rec ? '' : 'miss'}"><label>Recommendation</label><select id="rv-rec" onchange="editText('rec',this.value)">
       ${['', 'OP', 'MP', 'UP'].map(o => `<option ${rec === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
       <div class="src">${r.recommendation ? esc(r.recommendation.src) : 'not in the model — choose'}</div></div>`;
+  const sec = ed('sector', defaultSector(r));
+  const secSel = `<div class="f ${sec ? '' : 'miss'}"><label>Table</label><select id="rv-sector" onchange="editText('sector',this.value)">
+      ${[['', ''], ['fnb', 'Food & Beverage'], ['agri', 'Agribusiness']].map(([v, l]) => `<option value="${v}" ${sec === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <div class="src">which comps table it goes in</div></div>`;
   const yrs = DETAIL_YEARS;
   const views = {};
   METRIC_ROWS.forEach(([k]) => { views[k] = seriesView(k); });
@@ -549,6 +592,7 @@ function renderReview() {
         ${txtFld('currency', 'Currency', r.currency, esc(vs) + ' labels')}
         ${txtFld('symbol', 'Price symbol (Yahoo)', existing ? existing.price_symbol : r.price_symbol, 'used for the daily close')}
         ${recSel}
+        ${secSel}
         ${txtFld('tplab', 'Target horizon', r.target_label || '', esc(vs) + ' labels')}
       </div>
       <div class="fgrid">${NUM_FIELDS.map(numFld).join('')}</div>
@@ -575,6 +619,7 @@ function readReview() {
     currency: t('currency', r.currency).toUpperCase() || 'BRL',
     price_symbol: t('symbol', existing ? existing.price_symbol : r.price_symbol),
     recommendation: t('rec', r.recommendation ? r.recommendation.v : '') || null,
+    sector: t('sector', defaultSector(r)) || null,
     target_price: num('target_price'), target_label: t('tplab', r.target_label) || null,
     shares_mn: num('shares_mn'), model_price: num('model_price'),
     model_date: null, source_file: r.source_file,
@@ -604,7 +649,7 @@ function reviewCheck() {
   const { company: c, estimates } = readReview();
   const el = document.getElementById('rv-check');
   const save = document.getElementById('rv-save');
-  const missing = ['ticker', 'name', 'price_symbol'].filter(k => !c[k]).concat(['target_price', 'shares_mn'].filter(k => !ok(c[k])));
+  const missing = ['ticker', 'name', 'price_symbol', 'sector'].filter(k => !c[k]).concat(['target_price', 'shares_mn'].filter(k => !ok(c[k])));
   save.disabled = missing.length > 0;
   document.getElementById('rv-note').textContent = missing.length ? 'Missing: ' + missing.join(', ') : `${estimates.length} fiscal years will be stored.`;
   if (!ok(c.model_price) || !ok(c.shares_mn)) { el.innerHTML = ''; return; }
