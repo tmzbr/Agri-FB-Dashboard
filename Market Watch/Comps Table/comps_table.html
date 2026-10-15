@@ -106,9 +106,22 @@ table.rev{border-collapse:collapse;font-size:11.5px;width:100%;margin-bottom:12p
 .rev td{padding:3px 6px;border-bottom:1px solid #f2f2f2;text-align:right;}
 .rev td.l,.rev th.l{text-align:left;white-space:nowrap;}
 .rev td.l small{display:block;color:#aaa;font-size:9.5px;}
-.rev input{width:92px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;text-align:right;font-family:var(--font);font-size:11.5px;}
-.rev input.mask{background:#f3f7ff;}
-.rev input.miss{border-color:#e9a03b;background:#fffaf0;}
+.rev td{vertical-align:top;}
+.rev td.mask{background:#f3f7ff;}
+.rev td.miss{background:#fffaf0;}
+.rev td.user{background:#fff4ee;}
+.rev .cv{font-weight:600;color:var(--black);}
+input.ref{display:block;width:100%;min-width:96px;margin-top:2px;padding:1px 4px;border:1px solid transparent;border-radius:3px;background:transparent;
+  font:10px ui-monospace,Menlo,Consolas,monospace;color:#999;text-align:inherit;}
+input.ref:hover{border-color:var(--border);background:var(--white);}
+input.ref:focus{outline:none;border-color:var(--orange);background:var(--white);color:var(--gray-dark);}
+.rev td.l input.ref{text-align:left;max-width:150px;}
+.ref-err{font-size:9.5px;color:#c0392b;white-space:normal;max-width:160px;margin-top:2px;}
+.f.numf .nv{font-size:15px;font-weight:700;color:var(--black);padding:2px 0;}
+.f.numf input.ref{text-align:left;}
+.f.numf.user .nv{color:var(--orange);}
+.f.numf.miss .nv{color:#e9a03b;}
+.legend code{font:10px ui-monospace,Menlo,monospace;background:#f4f4f4;padding:0 3px;border-radius:2px;}
 .chk{font-size:11px;}
 .chk .ok{color:#0a8f3c;font-weight:700;}
 .chk .bad{color:#c0392b;font-weight:700;}
@@ -375,10 +388,15 @@ async function onFile(input) {
   try {
     const buf = await file.arrayBuffer();
     // Só as abas que o parser usa: os modelos têm abas de base com 65 mil
-    // linhas × 253 colunas que travariam o browser à toa.
+    // linhas × 253 colunas que travariam o browser à toa. Outras abas são
+    // lidas sob demanda quando o admin aponta para elas (ensureSheet).
     const wb = XLSX.read(buf, { type: 'array', sheets: CompsParser.READ_SHEETS, cellDates: true });
     const r = CompsParser.parseWorkbook(XLSX, wb, file.name);
     r.source_file = file.name;
+    r.buf = buf;
+    r.wb = wb;
+    r.edit = {};
+    r.errs = {};
     S.review = r;
     renderReview();
   } catch (e) {
@@ -391,27 +409,107 @@ async function onFile(input) {
 
 const METRIC_ROWS = [['revenue', 'Net Revenues'], ['ebitda', 'EBITDA'], ['net_income', 'Net Income'],
   ['fcfe', 'FCFE'], ['net_debt', 'Net Debt'], ['minorities', 'Minorities (in EV)']];
+// Números do bloco de valuation: chave no review → rótulo na tela.
+const NUM_FIELDS = [['target_price', 'Target price'], ['shares_mn', '# Shares (m)'], ['model_price', 'Price in model']];
+
+/* Números NÃO se digitam: se o valor não bate, o admin aponta outra célula
+   do modelo (ex.: Output!G12) e o valor é relido do Excel. Assim tudo que
+   fica gravado tem uma célula de origem rastreável. */
+function ensureSheet(ref, defSheet) {
+  const r = S.review;
+  const p = CompsParser.parseRef(r.wb, ref, defSheet);
+  if (p && !r.wb.Sheets[p.sheet]) {
+    const one = XLSX.read(r.buf, { type: 'array', sheets: [p.sheet], cellDates: true });
+    r.wb.Sheets[p.sheet] = one.Sheets[p.sheet];
+  }
+}
+const sheetOf = src => src ? String(src).split('!')[0] : 'Output';
+
+function repointNum(key, ref) {
+  const r = S.review;
+  ref = ref.trim();
+  delete r.errs[key];
+  if (!ref) { r[key] = null; return renderReview(); }
+  ensureSheet(ref, sheetOf(r[key] && r[key].src));
+  const x = CompsParser.readRef(XLSX, r.wb, ref, sheetOf(r[key] && r[key].src));
+  if (x.error) r.errs[key] = x.error; else r[key] = { v: x.v, src: x.src, label: 'apontado pelo admin', user: true };
+  renderReview();
+}
+
+function repointRow(k, ref) {
+  const r = S.review;
+  ref = ref.trim();
+  delete r.errs['row-' + k];
+  if (!ref) {
+    DETAIL_YEARS.forEach(y => { r.years[y][k] = null; });
+    r.series_cells[k] = '';
+    r.series_labels[k] = null;
+    return renderReview();
+  }
+  const def = sheetOf(r.series_cells[k]);
+  ensureSheet(ref, def);
+  const s = CompsParser.seriesFromRef(XLSX, r.wb, ref, def);
+  if (s.error) { r.errs['row-' + k] = s.error; return renderReview(); }
+  DETAIL_YEARS.forEach(y => {
+    const c = s.vals[y];
+    r.years[y][k] = c ? { v: c.v, src: c.src, from: s.label, user: true } : null;
+    if (c && !r.years[y].period) r.years[y].period = c.period;
+  });
+  r.series_cells[k] = s.cell;
+  r.series_labels[k] = s.cell + ' "' + s.label + '"';
+  if (k === 'minorities') r.minorities_note = 'série ' + s.cell;
+  renderReview();
+}
+
+function repointCell(k, y, ref) {
+  const r = S.review;
+  ref = ref.trim();
+  const id = k + '-' + y;
+  delete r.errs[id];
+  const cur = r.years[y][k];
+  if (!ref) { r.years[y][k] = null; return renderReview(); }
+  const def = sheetOf((cur && cur.src) || r.series_cells[k]);
+  ensureSheet(ref, def);
+  const x = CompsParser.readRef(XLSX, r.wb, ref, def);
+  if (x.error) r.errs[id] = x.error; else r.years[y][k] = { v: x.v, src: x.src, from: 'apontado pelo admin', user: true };
+  renderReview();
+}
+
+function editText(id, v) { S.review.edit[id] = v; reviewCheck(); }
 
 function renderReview() {
   const r = S.review;
-  const v = x => x && ok(x.v) ? x.v : '';
-  const src = x => x && x.src ? esc(x.src) : 'not found — fill in';
-  const fld = (id, label, val, s, type = 'text', extra = '') =>
-    `<div class="f ${val === '' || val == null ? 'miss' : ''}"><label>${label}</label><input id="rv-${id}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(val)}" ${extra} oninput="reviewCheck()"/><div class="src">${s}</div></div>`;
+  const ed = (id, def) => (id in r.edit ? r.edit[id] : def);
+  const src = x => x && x.src ? esc(x.src) : 'not found';
+  const errOf = id => r.errs[id] ? `<div class="ref-err">${esc(r.errs[id])}</div>` : '';
+  const txtFld = (id, label, val, s) => {
+    const v = ed(id, val);
+    return `<div class="f ${v === '' || v == null ? 'miss' : ''}"><label>${label}</label><input id="rv-${id}" type="text" value="${esc(v || '')}" oninput="editText('${id}',this.value)"/><div class="src">${s}</div></div>`;
+  };
+  const numFld = ([key, label]) => {
+    const x = r[key];
+    return `<div class="f numf ${x ? (x.user ? 'user' : '') : 'miss'}"><label>${label}</label>
+      <div class="nv">${x && ok(x.v) ? fmtN(x.v, key === 'shares_mn' ? 1 : 2) : '—'}</div>
+      <input class="ref" value="${esc(x ? x.src : '')}" placeholder="Aba!Célula" title="Point to another cell of the model and press Enter" onchange="repointNum('${key}',this.value)"/>${errOf(key)}</div>`;
+  };
   const existing = S.companies.find(c => c.ticker === r.ticker);
   const mismatch = S.uploadFor && S.uploadFor !== r.ticker;
-  const recSel = `<div class="f ${r.recommendation ? '' : 'miss'}"><label>Recommendation</label><select id="rv-rec">
-      ${['', 'OP', 'MP', 'UP'].map(o => `<option ${r.recommendation && r.recommendation.v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+  const rec = ed('rec', r.recommendation ? r.recommendation.v : '');
+  const recSel = `<div class="f ${rec ? '' : 'miss'}"><label>Recommendation</label><select id="rv-rec" onchange="editText('rec',this.value)">
+      ${['', 'OP', 'MP', 'UP'].map(o => `<option ${rec === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
       <div class="src">${src(r.recommendation)}</div></div>`;
   const yrs = DETAIL_YEARS;
   const per = y => r.years[y].period && r.years[y].period.replace(/[aAeE]$/, '') !== String(y) ? `<small>${esc(r.years[y].period)}</small>` : '';
   const estRows = METRIC_ROWS.map(([k, lab]) => {
-    const from = k === 'minorities' ? r.minorities_note : (r.series_labels[k] || 'not found');
-    return `<tr><td class="l">${lab}<small>${esc(from)}</small></td>${yrs.map(y => {
-      const c = r.years[y][k];
-      const cls = !c ? 'miss' : (c.from && c.from.indexOf('Mask') === 0 ? 'mask' : '');
-      return `<td><input id="rv-${k}-${y}" type="number" step="any" class="${cls}" value="${c && ok(c.v) ? +c.v.toFixed(2) : ''}" title="${c ? esc((c.src || '') + ' · ' + c.from) : 'not found'}" oninput="reviewCheck()"/></td>`;
-    }).join('')}</tr>`;
+    const from = k === 'minorities' ? r.minorities_note : ((r.series_labels[k] || '').replace(/^\S+\s/, '') || 'not found');
+    return `<tr><td class="l">${lab}<small>${esc(from)}</small>
+        <input class="ref" value="${esc(r.series_cells[k] || '')}" placeholder="row: Aba!Célula" title="Point to another row of the model (any cell of it) — replaces all years" onchange="repointRow('${k}',this.value)"/>${errOf('row-' + k)}</td>
+      ${yrs.map(y => {
+        const c = r.years[y][k];
+        const cls = !c ? 'miss' : c.user ? 'user' : (c.from && c.from.indexOf('Mask') === 0 ? 'mask' : '');
+        return `<td class="${cls}"><div class="cv">${c && ok(c.v) ? fmtN(c.v, 1) : '—'}</div>
+          <input class="ref" value="${esc(c && c.src ? c.src : '')}" placeholder="—" title="${c ? esc(c.from || '') : 'not found'} — point to another cell and press Enter" onchange="repointCell('${k}',${y},this.value)"/>${errOf(k + '-' + y)}</td>`;
+      }).join('')}</tr>`;
   }).join('');
 
   showModal(`
@@ -423,17 +521,16 @@ function renderReview() {
       ${!existing && !mismatch ? `<div class="warn"><b>${esc(r.ticker)}</b> is not in the table yet — it will be added.</div>` : ''}
       ${r.warnings.length ? `<div class="warn"><b>Check:</b><ul>${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
       <div class="fgrid">
-        ${fld('ticker', 'Ticker', r.ticker, 'Mask / Cover / file name')}
-        ${fld('name', 'Company', r.name, 'Mask / Cover')}
-        ${fld('currency', 'Currency', r.currency, 'Output units')}
-        ${fld('symbol', 'Price symbol (Yahoo)', existing ? existing.price_symbol : r.price_symbol, 'used for the daily close')}
+        ${txtFld('ticker', 'Ticker', r.ticker, 'Mask / Cover / file name')}
+        ${txtFld('name', 'Company', r.name, 'Mask / Cover')}
+        ${txtFld('currency', 'Currency', r.currency, 'Output units')}
+        ${txtFld('symbol', 'Price symbol (Yahoo)', existing ? existing.price_symbol : r.price_symbol, 'used for the daily close')}
         ${recSel}
-        ${fld('tp', 'Target price', v(r.target_price), src(r.target_price), 'number')}
-        ${fld('tplab', 'Target horizon', r.target_label || '', 'Mask YearEnd')}
-        ${fld('shares', '# Shares (m)', v(r.shares_mn), src(r.shares_mn), 'number')}
-        ${fld('mpx', 'Price in model', v(r.model_price), src(r.model_price), 'number')}
+        ${txtFld('tplab', 'Target horizon', r.target_label || '', 'Mask YearEnd')}
       </div>
-      <div class="legend">Hover a cell for its source.<span style="background:#f3f7ff"></span>from Mask-UploadModel (validated against Output)<span style="background:#fffaf0;border-color:#e9a03b"></span>not found</div>
+      <div class="fgrid">${NUM_FIELDS.map(numFld).join('')}</div>
+      <div class="legend">Values are read from the model. If one doesn’t match, type another cell (e.g. <code>Output!G12</code>, or <code>G12</code> on the same tab) and press Enter — under a year for that year only, under the metric name for the whole row.
+        <br><span style="background:#f3f7ff"></span>from Mask-UploadModel<span style="background:#fff4ee;border-color:var(--orange)"></span>re-pointed by you<span style="background:#fffaf0;border-color:#e9a03b"></span>not found</div>
       <div class="scroll-x"><table class="rev"><thead><tr><th class="l">Millions</th>${yrs.map(y => `<th>${fyLab(y)}${per(y)}</th>`).join('')}</tr></thead>
         <tbody>${estRows}</tbody></table></div>
       <div class="chk" id="rv-check"></div>
@@ -445,13 +542,15 @@ function renderReview() {
 }
 
 function readReview() {
-  const g = id => { const el = document.getElementById('rv-' + id); return el ? el.value.trim() : ''; };
-  const n = id => { const s = g(id); return s === '' ? null : Number(s); };
   const r = S.review;
+  const t = (id, def) => String(id in r.edit ? r.edit[id] : (def || '')).trim();
+  const num = key => r[key] && ok(r[key].v) ? r[key].v : null;
   const company = {
-    ticker: g('ticker').toUpperCase(), name: g('name'), currency: g('currency').toUpperCase() || 'BRL',
-    price_symbol: g('symbol'), recommendation: g('rec') || null,
-    target_price: n('tp'), target_label: g('tplab') || null, shares_mn: n('shares'), model_price: n('mpx'),
+    ticker: t('ticker', r.ticker).toUpperCase(), name: t('name', r.name), currency: t('currency', r.currency).toUpperCase() || 'BRL',
+    price_symbol: t('symbol', (S.companies.find(c => c.ticker === r.ticker) || {}).price_symbol || r.price_symbol),
+    recommendation: t('rec', r.recommendation ? r.recommendation.v : '') || null,
+    target_price: num('target_price'), target_label: t('tplab', r.target_label) || null,
+    shares_mn: num('shares_mn'), model_price: num('model_price'),
     model_date: r.model_date, source_file: r.source_file,
     sources: {
       target_price: r.target_price && r.target_price.src, shares_mn: r.shares_mn && r.shares_mn.src,
@@ -462,8 +561,8 @@ function readReview() {
   const estimates = DETAIL_YEARS.map(y => {
     const o = { year: y, period_label: r.years[y].period, sources: {} };
     METRIC_ROWS.forEach(([k]) => {
-      o[k] = n(k + '-' + y);
       const c = r.years[y][k];
+      o[k] = c && ok(c.v) ? c.v : null;
       if (c) o.sources[k] = c.src ? c.src : c.from;
     });
     return o;

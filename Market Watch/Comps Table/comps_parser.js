@@ -464,12 +464,68 @@
       model_date: modelDate,
       mask_used: !!(mask && align.ok),
       years: years,
+      // Célula do rótulo de cada série: ponto de partida para o admin reapontar.
+      series_cells: METRICS.reduce(function (o, m) { o[m] = picked[m] ? picked[m].cell : ''; return o; },
+        { minorities: minRow ? minRow.cell : '' }),
       series_labels: METRICS.reduce(function (o, m) { o[m] = picked[m] ? picked[m].cell + ' "' + picked[m].label + '"' : null; return o; }, {}),
       warnings: warnings,
     };
   }
 
-  var api = { parseWorkbook: parseWorkbook, READ_SHEETS: READ_SHEETS, YEARS: YEARS, METRICS: METRICS, yearOf: yearOf };
+  // ── reapontar: o admin indica outra célula do modelo ─────────────
+  // Aceita "Output!F10", "'Mask-UploadModel'!$J$5", "dcf!e29" ou só "F10"
+  // (assume a aba de defSheet). Devolve { sheet, r, c } ou null.
+  function parseRef(wb, ref, defSheet) {
+    var m = String(ref || '').trim().match(/^(?:'?([^'!]+)'?!)?\$?([A-Z]{1,3})\$?(\d+)$/i);
+    if (!m) return null;
+    var name = m[1] || defSheet;
+    var sheet = (wb.SheetNames || []).filter(function (n) { return n.toLowerCase() === String(name || '').toLowerCase(); })[0];
+    if (!sheet) return null;
+    return { sheet: sheet, r: Number(m[3]) - 1, c: XLSX_col(m[2].toUpperCase()) };
+  }
+  function XLSX_col(s) { var n = 0; for (var i = 0; i < s.length; i++) n = n * 26 + s.charCodeAt(i) - 64; return n - 1; }
+
+  // Número de uma célula. A aba precisa estar carregada (o front relê o
+  // arquivo só com ela quando o admin aponta para uma aba fora de READ_SHEETS).
+  function readRef(XLSX, wb, ref, defSheet) {
+    var p = parseRef(wb, ref, defSheet);
+    if (!p) return { error: 'Referência inválida (use Aba!Célula, ex.: Output!F10)' };
+    var row = grid(XLSX, wb.Sheets[p.sheet])[p.r] || [];
+    var v = row[p.c];
+    var src = addr(XLSX, p.sheet, p.r, p.c);
+    if (!isNum(v)) return { error: src + ' não é número (' + (txt(v) || 'vazia') + ')', src: src };
+    return { v: v, src: src };
+  }
+
+  // Série anual a partir de QUALQUER célula da linha (o rótulo ou um dos
+  // valores): acha o cabeçalho de anos acima que cobre a coluna e lê a linha
+  // inteira, como o parser faz. Assim apontar "Output!B30" troca 2026-30 de uma vez.
+  function seriesFromRef(XLSX, wb, ref, defSheet) {
+    var p = parseRef(wb, ref, defSheet);
+    if (!p) return { error: 'Referência inválida (use Aba!Célula, ex.: Output!B10)' };
+    var rows = grid(XLSX, wb.Sheets[p.sheet]);
+    var row = rows[p.r] || [];
+    var runs = headerRuns(rows);
+    var h = null;
+    runs.forEach(function (k) {
+      if (k.r >= p.r) return;
+      var hit = p.c >= k.c0 - 3 && p.c < k.c0 + k.years.length;
+      if (hit && (!h || k.r > h.r)) h = k;
+    });
+    if (!h) return { error: 'Nenhum cabeçalho de anos acima de ' + addr(XLSX, p.sheet, p.r, p.c) };
+    var labelCol = -1;
+    for (var c = h.c0 - 1; c >= Math.max(0, h.c0 - 4); c--) { if (txt(row[c]) && !yearOf(row[c])) { labelCol = c; break; } }
+    var vals = {};
+    h.years.forEach(function (y, i) {
+      var cc = h.c0 + i;
+      if (isNum(row[cc])) vals[y.y] = { v: row[cc], src: addr(XLSX, p.sheet, p.r, cc), period: y.label };
+    });
+    if (!YEARS.some(function (y) { return vals[y]; })) return { error: 'Linha ' + (p.r + 1) + ' de ' + p.sheet + ' sem valores 2026-30' };
+    return { vals: vals, label: labelCol >= 0 ? txt(row[labelCol]) : '', cell: addr(XLSX, p.sheet, p.r, labelCol >= 0 ? labelCol : p.c) };
+  }
+
+  var api = { parseWorkbook: parseWorkbook, READ_SHEETS: READ_SHEETS, YEARS: YEARS, METRICS: METRICS, yearOf: yearOf,
+    parseRef: parseRef, readRef: readRef, seriesFromRef: seriesFromRef };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CompsParser = api;
 })(typeof window !== 'undefined' ? window : this);
