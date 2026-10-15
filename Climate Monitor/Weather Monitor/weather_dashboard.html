@@ -65,6 +65,11 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .view-btn{padding:4px 11px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--gray-mid);font-family:var(--font);transition:all .12s;}
 .view-btn.active{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700;}
 .view-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+/* selo "NEW" nas variáveis novas; inverte quando o botão está ativo (fundo laranja) */
+.new-badge{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:8px;background:var(--orange);color:#fff;
+  font-size:8.5px;font-weight:800;letter-spacing:.4px;line-height:1.3;vertical-align:1px;}
+.view-btn.active .new-badge{background:#fff;color:var(--orange);}
+.var-gap{width:1px;align-self:stretch;margin:2px 4px;background:var(--border);}
 /* pai de um subgrupo aberto: marcado sem competir com o filho selecionado */
 .view-btn.parent{border-color:var(--orange);color:var(--orange);font-weight:700;}
 .sub-btns{padding-left:8px;border-left:2px solid var(--orange);}
@@ -220,9 +225,10 @@ th.sc,td.sc{text-align:center;}
   <span class="view-label">Variable:</span>
   <div class="view-btns">
     <button class="view-btn" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
-    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days</button>
-    <button class="view-btn" data-var="s" id="var-s" onclick="setVar('s')">🍺 Beer Score</button>
     <button class="view-btn active" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
+    <span class="var-gap"></span>
+    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days<span class="new-badge">NEW</span></button>
+    <button class="view-btn" data-var="s" id="var-s" onclick="setVar('s')">🍺 Beer Score<span class="new-badge">NEW</span></button>
   </div>
   <div class="ctrl-sep" id="sep-grp"></div>
   <span class="view-label" id="lbl-grp">Group:</span>
