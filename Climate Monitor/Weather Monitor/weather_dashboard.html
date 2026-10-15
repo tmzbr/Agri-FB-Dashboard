@@ -201,6 +201,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <span class="view-label">Variable:</span>
   <div class="view-btns">
     <button class="view-btn" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
+    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days</button>
     <button class="view-btn active" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
   </div>
   <div class="ctrl-sep" id="sep-grp"></div>
@@ -275,7 +276,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
-  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total. A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
+  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month/week with ≥1 mm of rain (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
   <span id="note-mine"><em>My farms</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two farms less than ~50 km apart legitimately share the same series.</span>
   <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over <em>every</em> municipality it contains (2,359 in total, 51 regions) — MT by the 7 <em>Imea</em> macro-regions (official municipal list, 141/141), the other eight states by <em>IBGE</em> meso-regions. MATOPIBA pools MA, TO, PI and BA, and opens buttons to isolate each. The three ▣ rows are the state mean under different municipal weights: simple, corn output and soybean output (IBGE/SIDRA 1612, average of 2022–24 to damp a single bad harvest) — the crop-weighted ones pull the state average toward where that crop actually is, which matters most where output is concentrated (Extremo Oeste Baiano alone is 99.6% of BA soybean). The live observed layer samples the highest-weight grid cells of each region; the historical series uses all of them.
 </div>
@@ -923,12 +924,20 @@ function bucketize(days){
   else{let cur=null;days.forEach(dy=>{if(!cur||cur.m!==dy.m){cur={m:dy.m,label:MES[dy.m-1],days:[]};bk.push(cur);}cur.days.push(dy);});}
   return bk;
 }
+/* "Rain days" (vr="d") não tem série própria: sai da chuva diária ("p"),
+   virando 0/1 pelo limiar de dia chuvoso da OMM (≥1 mm — abaixo disso é
+   garoa/ruído de reanálise). Somado no bucket, dá nº de dias com chuva no
+   mês/semana; num grupo, a média ponderada dos 0/1 vira a fração de pontos
+   com chuva, e a soma, o nº médio de dias chuvosos. */
+const RAIN_DAY_MM=1;
+const srcVar=vr=>vr==="d"?"p":vr;
+const dayVal=(v,vr)=>v==null?null:vr==="d"?(v>=RAIN_DAY_MM?1:0):v;
 function aggHist(days,y,vr,sel,wtd){
   const W=p=>wtd?(p.w||0):1;
   if(vr==="t"){let s=0,w=0;for(const dy of days)for(const p of sel){const a=p.h.t[y];const v=a?a[dy.idx]:null;if(v!=null){s+=v*W(p);w+=W(p);}}return w?s/w:null;}
-  let tot=0,any=false;for(const dy of days){let s=0,w=0;for(const p of sel){const a=p.h.p[y];const v=a?a[dy.idx]:null;if(v!=null){s+=v*W(p);w+=W(p);}}if(w){tot+=s/w;any=true;}}return any?tot:null;
+  let tot=0,any=false;for(const dy of days){let s=0,w=0;for(const p of sel){const a=p.h.p[y];const v=dayVal(a?a[dy.idx]:null,vr);if(v!=null){s+=v*W(p);w+=W(p);}}if(w){tot+=s/w;any=true;}}return any?tot:null;
 }
-function curVal(p,idx,vr){const a=p.h[vr][STATE.curYear];let v=a?a[idx]:null;if(v==null&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][vr];return v;}
+function curVal(p,idx,vr){const sv=srcVar(vr),a=p.h[sv][STATE.curYear];let v=a?a[idx]:null;if(v==null&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][sv];return dayVal(v,vr);}
 function aggCur(days,vr,sel,wtd){
   if(!days.length)return null;
   const W=p=>wtd?(p.w||0):1;
@@ -957,8 +966,9 @@ function groupPts(){
   if(STATE.grp===MTP)return STATE.pts.filter(p=>MTP_UFS.includes(p.grp)&&p.h);
   return STATE.pts.filter(p=>p.grp===STATE.grp&&p.h);}
 function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};}
-const fmtV=v=>v==null?"—":(STATE.vr==="t"?v.toFixed(1)+"°":Math.round(v)+"mm");
-function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const t=STATE.vr==="t"?Math.max(-1,Math.min(1,d/3)):Math.max(-1,Math.min(1,d/40));
+/* dias de chuva: inteiro num ponto só, 1 casa na média de grupo (fracionário) */
+const fmtV=v=>v==null?"—":(STATE.vr==="t"?v.toFixed(1)+"°":STATE.vr==="d"?(Math.abs(v-Math.round(v))<.05?Math.round(v):v.toFixed(1))+"d":Math.round(v)+"mm");
+function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const sc=STATE.vr==="t"?3:STATE.vr==="d"?(STATE.gran==="m"?5:2):40,t=Math.max(-1,Math.min(1,d/sc));
   const warm=STATE.vr==="t"?t>=0:t<0,mag=Math.abs(t),al=0.12+0.5*mag;
   const c=warm?"192,57,43":"44,111,181";return{bg:`rgba(${c},${al})`,fg:mag>.55?"#fff":(warm?"#7a1f15":"#1c4870")};}
 
@@ -968,10 +978,10 @@ function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const t=STATE.vr==
 function lastDataIdx(){
   let last=-1;
   for(const p of groupPts()){
-    const a=p.h&&p.h[STATE.vr]?p.h[STATE.vr][STATE.curYear]:null;
+    const sv=srcVar(STATE.vr),a=p.h&&p.h[sv]?p.h[sv][STATE.curYear]:null;
     for(let i=365;i>=0;i--){
       let v=a?a[i]:null;
-      if(v==null&&p.liveIdx&&p.liveIdx[i])v=p.liveIdx[i][STATE.vr];
+      if(v==null&&p.liveIdx&&p.liveIdx[i])v=p.liveIdx[i][sv];
       if(v!=null){if(i>last)last=i;break;}
     }
   }
@@ -1073,7 +1083,7 @@ function renderChart(){
     :isGroup?`Average of ${sel.length} points · ${GRPLBL[STATE.grp]}`
     :rg?`${sel[0].nome} (${sel[0].uf||REGGRP[STATE.grp]}) — mean of ${sel[0].n} municipalities`
     :sel[0].nome+" · "+sel[0].sub;
-  document.getElementById("chart-title").textContent=(STATE.vr==="t"?"Mean temperature":"Rainfall")+" — "+head;
+  document.getElementById("chart-title").textContent=(STATE.vr==="t"?"Mean temperature":STATE.vr==="d"?`Rain days (≥${RAIN_DAY_MM} mm)`:"Rainfall")+" — "+head;
   document.getElementById("chart-sub").textContent=`Year ${STATE.curYear} · ${STATE.gran==="m"?"monthly":"weekly"} · ${STATE.yrs}-year history · ${MODELLBL[STATE.model]}`+(isGroup?" · narrow band (spatial average) — click a point":"");
   const S=computeSeries(sel,wtd);drawChart(S);drawLegend(S);drawStats(S);
 }
@@ -1121,7 +1131,7 @@ function drawChart(S){
         return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
     }}},
     scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
-            y:{title:{display:true,text:STATE.vr==="t"?"°C":"mm",font:{size:10},color:"#888"},ticks:{font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
+            y:{title:{display:true,text:STATE.vr==="t"?"°C":STATE.vr==="d"?"days with rain":"mm",font:{size:10},color:"#888"},beginAtZero:STATE.vr==="d",ticks:{font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
 }
 function goBack(){if(window.parent&&window.parent!==window)window.parent.postMessage({action:"closeDash"},"*");else history.back();}
 boot();
