@@ -219,9 +219,6 @@ const fmtPx = v => ok(v) ? Number(v).toFixed(2) : '<span class="muted">—</span
 const fmtX = v => !ok(v) ? '<span class="muted">—</span>' : v <= 0 || v > 200 ? '<span class="muted">n.m.</span>' : v.toFixed(1) + 'x';
 const fmtPct = (v, sign) => !ok(v) ? '<span class="muted">—</span>'
   : `<span class="${sign ? (v > 0.0005 ? 'pos' : v < -0.0005 ? 'neg' : '') : (v < 0 ? 'neg' : '')}">${(sign && v > 0 ? '+' : '') + (v * 100).toFixed(1)}%</span>`;
-// Data do modelo quando houver; senão a do upload (a Mask, que tinha a
-// data, deixou de ser lida).
-const modelDate = c => (c.model_date || c.uploaded_at) ? String(c.model_date || c.uploaded_at).slice(0, 10) : null;
 const fyLab = y => 'FY' + String(y).slice(-2);
 const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -360,8 +357,6 @@ function renderDetail() {
   const per = y => (est[y] && est[y].period_label && est[y].period_label.replace(/[aAeE]$/, '') !== String(y)) ? `<small>${esc(est[y].period_label)}</small>` : '';
   const row = (label, f, cls = '') => `<tr class="${cls}"><td class="l">${label}</td>${Y.map(y => `<td>${f(y)}</td>`).join('')}</tr>`;
   const e = y => shown(c, est[y]);
-  const prev = y => y === Y[0] ? null : e(y - 1);
-  const growth = k => y => { const a = e(y)[k], b = (prev(y) || {})[k]; return ok(a) && ok(b) && b > 0 ? fmtPct(a / b - 1) : '<span class="muted">—</span>'; };
   const margin = k => y => ok(e(y)[k]) && ok(e(y).revenue) && e(y).revenue ? fmtPct(e(y)[k] / e(y).revenue) : '<span class="muted">—</span>';
   const ccy = c.currency === 'BRL' ? 'R$' : c.currency === 'USD' ? 'US$' : c.currency;
   el.innerHTML = `
@@ -374,14 +369,12 @@ function renderDetail() {
       <div class="kpi"><span class="kpi-l">Target${c.target_label ? ' ' + esc(c.target_label) : ''}</span><span class="kpi-v">${ok(m.tp) ? ccy + ' ' + Number(m.tp).toFixed(2) : '—'}</span></div>
       <div class="kpi"><span class="kpi-l">Upside</span><span class="kpi-v or">${fmtPct(m.upside, true)}</span></div>
       <div class="kpi"><span class="kpi-l">Market cap</span><span class="kpi-v">${ok(m.mc) ? fmtN(m.mc) : '—'}</span><span class="kpi-s">${ccy} m · ${fmtN(c.shares_mn, 1)}m shares</span></div>
-      <div class="kpi"><span class="kpi-l">Uploaded</span><span class="kpi-v" style="font-size:13px">${fmtDate(modelDate(c))}</span><span class="kpi-s">${esc(c.source_file || '')}</span></div>
     </div>
     <div class="scroll-x"><table class="det">
       <thead><tr><th class="l">${ccy} million</th>${Y.map(y => `<th>${fyLab(y)}${per(y)}</th>`).join('')}</tr></thead>
       <tbody>
         <tr class="hd"><td colspan="${Y.length + 1}">Estimates</td></tr>
         ${row('Net Revenues', y => fmtN(e(y).revenue))}
-        ${row('growth', growth('revenue'), 'sub')}
         ${row('EBITDA', y => fmtN(e(y).ebitda))}
         ${row('margin', margin('ebitda'), 'sub')}
         ${row('Net Income', y => fmtN(e(y).net_income))}
