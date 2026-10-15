@@ -150,10 +150,29 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 .spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 #loading p{font-size:13px;color:var(--gray-mid);}.err{color:var(--red);}
+/* ── BEER SCORE: painel lateral de ponderação ── */
+.main.score{grid-template-columns:230px minmax(380px,44fr) 56fr;}
+#score-panel{display:none;}
+.main.score #score-panel{display:flex;}
+.sp-bd{padding:12px 14px;display:flex;flex-direction:column;gap:18px;}
+.sp-sec h4{font-size:10px;font-weight:700;color:var(--gray-mid);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;}
+.sp-row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--gray-dark);margin-bottom:4px;}
+.sp-row .lb{width:84px;flex:none;}
+.sp-row input[type=range]{flex:1;min-width:0;accent-color:var(--orange);}
+.sp-row .val{min-width:38px;text-align:right;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums;}
+.sp-days{display:flex;gap:3px;margin-top:6px;}
+.sp-days span{flex:1;text-align:center;font-size:9.5px;padding:3px 0;border-radius:3px;background:#F4F4F4;color:var(--gray-mid);}
+.sp-days span.we{background:#FFE9DC;color:var(--orange);font-weight:700;}
+.sp-hint{font-size:10.5px;color:var(--gray-mid);line-height:1.5;}
+.sp-hint b{color:var(--gray-dark);}
+.sc-v{display:block;font-size:9.5px;color:#aaa;margin-top:1px;}
+th.sc,td.sc{text-align:center;}
+@media(max-width:1200px){.main.score{grid-template-columns:minmax(380px,44fr) 56fr;}.main.score #score-panel{grid-column:1/-1;}
+  .main.score .sp-bd{flex-direction:row;flex-wrap:wrap;}.main.score .sp-sec{flex:1 1 240px;}}
 /* `1fr` resolves to minmax(auto,1fr); the nowrap table's min-content was
    stretching the track and pushing the whole page sideways. Let the cards
    shrink and scroll the table inside .table-wrap instead. */
-@media(max-width:880px){.main{grid-template-columns:1fr;}.main>*{min-width:0;}}
+@media(max-width:880px){.main,.main.score{grid-template-columns:1fr;}.main>*{min-width:0;}}
 
 /* ── MOBILE / NARROW VIEWPORT ── */
 @media(max-width:768px){
@@ -202,6 +221,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <div class="view-btns">
     <button class="view-btn" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
     <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days</button>
+    <button class="view-btn" data-var="s" id="var-s" onclick="setVar('s')">🍺 Beer Score</button>
     <button class="view-btn active" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
   </div>
   <div class="ctrl-sep" id="sep-grp"></div>
@@ -232,8 +252,8 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <div class="view-btns" id="mine-btns" style="display:none"></div>
   <div class="ctrl-break" id="mine-break2" style="display:none"></div>
   <div class="ctrl-sep" id="sep-after-mine"></div>
-  <span class="view-label">Granularity:</span>
-  <div class="view-btns">
+  <span class="view-label" id="lbl-gran">Granularity:</span>
+  <div class="view-btns" id="gran-btns">
     <button class="view-btn active" data-gran="m" onclick="setGran('m')">Monthly</button>
     <button class="view-btn" data-gran="w" id="gran-w" onclick="setGran('w')">Weekly</button>
   </div>
@@ -251,7 +271,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
     <button class="view-btn" data-model="era5" onclick="setModel('era5')">ERA5</button>
   </div>
   <div class="ctrl-sep"></div>
-  <div class="view-btns">
+  <div class="view-btns" id="enso-btns">
     <button class="view-btn" id="enso-btn" onclick="toggleEnso()">🌊 ENSO - El Niño | La Niña</button>
     <button class="view-btn" id="enso-nino" onclick="setEnsoPhase('nino')" style="display:none">El Niño</button>
     <button class="view-btn" id="enso-nina" onclick="setEnsoPhase('nina')" style="display:none">La Niña</button>
@@ -259,6 +279,30 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 </div>
 
 <div class="main">
+  <div class="card" id="score-panel">
+    <div class="card-head"><div><div class="card-title">Score settings</div><div class="card-sub">saved in this browser · applies to table and chart</div></div></div>
+    <div class="sp-bd">
+      <div class="sp-sec">
+        <h4>Weekend weight (Thu–Sun)</h4>
+        <div class="sp-row"><input type="range" id="sp-we" min="1" max="5" step="0.5" oninput="setScoreCfg()"><span class="val" id="sp-we-v"></span></div>
+        <div class="sp-days"><span>Mon</span><span>Tue</span><span>Wed</span><span class="we">Thu</span><span class="we">Fri</span><span class="we">Sat</span><span class="we">Sun</span></div>
+        <div class="sp-hint" style="margin-top:6px">Each Thu–Sun day counts <b id="sp-we-h"></b> a Mon–Wed day when building the month's rainfall, rain days and temperature.</div>
+      </div>
+      <div class="sp-sec">
+        <h4>Category weights</h4>
+        <div class="sp-row"><span class="lb">🌧️ Rainfall</span><input type="range" id="sp-cw-p" min="0" max="5" step="1" oninput="setScoreCfg()"><span class="val" id="sp-cw-p-v"></span></div>
+        <div class="sp-row"><span class="lb">☔ Rain days</span><input type="range" id="sp-cw-d" min="0" max="5" step="1" oninput="setScoreCfg()"><span class="val" id="sp-cw-d-v"></span></div>
+        <div class="sp-row"><span class="lb">🌡️ Temperature</span><input type="range" id="sp-cw-t" min="0" max="5" step="1" oninput="setScoreCfg()"><span class="val" id="sp-cw-t-v"></span></div>
+      </div>
+      <div class="sp-sec">
+        <button class="btn" onclick="resetScoreCfg()">Reset to default</button>
+        <div class="sp-hint" style="margin-top:10px">
+          Each month is ranked against the <b>same month of the previous <span id="sp-n"></span> years</b> (History button). Top 10% = <b>10</b>, top 20% = <b>9</b> … bottom 10% = <b>1</b>.
+          Less rain, fewer rain days and higher temperature score higher (beer demand). A month still in progress is compared with the same days of past years.
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-head">
       <div><div class="card-title" id="tbl-title">Points</div><div class="card-sub">click a row to chart it · click a header to sort</div></div>
@@ -276,7 +320,8 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
-  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month. A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
+  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across points, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month.
+  <em>Beer Score</em> (capitals): each month scores 1–10 per category by decile against the same month of the previous N years (History button) — top 10% = 10 … bottom 10% = 1, where less rain, fewer rain days and more heat score higher. Within the month, Thu–Sun days carry the weekend weight set in the side panel (default 2× Mon–Wed); the final score is the weighted mean of the three categories. Older years in the chart have a shorter window where the history starts (2010). A multi-point average has a naturally narrow band (spatial cancellation) — select a single point to see the real spread.
   <span id="note-mine"><em>My farms</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two farms less than ~50 km apart legitimately share the same series.</span>
   <em>State groups</em> (RS · PR · MS · MT · GO · MATOPIBA): each region row is averaged over <em>every</em> municipality it contains (2,359 in total, 51 regions) — MT by the 7 <em>Imea</em> macro-regions (official municipal list, 141/141), the other eight states by <em>IBGE</em> meso-regions. MATOPIBA pools MA, TO, PI and BA, and opens buttons to isolate each. The three ▣ rows are the state mean under different municipal weights: simple, corn output and soybean output (IBGE/SIDRA 1612, average of 2022–24 to damp a single bad harvest) — the crop-weighted ones pull the state average toward where that crop actually is, which matters most where output is concentrated (Extremo Oeste Baiano alone is 99.6% of BA soybean). The live observed layer samples the highest-weight grid cells of each region; the historical series uses all of them.
 </div>
@@ -656,7 +701,7 @@ const MES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','De
 const CELL_LAT=0.5,CELL_LON=0.625;
 const MODELFILE={nasa:"history.json",era5:"history_era5.json"};
 const MODELLBL={nasa:"NASA POWER",era5:"ERA5"};
-const STATE={vr:SCOPE==="agri"?"p":"t",grp:SCOPE_GROUPS[0],gran:"m",yrs:15,entity:isReg(SCOPE_GROUPS[0])?"st|n":hasW(SCOPE_GROUPS[0])?"wavg":"group",model:"nasa",enso:"off",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null};
+const STATE={vr:SCOPE==="agri"?"p":"t",grp:SCOPE_GROUPS[0],gran:"m",yrs:15,entity:isReg(SCOPE_GROUPS[0])?"st|n":hasW(SCOPE_GROUPS[0])?"wavg":"group",model:"nasa",enso:"off",histByModel:{},sortKey:"vs",sortDir:-1,pts:[],hist:null,years:[],curYear:null,chart:null,scoreM:null};
 let RONI={},ENSO_CONF={},LIVE=null;
 function ninoCol(o){const t=Math.min(1,(o-0.5)/2);return `rgba(230,${Math.round(135-75*t)},30,${(0.5+0.42*t).toFixed(2)})`;}
 function ninaCol(o){const t=Math.min(1,(-o-0.5)/2);return `rgba(${Math.round(45+10*t)},${Math.round(115-45*t)},210,${(0.5+0.42*t).toFixed(2)})`;}
@@ -684,7 +729,7 @@ function applyScope(){
   document.querySelectorAll("[data-grp]").forEach(b=>{if(!SCOPE_GROUPS.includes(b.dataset.grp))b.style.display="none";});
   if(SCOPE_GROUPS.length<2){["sep-grp","lbl-grp","grp-btns"].forEach(id=>document.getElementById(id).style.display="none");}
   act("var",STATE.vr);act("grp",STATE.grp);act("gran",STATE.gran);act("yrs",STATE.yrs);
-  syncMtp();
+  syncMtp();syncVarBtns();
 }
 async function boot(){
   applyScope();
@@ -876,10 +921,24 @@ function syncLiveRegions(){
 /* Rain days só existe no mensal (0 a 28–31 dias): contagem por janela de 7
    dias não é uma leitura natural de "dias de chuva", então o Weekly some e,
    se estava ativo, volta para Monthly. */
-function setVar(v){STATE.vr=v;act("var",v);
+function setVar(v){
+  const wasS=STATE.vr==="s";STATE.vr=v;act("var",v);
   document.getElementById("gran-w").style.display=v==="d"?"none":"";
-  if(v==="d"&&STATE.gran!=="m"){STATE.gran="m";act("gran","m");}
+  if((v==="d"||v==="s")&&STATE.gran!=="m"){STATE.gran="m";act("gran","m");}
+  /* o score é sempre mensal e não usa ENSO: esconde o que não se aplica e
+     abre o painel lateral de ponderação */
+  const s=v==="s";
+  ["lbl-gran","gran-btns","enso-btns"].forEach(id=>document.getElementById(id).style.display=s?"none":"");
+  document.querySelector(".main").classList.toggle("score",s);
+  if(s&&!wasS){STATE.sortKey="score";STATE.sortDir=-1;STATE.scoreM=null;syncScorePanel();}
+  if(!s&&wasS){STATE.sortKey="vs";STATE.sortDir=-1;}
   render();}
+/* Beer Score só existe para as capitais (proxy de demanda de cerveja) */
+function syncVarBtns(){
+  const ok=STATE.grp==="cap";
+  document.getElementById("var-s").style.display=ok?"":"none";
+  if(!ok&&STATE.vr==="s")setVar("p");
+}
 async function setGrp(v){
   STATE.grp=v;act("grp",v);syncMtp();
   /* A série do cluster é buscada uma vez e fica em MINE.byId[].series; trocar
@@ -894,7 +953,7 @@ async function setGrp(v){
     syncWeights();
   }
   STATE.entity=isReg(v)?"st|n":hasW(v)?"wavg":"group";
-  render();ensureLive();
+  syncVarBtns();render();ensureLive();
 }
 /* abre os botões filhos enquanto MATOPIBA (ou um dos seus estados) está ativo,
    e mantém o pai marcado como seção quando o filho é que está selecionado */
@@ -905,7 +964,7 @@ function syncMtp(){
   if(pai)pai.classList.toggle("parent",on&&STATE.grp!==MTP);
 }
 function setGran(v){STATE.gran=v;act("gran",v);render();}
-function setYrs(v){STATE.yrs=v;act("yrs",v);render();}
+function setYrs(v){STATE.yrs=v;act("yrs",v);syncScorePanel();render();}
 function act(a,v){document.querySelectorAll(`[data-${a}]`).forEach(b=>b.classList.toggle("active",b.dataset[a]==String(v)));}
 function sortBy(k){if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}renderTable();}
 function selectEntity(id){STATE.entity=id;renderTable();renderChart();}
@@ -936,7 +995,7 @@ function bucketize(days){
    mês/semana; num grupo, a média ponderada dos 0/1 vira a fração de pontos
    com chuva, e a soma, o nº médio de dias chuvosos. */
 const RAIN_DAY_MM=1;
-const srcVar=vr=>vr==="d"?"p":vr;
+const srcVar=vr=>vr==="d"||vr==="s"?"p":vr;
 const dayVal=(v,vr)=>v==null?null:vr==="d"?(v>=RAIN_DAY_MM?1:0):v;
 function aggHist(days,y,vr,sel,wtd){
   const W=p=>wtd?(p.w||0):1;
@@ -1025,6 +1084,7 @@ function stampUpdated(){
 }
 function render(){renderTable();renderChart();stampUpdated();}
 function renderTable(){
+  if(STATE.vr==="s")return renderScoreTable();
   const ttl=document.getElementById("tbl-title");
   ttl.textContent="Points — "+GRPLBL[STATE.grp];
   if(isMine(STATE.grp))
@@ -1098,6 +1158,7 @@ function selEntityPts(){
   if(STATE.entity==="group"||STATE.entity==="wavg")return groupPts();
   const p=STATE.pts.find(x=>x.id===STATE.entity);return p?[p]:[];}
 function renderChart(){
+  if(STATE.vr==="s")return renderScoreChart();
   const sel=selEntityPts();
   if(!sel.length){
     if(STATE.chart){STATE.chart.destroy();STATE.chart=null;}
@@ -1167,6 +1228,172 @@ function drawChart(S){
     }}},
     scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
             y:{title:{display:true,text:STATE.vr==="t"?"°C":STATE.vr==="d"?"days with rain":"mm",font:{size:10},color:"#888"},...(STATE.vr==="d"?{min:0,max:31}:{}),ticks:{font:{size:9},color:"#999",...(STATE.vr==="d"?{stepSize:5,callback:v=>v%5===0?v:""}:{})},grid:{color:"#f2f2f2"}}}}});
+}
+/* ══ BEER SCORE ═════════════════════════════════════════════════════════
+   Nota 1–10 por mês, por categoria, pelo decil do mês corrente contra o mesmo
+   mês dos N anos anteriores (N = botão History). Top 10% = 10 … pior 10% = 1,
+   onde "melhor" é o que vende cerveja: menos chuva (mm), menos dias de chuva,
+   mais calor. Nota final = média ponderada das três (pesos no painel).
+
+   Dentro do mês, cada dia de qui–dom vale SCORE_CFG.we dias de seg–qua: a
+   métrica do mês é a MÉDIA ponderada por dia (mm/dia, fração de dias chuvosos,
+   °C), não a soma — assim meses de 28 e 31 dias, e o mês corrente parcial,
+   ficam comparáveis. Cada ano usa o próprio calendário (o dia 12/10 cai num
+   dia da semana diferente a cada ano). Num grupo, primeiro a média espacial do
+   dia (ponderada por população no "wavg"), depois a ponderação por dia. */
+const SCORE_DEF={we:2,cw:{p:1,d:1,t:1}};
+const SCORE_KEY="wm-beer-score-cfg";
+const SCORE_CAT=[{k:"p",lbl:"Rainfall",ico:"🌧️",dir:-1,col:"#2C6FB5"},
+                 {k:"d",lbl:"Rain days",ico:"☔",dir:-1,col:"#1A9E8F"},
+                 {k:"t",lbl:"Temperature",ico:"🌡️",dir:1,col:"#C0392B"}];
+const WE_DOW=[4,5,6,0];   // qui, sex, sáb, dom
+const SCORE_MIN_YRS=3;    // abaixo disso não há percentil que se sustente
+let SCORE_CFG=loadScoreCfg();
+function loadScoreCfg(){
+  const d=JSON.parse(JSON.stringify(SCORE_DEF));
+  try{const s=JSON.parse(localStorage.getItem(SCORE_KEY)||"null");
+    if(s){const n=(v,lo,hi,df)=>Number.isFinite(+v)&&+v>=lo&&+v<=hi?+v:df;
+      d.we=n(s.we,1,5,d.we);for(const k in d.cw)d.cw[k]=n(s.cw&&s.cw[k],0,5,d.cw[k]);}}catch(e){}
+  return d;
+}
+function saveScoreCfg(){try{localStorage.setItem(SCORE_KEY,JSON.stringify(SCORE_CFG));}catch(e){}}
+function syncScorePanel(){
+  const el=id=>document.getElementById(id);
+  el("sp-we").value=SCORE_CFG.we;el("sp-we-v").textContent=SCORE_CFG.we+"×";el("sp-we-h").textContent=SCORE_CFG.we+"×";
+  const tot=SCORE_CAT.reduce((s,c)=>s+SCORE_CFG.cw[c.k],0);
+  for(const c of SCORE_CAT){el("sp-cw-"+c.k).value=SCORE_CFG.cw[c.k];
+    el("sp-cw-"+c.k+"-v").textContent=tot?Math.round(SCORE_CFG.cw[c.k]/tot*100)+"%":"—";}
+  el("sp-n").textContent=STATE.yrs;
+}
+function setScoreCfg(){
+  const el=id=>document.getElementById(id);
+  SCORE_CFG.we=+el("sp-we").value;
+  for(const c of SCORE_CAT)SCORE_CFG.cw[c.k]=+el("sp-cw-"+c.k).value;
+  saveScoreCfg();syncScorePanel();render();
+}
+function resetScoreCfg(){SCORE_CFG=JSON.parse(JSON.stringify(SCORE_DEF));saveScoreCfg();syncScorePanel();render();}
+
+const MON_IDX=(()=>{const r=[];for(let m=0;m<12;m++)r.push([]);for(let i=0;i<366;i++){const md=IDX2MD[i];if(md)r[md[0]-1].push(i);}return r;})();
+function dayW(y,idx){const md=IDX2MD[idx],dt=new Date(y,md[0]-1,md[1]);
+  if(dt.getMonth()!==md[0]-1)return 0;            // 29/02 em ano não bissexto
+  return WE_DOW.includes(dt.getDay())?SCORE_CFG.we:1;}
+function rawV(p,y,k,idx){const src=k==="t"?"t":"p",a=p.h[src]&&p.h[src][y];let v=a?a[idx]:null;
+  if(v==null&&y===STATE.curYear&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][src];return dayVal(v,k);}
+/* métrica do mês (dias 1..maxDay; 0 = mês inteiro) por categoria */
+function monthMetric(sel,wtd,y,m,maxDay){
+  const W=p=>wtd?(p.w||0):1,out={};
+  for(const c of SCORE_CAT){let s=0,sw=0;
+    for(const idx of MON_IDX[m-1]){if(maxDay&&IDX2MD[idx][1]>maxDay)break;
+      const dw=dayW(y,idx);if(!dw)continue;
+      let gs=0,gw=0;for(const p of sel){const v=rawV(p,y,c.k,idx);if(v!=null){gs+=v*W(p);gw+=W(p);}}
+      if(gw){s+=dw*gs/gw;sw+=dw;}}
+    out[c.k]=sw?s/sw:null;}
+  return out;
+}
+const decileScore=(x,H,dir)=>{let b=0;for(const h of H){if(dir<0?h<x:h>x)b++;else if(h===x)b+=.5;}
+  return Math.max(1,10-Math.floor(b/H.length*10+1e-9));};
+const median=a=>{const s=a.slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null;};
+/* Avaliador de um conjunto de pontos. A janela de cada ano Y são os N anos
+   civis anteriores (Y−N..Y−1) — para o ano corrente é a mesma janela das
+   outras abas; anos antigos têm janela truncada em 2010, onde o histórico
+   começa. O mês corrente parcial compara contra os mesmos dias. */
+function makeScorer(sel,wtd){
+  const cy=STATE.curYear,N=STATE.yrs,cache=new Map();
+  let li=-1;for(let i=365;i>=0;i--){if(IDX2MD[i]&&sel.some(p=>rawV(p,cy,"p",i)!=null)){li=i;break;}}
+  if(li<0)return null;
+  const [lm,ld]=IDX2MD[li],dim=new Date(cy,lm,0).getDate(),partial=ld<dim?ld:0;
+  const met=(y,m,md)=>{const k=y+"|"+m+"|"+md;if(!cache.has(k))cache.set(k,monthMetric(sel,wtd,y,m,md));return cache.get(k);};
+  function at(y,m){
+    if(y===cy&&m>lm)return null;
+    const md=(y===cy&&m===lm)?partial:0;
+    const win=STATE.years.filter(x=>x<y&&x>=y-N);
+    if(win.length<SCORE_MIN_YRS)return null;
+    const cur=met(y,m,md),cat={};let ts=0,tw=0;
+    for(const c of SCORE_CAT){
+      const x=cur[c.k],H=win.map(w=>met(w,m,md)[c.k]).filter(v=>v!=null);
+      const s=(x!=null&&H.length>=SCORE_MIN_YRS)?decileScore(x,H,c.dir):null;
+      cat[c.k]={v:x,s,med:median(H),n:H.length};
+      const cw=SCORE_CFG.cw[c.k]||0;if(s!=null&&cw>0){ts+=s*cw;tw+=cw;}
+    }
+    return{cat,total:tw?ts/tw:null,md,nWin:win.length};
+  }
+  return{lm,ld,partial,at};
+}
+const fmtCat=(k,v)=>v==null?"—":k==="t"?v.toFixed(1)+"°":k==="d"?Math.round(v*100)+"%":v.toFixed(1)+"mm/d";
+const fmtSc=s=>s==null?"—":(Math.abs(s-Math.round(s))<.05?String(Math.round(s)):s.toFixed(1));
+function scoreColor(s){if(s==null)return{bg:"#f4f4f4",fg:"#bbb"};
+  const t=Math.max(-1,Math.min(1,(s-5.5)/4.5)),mag=Math.abs(t),al=0.12+0.5*mag,c=t>=0?"39,174,96":"192,57,43";
+  return{bg:`rgba(${c},${al})`,fg:mag>.55?"#fff":(t>=0?"#14562f":"#7a1f15")};}
+const scorePill=s=>{const c=scoreColor(s);return `<span class="pill" style="background:${c.bg};color:${c.fg};min-width:34px">${fmtSc(s)}</span>`;};
+function scoreMonth(sc){return STATE.scoreM&&STATE.scoreM<=sc.lm?STATE.scoreM:sc.lm;}
+const monthLbl=(sc,m)=>MES[m-1]+(m===sc.lm&&sc.partial?` (1–${sc.partial})`:"");
+
+function renderScoreTable(){
+  const g=groupPts();
+  const allSc=g.length?makeScorer(g,true):null;
+  if(!allSc){document.getElementById("thead").innerHTML="";document.getElementById("tbody").innerHTML="";return;}
+  const m=scoreMonth(allSc);
+  document.getElementById("tbl-title").textContent=`Beer Score — ${monthLbl(allSc,m)} ${STATE.curYear} · Capitals`;
+  const row=(id,nome,sub,grp,sel,wtd)=>{const sc=makeScorer(sel,wtd),r=sc&&sc.at(STATE.curYear,m);
+    const o={id,nome,sub,grpRow:grp,score:r?r.total:null,cat:r?r.cat:{}};
+    for(const c of SCORE_CAT)o[c.k]=r&&r.cat[c.k]?r.cat[c.k].s:null;return o;};
+  const head=[row("wavg","▣ Weighted by population",g.length+" capitals",true,g,true),
+              row("group","▣ Group average (simple)",g.length+" points",true,g,false)];
+  const body=g.map(p=>row(p.id,p.nome,p.sub,false,[p],false));
+  body.sort((a,b)=>{let va=a[STATE.sortKey],vb=b[STATE.sortKey];
+    if(STATE.sortKey==="nome")return STATE.sortDir*(""+va).localeCompare(""+vb);
+    if(va==null)return 1;if(vb==null)return -1;return STATE.sortDir*(va-vb);});
+  const cols=[["nome","Point",""],["score","Score","sc"],...SCORE_CAT.map(c=>[c.k,c.ico+" "+c.lbl,"sc"])];
+  document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th class="${c[2]}" onclick="sortBy('${c[0]}')">${c[1]}${STATE.sortKey===c[0]?' <span class="arr">'+(STATE.sortDir<0?'▼':'▲')+'</span>':''}</th>`).join("")+"</tr>";
+  const rowHtml=r=>`<tr class="${r.grpRow?'grp':''}${STATE.entity===r.id?' sel':''}" onclick="selectEntity('${r.id}')">
+      <td>${r.nome}<br><span class="muted" style="font-weight:400;font-size:10px">${r.sub}</span></td>
+      <td class="sc">${scorePill(r.score)}</td>
+      ${SCORE_CAT.map(c=>{const x=r.cat[c.k]||{};return `<td class="sc" title="${c.lbl}: ${fmtCat(c.k,x.v)} vs median ${fmtCat(c.k,x.med)} (${x.n||0}y)">${scorePill(x.s)}<span class="sc-v">${fmtCat(c.k,x.v)}</span></td>`;}).join("")}
+    </tr>`;
+  document.getElementById("tbody").innerHTML=head.map(rowHtml).join("")+body.map(rowHtml).join("");
+}
+function renderScoreChart(){
+  const sel=selEntityPts(),sc=sel.length?makeScorer(sel,STATE.entity==="wavg"):null;
+  if(!sc){if(STATE.chart){STATE.chart.destroy();STATE.chart=null;}
+    ["chart-legend","stat-row"].forEach(id=>document.getElementById(id).innerHTML="");
+    document.getElementById("chart-title").textContent="—";document.getElementById("chart-sub").textContent="no data";return;}
+  const head=STATE.entity==="wavg"?`Capitals — weighted by population (${sel.length})`
+    :STATE.entity==="group"?`Average of ${sel.length} capitals`:sel[0].nome+" · "+sel[0].sub;
+  document.getElementById("chart-title").textContent="🍺 Beer Score — "+head;
+  document.getElementById("chart-sub").textContent=`each month ranked vs. the same month of the previous ${STATE.yrs} years · Thu–Sun ×${SCORE_CFG.we} · ${MODELLBL[STATE.model]} · click a month to rank the table`;
+  const cy=STATE.curYear,m=scoreMonth(sc),months=[...Array(12).keys()].map(i=>i+1);
+  const histYears=STATE.years.filter(y=>y!==cy),yrs=histYears.slice(Math.max(0,histYears.length-STATE.yrs));
+  const lastYr=yrs[yrs.length-1];
+  const cur=months.map(mo=>sc.at(cy,mo));
+  const ds=[];
+  yrs.forEach(y=>{const d=months.map(mo=>{const r=sc.at(y,mo);return r?r.total:null;});
+    ds.push({label:String(y),data:d,borderColor:y===lastYr?"rgba(70,70,70,.62)":"rgba(120,120,120,.16)",borderWidth:y===lastYr?1.7:1,
+      pointRadius:0,fill:false,order:y===lastYr?18:20,_to:6+(lastYr-y),cubicInterpolationMode:"monotone",spanGaps:true});});
+  SCORE_CAT.forEach((c,i)=>{if(!(SCORE_CFG.cw[c.k]>0))return;
+    ds.push({label:c.ico+" "+c.lbl,data:cur.map(r=>r&&r.cat[c.k]?r.cat[c.k].s:null),_cat:c.k,_raw:cur,borderColor:c.col,borderWidth:1.3,borderDash:[4,3],
+      pointRadius:2,pointBackgroundColor:c.col,fill:false,order:5,_to:2+i/10,cubicInterpolationMode:"monotone",spanGaps:true});});
+  ds.push({label:String(cy),data:cur.map(r=>r?r.total:null),borderColor:"#FF5500",borderWidth:2.8,
+    pointRadius:months.map(mo=>mo===m?6:3),pointBackgroundColor:"#FF5500",fill:false,order:1,_to:1,cubicInterpolationMode:"monotone",spanGaps:true});
+  if(STATE.chart)STATE.chart.destroy();
+  if(!Chart.Tooltip.positioners.awayCursor)Chart.Tooltip.positioners.awayCursor=function(items,ev){const a=this.chart.chartArea;if(!a)return ev;const midX=(a.left+a.right)/2;return{x:ev.x<midX?a.right:a.left,y:a.top+2};};
+  STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:months.map(mo=>monthLbl(sc,mo)),datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
+    onClick:(e,els,ch)=>{const pts=ch.getElementsAtEventForMode(e,"index",{intersect:false},false);if(!pts.length)return;
+      const mo=pts[0].index+1;if(mo>sc.lm)return;STATE.scoreM=mo;renderScoreTable();renderScoreChart();},
+    plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
+      label:c=>{const d=c.dataset;if(d._cat){const x=d._raw[c.dataIndex].cat[d._cat];return `${d.label}: ${fmtSc(c.parsed.y)}  (${fmtCat(d._cat,x.v)} vs median ${fmtCat(d._cat,x.med)})`;}
+        return `${d.label}: ${fmtSc(c.parsed.y)}`;},
+      labelColor:c=>({borderColor:c.dataset.borderColor,backgroundColor:c.dataset.borderColor,borderWidth:2})}}},
+    scales:{x:{ticks:{font:{size:9},color:"#999"},grid:{display:false}},
+            y:{min:0,max:10,title:{display:true,text:"score (1–10)",font:{size:10},color:"#888"},ticks:{stepSize:1,font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
+  const catLeg=SCORE_CAT.filter(c=>SCORE_CFG.cw[c.k]>0).map(c=>`<span><i class="ln" style="border-color:${c.col};border-top-style:dashed"></i>${c.ico} ${c.lbl} ${cy}</span>`).join("");
+  document.getElementById("chart-legend").innerHTML=
+    `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>Score ${cy}</span>`+catLeg+
+    `<span><i class="ln" style="border-color:rgba(70,70,70,.72)"></i>${lastYr}</span><span><i class="ln" style="border-color:rgba(120,120,120,.45)"></i>Earlier years</span>`;
+  const r=sc.at(cy,m);
+  document.getElementById("stat-row").innerHTML=
+    `<div class="stat"><span class="k">Score · ${monthLbl(sc,m)}</span><span class="v" style="color:var(--orange)">${r?fmtSc(r.total):"—"}</span></div>`+
+    SCORE_CAT.map(c=>{const x=r&&r.cat[c.k];return `<div class="stat"><span class="k">${c.ico} ${c.lbl}</span><span class="v">${x?fmtSc(x.s):"—"} <span style="font-size:11px;font-weight:400;color:var(--gray-mid)">${x?fmtCat(c.k,x.v)+" vs "+fmtCat(c.k,x.med):""}</span></span></div>`;}).join("");
 }
 function goBack(){if(window.parent&&window.parent!==window)window.parent.postMessage({action:"closeDash"},"*");else history.back();}
 boot();
