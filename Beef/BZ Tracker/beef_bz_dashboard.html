@@ -122,7 +122,10 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── TABLE SECTION ── */
 .table-section{background:var(--white);border-top:1px solid var(--border);
   display:flex;flex-direction:column;min-height:260px;}
-.table-tabs{display:none;} /* tabs moved to granularity-bar above charts */
+.table-section-header{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px 8px;border-bottom:1px solid var(--border);}
+.table-section-title{font-size:13px;font-weight:700;color:var(--black);}
+.table-section-accent{width:4px;height:20px;background:var(--orange);border-radius:2px;}
 .table-wrap{overflow:auto;max-height:340px;}
 .table-wrap::-webkit-scrollbar{width:5px;height:5px;}
 .table-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
@@ -184,6 +187,7 @@ tr:hover td{background:#FFF8F5;}
   /* table: scroll sideways rather than crushing every column */
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:none;}
   table{table-layout:auto;min-width:640px;}
+  .table-section-header{padding:10px 12px 8px;}
   .note-bar{padding:6px 12px;}
 }
 </style>
@@ -206,9 +210,9 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Brazil Beef Export Spread Tracker</div>
-    <div class="top-sub">Export Price ÷ Cattle Cost — NCM 0201 + 0202 · BRL/kg spread</div>
+    <div class="top-sub">Spread = Export Price ÷ Cattle Cost (×) — NCM 0201 + 0202 · BRL/kg</div>
   </div>
-  <div class="top-latest">Latest monthly: <strong id="latest-period">—</strong></div>
+  <div class="top-latest">Latest monthly: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
 <div class="orange-rule"></div>
 
@@ -238,7 +242,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Beef Export Spread — Export Price ÷ Cattle Cost</div>
+        <div class="chart-title">Beef Export Spread — Export Price ÷ Cattle Cost (×)</div>
         <div class="chart-stat">
           Solid = Spread &nbsp;·&nbsp; Dashed = Period Avg &nbsp;·&nbsp;
           Avg: <strong id="avg-display">—×</strong>
@@ -248,10 +252,10 @@ tr:hover td{background:#FFF8F5;}
     </div>
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Export Price vs. Cattle Cost (BRL/kg)</div>
-        <div class="chart-stat">
-          <span style="color:var(--orange)">■</span> Export Price &nbsp;·&nbsp;
-          <span style="color:var(--gray-dark)">■</span> Cattle Cost
+        <div class="chart-title">Export Price vs. Cattle Cost — Single Axis</div>
+        <div class="chart-stat" style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;">
+          <span><span style="color:var(--orange);font-weight:700;">■</span> Export Price (BRL/kg)</span>
+          <span><span style="color:var(--gray-dark);font-weight:700;">■</span> Cattle Cost (BRL/kg)</span>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
@@ -263,7 +267,7 @@ tr:hover td{background:#FFF8F5;}
     <div class="chart-card">
       <div class="chart-card-header">
         <div>
-          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year</div>
+          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year (×)</div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
             Each line = one year &nbsp;·&nbsp;
             <span style="color:var(--orange);font-weight:700;">—</span> = current year &nbsp;·&nbsp;
@@ -291,7 +295,7 @@ tr:hover td{background:#FFF8F5;}
         <div>
           <div class="chart-title">Volume &amp; Export Price — <span id="comp-period-label">Period Comparison</span></div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
-            <span style="color:#888;font-weight:700;">■</span> Volume (<span id="vol-unit-label">'000 t</span>, left axis)
+            <span style="color:#888;font-weight:700;">■</span> Volume (<span id="vol-unit-label">t/biz day</span>, left axis)
             &nbsp;·&nbsp;
             <span style="color:#1A1A1A;font-weight:700;">●</span> Export Price USD/kg (right axis)
           </div>
@@ -316,6 +320,10 @@ tr:hover td{background:#FFF8F5;}
 
   <!-- TABLE SECTION — full history, follows granularity selector above -->
   <div class="table-section">
+    <div class="table-section-header">
+      <span class="table-section-title">Spread Analysis</span>
+      <div class="table-section-accent"></div>
+    </div>
     <div class="table-wrap">
       <table>
         <thead id="table-head"></thead>
@@ -325,7 +333,9 @@ tr:hover td{background:#FFF8F5;}
   </div>
 
   <div class="note-bar">
-    Sources: <em>SECEX/MDIC</em> — NCM 0201+0202 · <em>CEPEA/ESALQ</em> Boi Gordo (BRL/arroba ÷ 15 = BRL/kg) · <em>BCB PTAX</em> BRL/USD · Spread = Export BRL/kg ÷ Cattle BRL/kg · Vol = total export volume (000 t) · Granularity drives all charts &amp; table · Chart View narrows the time window shown in spread &amp; price line charts
+    Sources: <em>SECEX/MDIC</em> — NCM 0201+0202 · <em>CEPEA/ESALQ</em> Boi Gordo (BRL/arroba ÷ 15 = BRL/kg) · <em>BCB PTAX</em> BRL/USD · Spread = Export Price BRL/kg ÷ Cattle Cost BRL/kg ·
+    Vol = total export volume ('000 t) in the table; comparison chart shows t/biz day so partial periods compare fairly ·
+    Granularity drives all charts &amp; table · Chart View narrows the time window of the spread &amp; price line charts
   </div>
 
 </div><!-- main-wrap -->
@@ -354,8 +364,34 @@ function goBack() {
   }
 }
 
+// ── Daily-volume lookups derived from weekly data ────────────────────────────
+// Returns {period → vol_tons_daily} for monthly ('YYYY-MM') and quarterly ('QQ##')
+function _buildDailyVolLookup() {
+  const mon = {}, qtr = {};
+  WEEKLY.forEach(r => {
+    if (r.vol_tons == null || r.biz_days == null || r.biz_days === 0) return;
+    const yr  = parseInt(r.start_date.slice(0, 4));
+    const mo  = parseInt(r.start_date.slice(5, 7));
+    const mKey = r.start_date.slice(0, 7);
+    const qKey = `${Math.ceil(mo / 3)}Q${String(yr).slice(-2)}`;
+    [mon, qtr].forEach((obj, idx) => {
+      const k = idx === 0 ? mKey : qKey;
+      if (!obj[k]) obj[k] = { vol: 0, biz: 0 };
+      obj[k].vol += r.vol_tons;
+      obj[k].biz += r.biz_days;
+    });
+  });
+  const toDaily = obj => {
+    const out = {};
+    Object.entries(obj).forEach(([k, v]) => { out[k] = v.biz > 0 ? v.vol / v.biz : null; });
+    return out;
+  };
+  return { mon: toDaily(mon), qtr: toDaily(qtr) };
+}
+
 // ─── QUARTERLY AGGREGATION ───────────────────────────────────────────────────
-function buildQuarterly(monthly) {
+function buildQuarterly(monthly, qtrDailyVol) {
+  qtrDailyVol = qtrDailyVol || {};
   const map = {};
   monthly.forEach(r => {
     if (r.spread == null) return;
@@ -387,7 +423,8 @@ function buildQuarterly(monthly) {
       secex_brl_kg: avg(e._brl),
       cepea_r_kg:   avg(e._cattle),
       spread:       avg(e._spread),
-      vol_tons:     sum(e._vol),   // quarterly volume = sum of months
+      vol_tons:       sum(e._vol),   // quarterly volume = sum of months
+      vol_tons_daily: qtrDailyVol[e.period] ?? null,
     }));
 }
 
@@ -432,7 +469,7 @@ async function loadDB() {
 
     // ── weekly ────────────────────────────────────────────────────────────────
     const wStmt = db.exec(`
-      SELECT start_date, end_date, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread, vol_tons, biz_days
+      SELECT start_date, end_date, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread, vol_tons, biz_days, vol_tons_daily
       FROM weekly ORDER BY start_date ASC
     `);
     if (wStmt.length) {
@@ -444,13 +481,18 @@ async function loadDB() {
 
     db.close();
 
-    QUARTERLY   = buildQuarterly(MONTHLY);
+    const dvol  = _buildDailyVolLookup();
+    MONTHLY     = MONTHLY.map(r => ({ ...r, vol_tons_daily: dvol.mon[r.period] ?? null }));
+    QUARTERLY   = buildQuarterly(MONTHLY, dvol.qtr);
     SEASONALITY = buildSeasonality(MONTHLY);
 
     loadEl.style.display = 'none';
 
     const latestM = MONTHLY.filter(r => r.spread != null).slice(-1)[0];
-    if (latestM) document.getElementById('latest-period').textContent = latestM.period;
+    if (latestM) {
+      document.getElementById('latest-period').textContent = latestM.period;
+      document.getElementById('latest-spread').textContent = latestM.spread.toFixed(2) + '×';
+    }
 
     render();
   } catch(e) {
@@ -478,43 +520,30 @@ function setTab(t) {
   renderComparisonCharts();
 }
 
-/// ── Axis helper: returns {min, max, stepSize} where max-min is an exact
-//    multiple of stepSize, guaranteeing perfectly uniform tick spacing.
-//
-//    Design goals:
-//    1. Differences between bars are visually clear (don't compress to a
-//       tiny band at the top of the chart).
-//    2. The axis bottom is NOT confused with zero: the lowest bar sits at
-//       least ~25% of the total visible height above the axis minimum,
-//       achieved by placing the axis floor at least 1 full step below min.
-function niceScale(vals, nTicks) {
+// ── niceScale: returns {min, max, stepSize}
+// bottomPadFrac = 0 → tight (time-series); 1.5 → 1.5× range below min (comparison bars)
+function niceScale(vals, nTicks, bottomPadFrac) {
   nTicks = nTicks || 5;
+  bottomPadFrac = (bottomPadFrac !== undefined) ? bottomPadFrac : 0;
   if (!vals || !vals.length) return {};
   const mn = Math.min(...vals);
   const mx = Math.max(...vals);
-  const range = (mx - mn) || Math.abs(mn) * 0.1 || 1;
-
-  // Step sized for the data range only (not including floor/ceiling padding).
-  // Using (nTicks-2) gives slightly larger steps so the 1-step floor padding
-  // doesn't crowd the scale with too many ticks.
-  let rawStep = range / Math.max(nTicks - 2, 2);
-  const mag   = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const norm  = rawStep / mag;
-  const step  = norm <= 1.0 ? 1.0 * mag
-              : norm <= 2.0 ? 2.0 * mag
-              : norm <= 2.5 ? 2.5 * mag
-              : norm <= 5.0 ? 5.0 * mag
-              :               10.0 * mag;
-
-  // Floor: snap to step multiple that is at least 1 full step below min.
-  // This guarantees the shortest bar sits ≥ 1 step above the axis bottom,
-  // giving clear visual context that the baseline ≠ 0.
-  // However, never go negative when all data is positive (would imply negative volumes etc.).
-  let axMin = Math.floor((mn - step) / step) * step;
-  if (mn >= 0 && axMin < 0) axMin = 0;
-  // Ceiling: snap to step multiple with a small top buffer.
-  const axMax = Math.ceil((mx + step * 0.4) / step) * step;
-
+  const range = (mx - mn) || Math.abs(mn * 0.1) || 1;
+  let rawStep = range / (nTicks - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  let step = norm <= 1.0 ? 1.0 * mag
+           : norm <= 2.0 ? 2.0 * mag
+           : norm <= 2.5 ? 2.5 * mag
+           : norm <= 5.0 ? 5.0 * mag
+           :               10.0 * mag;
+  // Tight mode: tiny step-based padding (original behaviour for time-series)
+  // Wide mode:  range-based padding so 3-bar comparison charts aren't misleading
+  const padAmt = bottomPadFrac > 0 ? range * bottomPadFrac : step * 0.15;
+  const axMin  = bottomPadFrac > 0
+    ? Math.max(0, Math.floor((mn - padAmt) / step) * step)
+    : Math.floor((mn - padAmt) / step) * step;
+  const axMax = axMin + step * Math.ceil((mx - axMin + step * 0.15) / step);
   const fix = v => Math.round(v * 1e9) / 1e9;
   return { min: fix(axMin), max: fix(axMax), stepSize: step };
 }
@@ -584,7 +613,7 @@ function renderCharts() {
   const avgLine  = spreads.map(() => mean);
 
   if (mean != null)
-    document.getElementById('avg-display').textContent = mean.toFixed(3) + '×';
+    document.getElementById('avg-display').textContent = mean.toFixed(2) + '×';
 
   const ptRadius = rows.length > 60 ? 0 : 2;
 
@@ -599,7 +628,7 @@ function renderCharts() {
           borderColor: '#FF5500', backgroundColor: 'rgba(255,85,0,0.07)',
           borderWidth: 1.8, pointRadius: ptRadius, pointHoverRadius: 4,
           fill: true, tension: 0.3, order: 2 },
-        { label: 'Period Avg', data: avgLine,
+        { label: 'Period Avg (×)', data: avgLine,
           borderColor: '#FF9966', backgroundColor: 'transparent',
           borderWidth: 1.8, borderDash: [6, 4],
           pointRadius: 0, tension: 0, order: 1 },
@@ -825,7 +854,7 @@ function renderSeasonalityChart() {
           ticks: { color: '#888', font: { size: 9 },
             callback: v => v.toFixed(2) + '×' },
           grid: { color: 'rgba(0,0,0,0.05)' },
-          title: { display: true, text: 'Spread (×)', color: '#999',
+          title: { display: true, text: 'Price / Cattle Cost (×)', color: '#999',
             font: { size: 9 } },
         },
       },
@@ -857,8 +886,8 @@ function renderTable() {
       <th style="width:11%;">FX<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/USD</span></th>
       <th style="width:16%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg avg</span></th>
       <th style="width:16%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg avg</span></th>
-      <th style="width:16%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">000 t</span></th>
-      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">avg (×)</span></th>
+      <th style="width:16%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
     </tr>`;
     body.innerHTML = QUARTERLY.slice().reverse().map(r => `<tr>
       <td>${r.period}</td>
@@ -877,8 +906,8 @@ function renderTable() {
       <th style="width:11%;">FX<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/USD</span></th>
       <th style="width:15%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:15%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
-      <th style="width:17%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">000 t</span></th>
-      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(×)</span></th>
+      <th style="width:17%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
     </tr>`;
     body.innerHTML = MONTHLY.slice().reverse().map(r => `<tr>
       <td>${r.period ?? '—'}</td>
@@ -900,8 +929,8 @@ function renderTable() {
       <th style="width:14%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:14%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
-      <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/day</span></th>
-      <th style="width:14%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(×)</span></th>
+      <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/biz day</span></th>
+      <th style="width:14%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
     </tr>`;
     body.innerHTML = WEEKLY.slice().reverse().map(r => `<tr>
       <td>${r.start_date ?? '—'}</td>
@@ -910,8 +939,8 @@ function renderTable() {
       <td>${fmt(r.fx, 3)}</td>
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${fmtBRL(r.cepea_r_kg)}</td>
-      <td>${r.vol_tons != null ? (r.vol_tons / 1000).toFixed(1) : '—'}</td>
-      <td>${(r.vol_tons != null && r.biz_days > 0) ? Math.round(r.vol_tons / r.biz_days).toLocaleString() : '—'}</td>
+      <td>${r.vol_tons != null ? (r.vol_tons / 1000).toFixed(1) : '<span class="td-na">—</span>'}</td>
+      <td>${r.vol_tons_daily != null ? r.vol_tons_daily.toFixed(0) + (r.biz_days != null ? `<span style="font-size:9px;color:#888;"> (${r.biz_days}d)</span>` : '') : '<span class="td-na">—</span>'}</td>
       <td>${fmtSpread(r.spread)}</td>
     </tr>`).join('');
   }
@@ -977,37 +1006,33 @@ function buildReferenceData() {
         if (diff < minDiff && w.start_date !== curr.start_date) { minDiff = diff; samely = w; }
       });
     }
-    const hasWVol = !!(curr?.vol_tons != null || prev?.vol_tons != null || samely?.vol_tons != null);
+    const hasWVol = !!(curr?.vol_tons_daily != null || prev?.vol_tons_daily != null || samely?.vol_tons_daily != null);
     const periods = [
       { label: samely ? ['LY Wk', shortDate(samely.start_date)]   : ['LY Wk',  '—'], d: samely, hasVol: hasWVol },
       { label: prev   ? ['Last Wk', shortDate(prev.start_date)]   : ['Last Wk','—'], d: prev,   hasVol: hasWVol },
       { label: curr   ? ['This Wk', shortDate(curr.start_date)]   : ['This Wk','—'], d: curr,   hasVol: hasWVol },
     ];
     const tag = curr ? `${shortDate(curr.start_date)}: this / last / same LY` : 'Weekly';
-    _setREF(periods, tag, hasWVol, true);  // dailyVol=true for weekly view
+    _setREF(periods, tag, hasWVol);
   }
 }
 
-function _setREF(periods, tag, hasVolume, dailyVol) {
-  // dailyVol=true → weekly view: divide vol by biz_days to get t/day
+// Volume is shown as t/biz day in every granularity: the latest month/quarter is
+// partial (SECEX MTD), so totals would understate it against full periods.
+function _setREF(periods, tag, hasVolume, volUnit = "t/biz day", volFn = null) {
+  const defaultFn = p => p.hasVol ? (p.d?.vol_tons_daily ?? null) : null;
   REF = {
     labels:    periods.map(p => p.label),
-    usd:       periods.map(p => p.d?.secex_usd_kg  ?? null),
-    brl:       periods.map(p => p.d?.secex_brl_kg  ?? null),
-    vol:       periods.map(p => {
-      if (!p.hasVol || p.d?.vol_tons == null) return null;
-      if (dailyVol && p.d?.biz_days > 0) return p.d.vol_tons / p.d.biz_days;
-      return p.d.vol_tons / 1000;
-    }),
-    dailyVol:  !!dailyVol,
+    usd:       periods.map(p => p.d?.secex_usd_kg ?? null),
+    brl:       periods.map(p => p.d?.secex_brl_kg ?? null),
+    vol:       periods.map(volFn || defaultFn),
+    volUnit:   volUnit,
     hasVolume: hasVolume,
     tag:       tag,
   };
-  // Update dynamic labels in chart card headers
   document.getElementById('comp-period-label').textContent  = tag;
   document.getElementById('comp-period-label2').textContent = tag;
-  const volUnitEl = document.getElementById('vol-unit-label');
-  if (volUnitEl) volUnitEl.textContent = dailyVol ? 't/day' : "'000 t";
+  document.getElementById('vol-unit-label').textContent     = volUnit;
 }
 
 function renderVolumeChart() {
@@ -1023,8 +1048,16 @@ function renderVolumeChart() {
 
   const usdVals  = REF.usd.filter(v => v != null);
   const volVals  = REF.vol ? REF.vol.filter(v => v != null) : [];
-  const usdScale = niceScale(usdVals, 5);
+  const usdScale = niceScale(usdVals, 5, 1.5);  // wide padding — 3-bar comparison
   const volScale = niceScale(volVals, 5);
+  // Anchor the volume axis one full range-width below the minimum, snapped to
+  // the step — bars occupy ~40-50% of chart height without starting at 0.
+  const volMin = (() => {
+    if (!volVals.length || !volScale.stepSize) return 0;
+    const mn = Math.min(...volVals), mx = Math.max(...volVals);
+    const raw = mn - (mx - mn);
+    return Math.max(0, Math.floor(raw / volScale.stepSize) * volScale.stepSize);
+  })();
 
   charts.volume = new Chart(document.getElementById('volumeChart').getContext('2d'), {
     data: {
@@ -1033,7 +1066,7 @@ function renderVolumeChart() {
         // ── Volume bars (always present; null values = invisible in weekly) ──
         {
           type: 'bar',
-          label: REF.dailyVol ? "Volume (t/day)" : "Volume ('000 t)",
+          label: `Volume (${REF.volUnit})`,
           data: hasVol ? REF.vol : [null, null, null],
           backgroundColor: barBg,
           borderColor: barBdr,
@@ -1072,6 +1105,7 @@ function renderVolumeChart() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },   // room for the label above the tallest bar
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: true, position: 'top',
@@ -1086,8 +1120,7 @@ function renderVolumeChart() {
             label: ctx => {
               if (ctx.dataset.label?.includes('Volume')) {
                 if (!hasVol) return null;
-                const unit = REF.dailyVol ? 't/day' : "'000 t";
-                return `Volume: ${ctx.parsed.y?.toFixed(0) ?? '—'} ${unit}`;
+                return `Volume: ${ctx.parsed.y?.toFixed(0) ?? '—'} ${REF.volUnit}`;
               }
               return `Price: ${ctx.parsed.y?.toFixed(2) ?? '—'} USD/kg`;
             },
@@ -1098,8 +1131,8 @@ function renderVolumeChart() {
         yVol: {
           type: 'linear', position: 'left',
           display: hasVol,
-          min: volScale.min, max: volScale.max,
-          title: { display: hasVol, text: REF.dailyVol ? 't/day' : "'000 t", color: '#888', font: { size: 9 } },
+          min: volMin, max: volScale.max,
+          title: { display: hasVol, text: REF.volUnit, color: '#888', font: { size: 9 } },
           ticks: {
             color: '#888', font: { size: 9 },
             stepSize: volScale.stepSize,
@@ -1138,8 +1171,8 @@ function renderPriceRefChart() {
 
   const usdVals  = REF.usd.filter(v => v != null);
   const brlVals  = REF.brl.filter(v => v != null);
-  const usdScale = niceScale(usdVals, 5);
-  const brlScale = niceScale(brlVals, 5);
+  const usdScale = niceScale(usdVals, 5, 1.5);  // wide padding — 3-bar comparison
+  const brlScale = niceScale(brlVals, 5, 1.5);  // wide padding — 3-bar comparison
 
   charts.priceRef = new Chart(document.getElementById('priceRefChart').getContext('2d'), {
     type: 'bar',
@@ -1169,13 +1202,14 @@ function renderPriceRefChart() {
           datalabels: {
             display: true, anchor: 'end', align: 'top',
             font: { size: 10, weight: '600' }, color: '#FF5500',
-            formatter: v => v != null ? v.toFixed(1) : '',
+            formatter: v => v != null ? v.toFixed(2) : '',
           },
         },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },   // room for the label above the tallest bar
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: true, position: 'top',
@@ -1213,7 +1247,7 @@ function renderPriceRefChart() {
           title: { display: true, text: 'BRL/kg',
             color: '#FF5500', font: { size: 9, weight: '600' } },
           ticks: { color: '#FF5500', font: { size: 9 },
-            stepSize: brlScale.stepSize, callback: v => v.toFixed(1) },
+            stepSize: brlScale.stepSize, callback: v => v.toFixed(2) },
           grid: { drawOnChartArea: false },
         },
         x: {
