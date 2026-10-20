@@ -566,7 +566,7 @@ def cmr_windows(short_name, t0, t1, point=REF_POINT):
     while True:
         j = http_json(CMR, params={"short_name": short_name, "version": "061", "point": f"{point[0]},{point[1]}",
                                    "temporal": f"{t0.isoformat()}T00:00:00Z,{t1.isoformat()}T23:59:59Z",
-                                   "page_size": 500, "page_num": page})
+                                   "page_size": 500, "page_num": page}, tries=10)      # o CMR às vezes dá 500 por alguns minutos
         ent = j["feed"]["entry"]
         for e in ent:
             d = dt.date.fromisoformat(e["time_start"][:10])
