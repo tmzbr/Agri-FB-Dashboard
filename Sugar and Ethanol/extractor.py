@@ -388,8 +388,20 @@ def fetch_etanol_cepea(conn) -> int:
     if not rows:
         raise RuntimeError("[ETANOL] No data obtained from UDOP")
 
-    if ld:
-        rows = [r for r in rows if r["data_ref"] > ld]
+    # UDOP sometimes publishes typo'd dates (e.g. 30/09 shown as "30/10/2026").
+    # A future date would become MAX(data_referencia) and block every later
+    # insert, so drop anything past today.
+    today = datetime.now().strftime("%Y-%m-%d")
+    bad = [r for r in rows if r["data_ref"] > today]
+    for r in bad:
+        log.warning(f"[ETANOL] Ignoring future-dated row {r['data_ref']} = {r['preco_m3']}")
+    rows = [r for r in rows if r["data_ref"] <= today]
+
+    # Insert any date not yet in the DB (fills gaps instead of only appending > MAX)
+    have = {d for (d,) in conn.execute(
+        "SELECT data_referencia FROM etanol_cepea WHERE data_referencia >= ?",
+        (min(r["data_ref"] for r in rows),))} if rows else set()
+    rows = [r for r in rows if r["data_ref"] not in have]
     if not rows:
         log.info("[ETANOL] Nothing new.")
         return 0
