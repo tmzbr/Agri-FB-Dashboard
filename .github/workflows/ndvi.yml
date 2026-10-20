@@ -1,0 +1,191 @@
+name: NDVI (carga histórica + atualização semanal)
+
+# UM workflow para tudo. Caminho no repositório: .github/workflows/ndvi.yml
+#
+#   • Segunda 12:00 UTC (automático) ou Run workflow com task=update:
+#       seed --mode tail (janelas novas + reprocessa as últimas N) → build → checagem → commit do ndvi_history.json
+#   • Run workflow com task=seed: carga/refação do histórico no Supabase (um job por ano, 6 em paralelo)
+#
+# NDVI de LAVOURA (modelo modis_crop): municípios só com pixels de lavoura + círculo de 5 km nas fazendas SLC.
+# A máscara de lavoura (ESA WorldCover, ~1 min) é gerada sozinha na 1ª execução e guardada em cache.
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, EARTHDATA_USER, EARTHDATA_PASS (AppEEARS = janelas de 2025 em diante).
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "update = rotina semanal (tail + build + commit) · seed = carga do histórico"
+        type: choice
+        options: [update, seed]
+        default: update
+      years:
+        description: "[seed] Anos: 2023 | 2000-2026 | 2022,2025"
+        default: "2000-2026"
+      mode:
+        description: "[seed] full = todas as janelas · missing = só as que faltam no banco"
+        type: choice
+        options: [full, missing]
+        default: full
+      source:
+        description: "auto = Planetary Computer, depois AppEEARS · pc · appeears"
+        type: choice
+        options: [auto, pc, appeears]
+        default: auto
+      limit_windows:
+        description: "[seed] Teste: processa só N janelas por ano (vazio = todas)"
+        default: ""
+      refresh:
+        description: "[update] Reprocessar as últimas N janelas já gravadas, por satélite"
+        default: "2"
+
+concurrency:
+  group: ndvi-load
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  D: "Climate Monitor/NDVI Monitor"
+  LOC: "Climate Monitor/Weather Monitor/locations.json"
+
+jobs:
+  # ───────────────────────── SEED (histórico) ─────────────────────────
+  mask:
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'seed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy requests shapely pyproj rasterio openpyxl
+      - uses: actions/cache@v4
+        with:
+          path: Climate Monitor/NDVI Monitor/cache/crop
+          key: crop-mask-v1
+      - name: Máscara de lavoura (só gera o que falta)
+        run: python "$D/ndvi_monitor.py" cropmask
+
+  plan:
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'seed'
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.m.outputs.years }}
+    steps:
+      - id: m
+        env:
+          YEARS: ${{ inputs.years }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          ys = set()
+          for part in os.environ["YEARS"].replace(" ", "").split(","):
+              if "-" in part:
+                  a, b = part.split("-"); ys |= set(range(int(a), int(b) + 1))
+              elif part:
+                  ys.add(int(part))
+          ys = sorted(y for y in ys if 2000 <= y <= 2100)
+          assert ys, "nenhum ano válido em 'years'"
+          print("years=" + json.dumps(ys))
+          PY
+
+  seed:
+    needs: [plan, mask]
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        year: ${{ fromJSON(needs.plan.outputs.years) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy requests shapely pyproj rasterio openpyxl
+      - uses: actions/cache/restore@v4
+        with:
+          path: Climate Monitor/NDVI Monitor/cache/crop
+          key: crop-mask-v1
+      - name: Seed ${{ matrix.year }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+          LIMIT: ${{ inputs.limit_windows }}
+        run: |
+          ARGS=(--mode "${{ inputs.mode }}" --years "${{ matrix.year }}" --source "${{ inputs.source }}" --workers 4 --flush-every 8 --max-wait 120 --locations "$LOC")
+          if [ -n "$LIMIT" ]; then ARGS+=(--limit-windows "$LIMIT"); fi
+          python "$D/ndvi_monitor.py" seed "${ARGS[@]}"
+
+  # ───────────────────────── UPDATE (semanal) ─────────────────────────
+  update:
+    if: github.event_name == 'schedule' || inputs.task == 'update'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy requests shapely pyproj rasterio openpyxl
+      - uses: actions/cache@v4
+        with:
+          path: Climate Monitor/NDVI Monitor/cache/crop
+          key: crop-mask-v1
+
+      - name: Tail (novas janelas + reprocessa as últimas)
+        id: seed
+        continue-on-error: true       # mesmo com falha parcial, o que entrou no banco vira série; o job fica vermelho no fim
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+        run: |
+          python "$D/ndvi_monitor.py" seed --mode tail --refresh "${{ inputs.refresh || '2' }}" --source "${{ inputs.source || 'auto' }}" \
+            --workers 4 --flush-every 4 --max-wait 90 --locations "$LOC"
+
+      - name: Build ndvi_history.json
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python "$D/ndvi_monitor.py" build --locations "$LOC" --out "$D/ndvi_history.json.new"
+
+      - name: Sanity check (não commita lixo)
+        run: |
+          python - <<'PY'
+          import json, os, datetime as dt
+          d = "Climate Monitor/NDVI Monitor/"
+          new = json.load(open(d + "ndvi_history.json.new"))
+          assert len(new["points"]) >= 150, f"poucas séries: {len(new['points'])}"
+          assert new["years"][0] <= 2002 and new["years"][-1] >= dt.date.today().year - 1, f"anos: {new['years'][0]}–{new['years'][-1]} (carga histórica incompleta?)"
+          size = os.path.getsize(d + "ndvi_history.json.new")
+          if os.path.exists(d + "ndvi_history.json"):
+              old = os.path.getsize(d + "ndvi_history.json")
+              assert size >= 0.9 * old, f"arquivo novo muito menor ({size} vs {old} bytes)"
+          print(f"OK: {len(new['points'])} séries, anos {new['years'][0]}–{new['years'][-1]}, {size/1e6:.2f} MB")
+          PY
+          mv "$D/ndvi_history.json.new" "$D/ndvi_history.json"
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$D/ndvi_history.json"
+          if git diff --cached --quiet; then echo "sem mudanças"; exit 0; fi
+          git commit -m "chore(ndvi): update ndvi_history.json [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+
+      - name: Falha parcial do tail?
+        if: steps.seed.outcome == 'failure'
+        run: |
+          echo "::error::O tail teve falhas (janelas indisponíveis ou erro de rede). O que entrou já está nas séries; rode task=seed com mode=missing."
+          exit 1
