@@ -97,7 +97,11 @@ def load_municipios(cache_path=None, quality="intermediaria"):
     """
     fc = None
     if cache_path and os.path.exists(cache_path):
-        fc = json.loads(gzip.open(cache_path, "rt", encoding="utf-8").read())
+        raw = open(cache_path, "rb").read()
+        if raw[:2] == b"\x1f\x8b":                       # gzip de verdade
+            raw = gzip.decompress(raw)
+        # senão: o navegador/sistema já descompactou o .gz no download — o conteúdo é o JSON puro e serve do mesmo jeito
+        fc = json.loads(raw.decode("utf-8"))
     changed = False
     if fc is None:
         print(f"AVISO: {cache_path} não existe — baixando a malha do IBGE (pode falhar a partir do GitHub; "
