@@ -43,11 +43,15 @@ jobs:
       - name: Run extractor
         run: python extractor_chicken_bz_domestic.py
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        run: python "../../Hub Export/export_bz_domestic_json.py"
+
       - name: Commit updated DB
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add chicken_bz_domestic.db
+          git add chicken_bz_domestic.db bz-chicken-domestic-spread.json
           if git diff --cached --quiet; then
             echo "No changes to chicken_bz_domestic.db — nothing to commit."
           else

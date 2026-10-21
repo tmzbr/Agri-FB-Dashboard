@@ -61,11 +61,16 @@ jobs:
               raise ValueError(f"Suspiciously few quarterly rows: {nq}")
           EOF
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        working-directory: .
+        run: python "Hub Export/export_us_tracker_json.py" chicken
+
       - name: Commit updated chicken.db
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
-          git add "Chicken/U.S. Tracker/chicken.db"
+          git add "Chicken/U.S. Tracker/chicken.db" "Chicken/U.S. Tracker/us-chicken-tracker.json"
           if git diff --staged --quiet; then
             echo "No changes to chicken.db — skipping commit."
           else
