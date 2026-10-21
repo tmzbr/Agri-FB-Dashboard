@@ -306,7 +306,7 @@ async function init(){
     db.close();
 
     // The projected year is the forward-looking one with adjustable
-    // macro sliders -- always the last year with a Focus expectation
+    // macro inputs -- always the last year with a Focus expectation
     // (i.e. genuinely no realized data has started yet). Years before it
     // (including a still-in-progress current year) use the best
     // available fixed data: company FX guidance / realized or Focus IGP-M.
@@ -397,16 +397,15 @@ function setRange(mode, el){
   renderAll(); renderPriceCharts(); renderScenarioChart();
 }
 
-function onMacroSlider(key, val){
+// Typed macro inputs: the field keeps exactly what is being typed (re-writing
+// it mid-typing would eat a trailing "." or "-"); only load/reset write to it.
+function onMacroInput(key, val){
   if(val === '' || isNaN(parseFloat(val))) return;
   macro[key] = parseFloat(val);
-  syncMacroLabels();
   renderAll();
   renderScenarioChart();
 }
 function syncMacroLabels(){
-  document.getElementById('sl-fx').value   = macro.fx;
-  document.getElementById('sl-igpm').value = macro.igpm;
   document.getElementById('v-fx').value    = +macro.fx.toFixed(2);
   document.getElementById('v-igpm').value  = +macro.igpm.toFixed(1);
 }
@@ -427,8 +426,6 @@ function syncWeightLabels(){
 
 function resetAll(){
   macro.fx = macroDefault.fx; macro.igpm = macroDefault.igpm;
-  document.getElementById('sl-fx').value = macro.fx;
-  document.getElementById('sl-igpm').value = macro.igpm;
   syncMacroLabels();
 
   CW = { ...CWDefault };
@@ -479,14 +476,12 @@ function buildLayout(){
         <span class="fb-section-label">Macro Assumptions</span>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">USD/BRL</span>
-          <input id="sl-fx" class="fb-slider" type="range" min="4.00" max="7.00" step="0.01" oninput="onMacroSlider('fx', this.value)">
-          <input id="v-fx" class="fb-val fb-val-input" type="number" step="0.01" oninput="onMacroSlider('fx', this.value)">
+          <input id="v-fx" class="fb-val fb-val-input" type="number" step="0.01" oninput="onMacroInput('fx', this.value)">
           <span class="info-icon" title="Average USD/BRL expected for FY${String(projYear-1).slice(2)}, carried forward to convert FY${String(projYear).slice(2)} COGS.">ⓘ</span>
         </div>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">IGP-M</span>
-          <input id="sl-igpm" class="fb-slider" type="range" min="-5" max="15" step="0.1" oninput="onMacroSlider('igpm', this.value)">
-          <input id="v-igpm" class="fb-val fb-val-input" type="number" step="0.1" oninput="onMacroSlider('igpm', this.value)">
+          <input id="v-igpm" class="fb-val fb-val-input" type="number" step="0.1" oninput="onMacroInput('igpm', this.value)">
           <span class="info-icon" title="IGP-M expected for FY${String(projYear).slice(2)}.">ⓘ</span>
         </div>
         <button class="btn-reset" onclick="resetAll()">↺ Reset to defaults</button>
@@ -527,7 +522,7 @@ function buildLayout(){
           <span class="card-stat" id="proj-stat"></span>
         </div>
         <canvas id="chartTotal"></canvas>
-        <div class="footnote">"e" suffix = projected year (adjustable via Macro sliders above)</div>
+        <div class="footnote">"e" suffix = projected year (adjustable via Macro Assumptions above)</div>
       </div>
       <div class="card">
         <div class="card-hdr">
@@ -583,8 +578,6 @@ function buildLayout(){
 
   </div>`;
 
-  document.getElementById('sl-fx').value = macro.fx;
-  document.getElementById('sl-igpm').value = macro.igpm;
   syncMacroLabels();
   syncWeightLabels();
 
