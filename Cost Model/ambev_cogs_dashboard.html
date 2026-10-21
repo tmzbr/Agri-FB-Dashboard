@@ -90,9 +90,11 @@ canvas{max-height:215px;}
 .fb-section-label{font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.5px;margin-right:4px;white-space:nowrap;}
 .fb-slider-wrap{display:flex;align-items:center;gap:6px;}
 .fb-lbl{font-size:11px;color:var(--bk);white-space:nowrap;}
+.fb-slider{width:100px;accent-color:var(--or);cursor:pointer;}
 .fb-val{font-size:11px;font-weight:700;color:var(--or);min-width:44px;text-align:right;background:#FFF3EA;border-radius:4px;padding:3px 6px;}
 .fb-val-input{border:1px solid var(--or);font-family:var(--font);cursor:text;width:56px;}
 .fb-val-input:focus{outline:none;box-shadow:0 0 0 2px rgba(255,85,0,0.2);}
+.fb-val.auto{color:var(--gy);font-weight:400;}
 .fb-unit{font-size:11px;color:var(--gy);margin-left:-2px;}
 .btn-reset{padding:7px 16px;background:transparent;border:1.5px solid var(--or);color:var(--or);font-size:11px;font-weight:700;cursor:pointer;border-radius:4px;transition:all .15s;font-family:var(--font);white-space:nowrap;}
 .btn-reset:hover{background:var(--or);color:var(--wh);}
@@ -133,6 +135,7 @@ tbody td:first-child{text-align:left;font-weight:600;}
   .hdr{padding:11px 12px;flex-direction:column;align-items:flex-start;gap:6px;}
   .hdr-right{font-size:9.5px;}
   .fb-row{gap:12px;}
+  .fb-slider{width:80px;}
   table{min-width:640px;}
   .tbl-wrap{-webkit-overflow-scrolling:touch;}
   .error-box{margin:12px;}
@@ -180,7 +183,6 @@ let projYear = null;                       // the forward-looking year (no reali
 
 function recomputeWeights(){
   const sum = CW.alu+CW.corn+CW.leg3+CW.igpm;
-  if(!(sum > 0)) return;   // all weights at 0: keep the last valid mix
   W = { alu:CW.alu/sum, corn:CW.corn/sum, leg3:CW.leg3/sum, igpm:CW.igpm/sum };
 }
 
@@ -415,14 +417,18 @@ function syncMacroLabels(){
   document.getElementById('v-igpm').value  = +macro.igpm.toFixed(1);
 }
 
-// Typed weight inputs — same rules as the macro fields ("," or "." accepted,
-// field not re-written while typing). Negative or non-numeric input is ignored.
-function onWeightInput(key, val){
-  const v = parseFloat(String(val).trim().replace(',', '.'));
-  if(isNaN(v) || v < 0) return;
-  CW[key] = v;
+function onWeightSlider(key, val){
+  CW[key] = parseFloat(val);
   recomputeWeights();
+  syncWeightLabels();
   renderAll(); renderScenarioChart(); renderRevisionChart();
+}
+function syncWeightLabels(){
+  const sum = CW.alu+CW.corn+CW.leg3+CW.igpm;
+  document.getElementById('w-alu-val').textContent = (CW.alu/sum*100).toFixed(1)+'%';
+  document.getElementById('w-corn-val').textContent = (CW.corn/sum*100).toFixed(1)+'%';
+  document.getElementById('w-leg3-val').textContent = (CW.leg3/sum*100).toFixed(1)+'%';
+  document.getElementById('w-igpm-val').textContent = (CW.igpm/sum*100).toFixed(1)+'%';
 }
 
 function resetAll(){
@@ -430,11 +436,12 @@ function resetAll(){
   syncMacroLabels();
 
   CW = { ...CWDefault };
-  document.getElementById('v-w-alu').value = CW.alu;
-  document.getElementById('v-w-corn').value = CW.corn;
-  document.getElementById('v-w-leg3').value = CW.leg3;
-  document.getElementById('v-w-igpm').value = CW.igpm;
+  document.getElementById('sl-w-alu').value = CW.alu;
+  document.getElementById('sl-w-corn').value = CW.corn;
+  document.getElementById('sl-w-leg3').value = CW.leg3;
+  document.getElementById('sl-w-igpm').value = CW.igpm;
   recomputeWeights();
+  syncWeightLabels();
 
   renderAll(); renderScenarioChart(); renderRevisionChart();
 }
@@ -493,26 +500,26 @@ function buildLayout(){
         <span class="fb-section-label">Beer Cost Breakdown</span>
         <div class="fb-slider-wrap">
           <span class="fb-lbl" id="w-alu-lbl">Aluminum</span>
-          <input id="v-w-alu" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" value="36" oninput="onWeightInput('alu', this.value)" onchange="normalizeMacroInput(this)">
-          <span class="fb-unit">%</span>
+          <input id="sl-w-alu" class="fb-slider" type="range" min="0" max="100" step="0.5" value="36" oninput="onWeightSlider('alu', this.value)">
+          <span class="fb-val" id="w-alu-val">36.0%</span>
         </div>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">Corn</span>
-          <input id="v-w-corn" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" value="6.4" oninput="onWeightInput('corn', this.value)" onchange="normalizeMacroInput(this)">
-          <span class="fb-unit">%</span>
+          <input id="sl-w-corn" class="fb-slider" type="range" min="0" max="100" step="0.5" value="6.4" oninput="onWeightSlider('corn', this.value)">
+          <span class="fb-val" id="w-corn-val">6.4%</span>
         </div>
         <div class="fb-slider-wrap">
           <span class="fb-lbl" id="w-leg3-lbl">Barley</span>
-          <input id="v-w-leg3" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" value="12" oninput="onWeightInput('leg3', this.value)" onchange="normalizeMacroInput(this)">
-          <span class="fb-unit">%</span>
+          <input id="sl-w-leg3" class="fb-slider" type="range" min="0" max="100" step="0.5" value="12" oninput="onWeightSlider('leg3', this.value)">
+          <span class="fb-val" id="w-leg3-val">12.0%</span>
         </div>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">Labor</span>
-          <input id="v-w-igpm" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" value="45.6" oninput="onWeightInput('igpm', this.value)" onchange="normalizeMacroInput(this)">
-          <span class="fb-unit">%</span>
+          <input id="sl-w-igpm" class="fb-slider" type="range" min="0" max="100" step="0.5" value="45.6" oninput="onWeightSlider('igpm', this.value)">
+          <span class="fb-val" id="w-igpm-val">45.6%</span>
         </div>
       </div>
-      <div class="footnote" style="margin:6px 0 0;">Weights auto-normalize to 100% if they don't add up to it.</div>
+      <div class="footnote" style="margin:6px 0 0;">Weight sliders are relative and auto-normalize to 100%.</div>
     </div>
 
     <!-- ii) Trajectory + Decomposition -->
@@ -580,6 +587,7 @@ function buildLayout(){
   </div>`;
 
   syncMacroLabels();
+  syncWeightLabels();
 
   const revSel = document.getElementById('revision-year-select');
   revSel.innerHTML = YEARS.slice().reverse().map(y=>`<option value="${y}">FY${String(y).slice(2)}${y===projYear?'e':''}</option>`).join('');
