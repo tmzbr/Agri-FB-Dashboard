@@ -232,10 +232,10 @@ const fmtPct = n => n==null ? '—' : n.toLocaleString('en-US',{minimumFractionD
 const fmtBRL = n => {
   if(n==null) return '—';
   const a=Math.abs(n);
-  if(a>=1e9) return 'R$ '+(n/1e9).toLocaleString('en-US',{maximumFractionDigits:2})+' bn';
-  if(a>=1e6) return 'R$ '+(n/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+' mm';
-  if(a>=1e3) return 'R$ '+(n/1e3).toLocaleString('en-US',{maximumFractionDigits:0})+' k';
-  return 'R$ '+fmtInt(n);
+  if(a>=1e9) return 'BRL '+(n/1e9).toLocaleString('en-US',{maximumFractionDigits:2})+' bn';
+  if(a>=1e6) return 'BRL '+(n/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+' mm';
+  if(a>=1e3) return 'BRL '+(n/1e3).toLocaleString('en-US',{maximumFractionDigits:0})+' k';
+  return 'BRL '+fmtInt(n);
 };
 const fmtDate = s => {
   if(!s) return '—';
@@ -304,7 +304,7 @@ function renderHistoryTable(){
       <th>% Free Float</th>
       <th>% Shares Out</th>
       <th>Shares on Loan</th>
-      <th>R$ on Loan</th>
+      <th>BRL on Loan</th>
       <th>Borrow Rate</th>
     </tr>`;
   if(!rows.length){
@@ -341,7 +341,7 @@ const VIEW_LABEL = {
   ff:   'Short Interest (% of Free Float)',
   pct:  'Short Interest (% of Shares Out)',
   qty:  'Shares on Loan',
-  vol:  'Value on Loan (R$)',
+  vol:  'Value on Loan (BRL)',
   taxa: 'Borrow Rate (weighted average)',
 };
 const VIEW_KEY = { ff:'ff', pct:'pct', qty:'q', vol:'v', taxa:'taxa' };

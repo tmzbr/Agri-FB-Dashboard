@@ -199,7 +199,7 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   <div class="filter-group">
     <div class="filter-label">Unit</div>
     <div class="seg unit-seg" id="seg-unit">
-      <button class="seg-btn on" onclick="setUnit('brl',this)">R$/ha</button>
+      <button class="seg-btn on" onclick="setUnit('brl',this)">BRL/ha</button>
       <button class="seg-btn"    onclick="setUnit('sc',this)">bag/ha</button>
     </div>
   </div>
@@ -266,7 +266,7 @@ let CH={};
 
 /* ── Helpers ── */
 const fmt  =(v,d=0)=>v==null?'—':v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-const fmtR =v=>v==null?'—':'R$ '+fmt(v);
+const fmtR =v=>v==null?'—':'BRL '+fmt(v);
 const fmtSc=v=>v==null?'—':fmt(v,1)+' bag';
 const fmtP =v=>v==null?'—':(v*100).toFixed(1)+'%';
 const rb   =r=>r[PRICE==='std'?'rb_std':'rb_spot'];
@@ -290,15 +290,15 @@ function fmtVal(v, r, dec){
     const s=toSc(v,r);
     return s==null?'—':fmt(s, dec??1)+' bag';
   }
-  return v==null?'—':'R$ '+fmt(v, dec??0);
+  return v==null?'—':'BRL '+fmt(v, dec??0);
 }
 function fmtValRaw(v, r){ return UNIT==='sc' ? toSc(v,r) : v; }
 
 const fmtM = v => UNIT==='sc'
   ? v.toFixed(1)+' bag'
-  : 'R$'+v.toLocaleString('en-US',{maximumFractionDigits:0});
+  : 'BRL '+v.toLocaleString('en-US',{maximumFractionDigits:0});
 const fmtPc = v=>(v*100).toFixed(1)+'%';
-const unitLabel = () => UNIT==='sc' ? 'bag/ha' : 'R$/ha';
+const unitLabel = () => UNIT==='sc' ? 'bag/ha' : 'BRL/ha';
 
 /* ── MoM / YoY deltas for a culture ── */
 function getDeltas(c){
@@ -436,7 +436,7 @@ function renderKPIs(){
     const momCls = momV==null?'neu':momV>0?'pos':'neg';
     const yoyCls = yoyV==null?'neu':yoyV>0?'pos':'neg';
     const arrow  = v=>v==null?'':v>0?'▲':'▼';
-    const fmtDelta = v => v==null?'—':(v>0?'+':'')+( UNIT==='sc'?fmt(v,1)+' bag':'R$ '+fmt(v,0));
+    const fmtDelta = v => v==null?'—':(v>0?'+':'')+( UNIT==='sc'?fmt(v,1)+' bag':'BRL '+fmt(v,0));
     el.innerHTML+=`
     <div class="kpi-card c-${c}">
       <div class="kpi-label" style="color:${col}">● Gross Profit ex-Lease Change</div>
@@ -515,7 +515,7 @@ function renderPL(){
   const ROWS=[
     {lbl:'REVENUE',type:'grp'},
     {lbl:'Yield (bag/ha)',key:'prod',type:'sub',fmt:'num1',noConv:true},
-    {lbl:'Price '+(PRICE==='std'?'Crop Avg':'Spot')+' (R$/bag)',key:priceKey,type:'sub',fmt:'num0',noConv:true},
+    {lbl:'Price '+(PRICE==='std'?'Crop Avg':'Spot')+' (BRL/bag)',key:priceKey,type:'sub',fmt:'num0',noConv:true},
     {lbl:`Gross Revenue (${ul})`,key:pk,type:'res'},
     {lbl:'OPERATING COST',type:'grp'},
     {lbl:`Seeds (${ul})`,key:'sem',type:'sub'},

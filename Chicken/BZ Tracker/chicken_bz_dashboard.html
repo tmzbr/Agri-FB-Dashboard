@@ -564,9 +564,9 @@ function updateCurrentPrices() {
 
   const basket = (cornWeight * corn + (1 - cornWeight) * soy);
 
-  document.getElementById('info-corn').textContent   = `R$${corn.toFixed(1)}/bag`;
-  document.getElementById('info-soy').textContent    = `R$${soy.toFixed(1)}/bag`;
-  document.getElementById('info-basket').textContent = `R$${basket.toFixed(1)}/bag`;
+  document.getElementById('info-corn').textContent   = `BRL ${corn.toFixed(1)}/bag`;
+  document.getElementById('info-soy').textContent    = `BRL ${soy.toFixed(1)}/bag`;
+  document.getElementById('info-basket').textContent = `BRL ${basket.toFixed(1)}/bag`;
 
   // Bar widths relative to each other
   const mx = Math.max(corn, soy);

@@ -391,7 +391,7 @@ function renderDetail() {
   const row = (label, f, cls = '') => `<tr class="${cls}"><td class="l">${label}</td>${Y.map(y => `<td>${f(y)}</td>`).join('')}</tr>`;
   const e = y => shown(c, est[y]);
   const margin = k => y => ok(e(y)[k]) && ok(e(y).revenue) && e(y).revenue ? fmtPct(e(y)[k] / e(y).revenue) : '<span class="muted">—</span>';
-  const ccy = c.currency === 'BRL' ? 'R$' : c.currency === 'USD' ? 'US$' : c.currency;
+  const ccy = c.currency;
   el.innerHTML = `
     <div class="co-hdr"><span class="big">${esc(c.ticker)}</span><span class="nm">${esc(c.name)}</span>
       ${c.recommendation ? `<span class="rec ${esc(c.recommendation)}">${esc(c.recommendation)}</span>` : ''}

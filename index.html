@@ -756,7 +756,7 @@ const STATIC_DASHBOARDS = [
     sector: 'market-watch',
     subsector: null,
     title: 'Short Interest',
-    description: 'Securities-lending open positions (short interest) for the covered agri & F&B names — shares on loan, R$ value, and % of shares outstanding. Source: B3 Boletim Diário do Mercado.',
+    description: 'Securities-lending open positions (short interest) for the covered agri & F&B names — shares on loan, BRL value, and % of shares outstanding. Source: B3 Boletim Diário do Mercado.',
     source: 'B3 · Empréstimos de Ativos',
     tags: ['Brazil', 'Short Interest', 'Equity', 'B3'],
     visible_to_all: false,
@@ -2056,7 +2056,7 @@ async function dbSaveAccount(){
    Usage from any dashboard module:
    downloadExcel(rows, columns, sheetName, baseName)
    rows: array of objects  columns: array of {key, label}
-   e.g. downloadExcel(data, [{key:'date',label:'Date'},{key:'price',label:'Price (R$/bag)'}], 'Prices', 'Grains Price Monitor')
+   e.g. downloadExcel(data, [{key:'date',label:'Date'},{key:'price',label:'Price (BRL/bag)'}], 'Prices', 'Grains Price Monitor')
 */
 function exportUsersExcel(){
   if(!window.XLSX){ showToast('Excel library not loaded yet.'); return; }
