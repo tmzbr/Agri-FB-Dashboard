@@ -406,6 +406,11 @@ function onMacroInput(key, val){
   renderAll();
   renderScenarioChart();
 }
+// On leaving the field (blur / Enter) show the decimal point as "." — a typed
+// "," is accepted while typing but displayed the same way as everywhere else.
+function normalizeMacroInput(el){
+  el.value = el.value.trim().replace(',', '.');
+}
 function syncMacroLabels(){
   document.getElementById('v-fx').value    = +macro.fx.toFixed(2);
   document.getElementById('v-igpm').value  = +macro.igpm.toFixed(1);
@@ -477,12 +482,12 @@ function buildLayout(){
         <span class="fb-section-label">Macro Assumptions</span>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">USD/BRL</span>
-          <input id="v-fx" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" oninput="onMacroInput('fx', this.value)">
+          <input id="v-fx" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" oninput="onMacroInput('fx', this.value)" onchange="normalizeMacroInput(this)">
           <span class="info-icon" title="Average USD/BRL expected for FY${String(projYear-1).slice(2)}, carried forward to convert FY${String(projYear).slice(2)} COGS.">ⓘ</span>
         </div>
         <div class="fb-slider-wrap">
           <span class="fb-lbl">IGP-M</span>
-          <input id="v-igpm" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" oninput="onMacroInput('igpm', this.value)">
+          <input id="v-igpm" class="fb-val fb-val-input" type="text" inputmode="decimal" autocomplete="off" oninput="onMacroInput('igpm', this.value)" onchange="normalizeMacroInput(this)">
           <span class="info-icon" title="IGP-M expected for FY${String(projYear).slice(2)}.">ⓘ</span>
         </div>
         <button class="btn-reset" onclick="resetAll()">↺ Reset to defaults</button>
