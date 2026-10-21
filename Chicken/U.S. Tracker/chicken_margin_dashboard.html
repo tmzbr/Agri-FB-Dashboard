@@ -171,13 +171,13 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .total-check.ok{color:var(--green);}
 .total-check.err{color:var(--red);}
 
-/* cost lag radio */
-.lag-row{display:flex;gap:5px;margin-bottom:4px;}
-.lag-btn{flex:1;padding:5px 4px;border:1.5px solid var(--border);border-radius:4px;
-  font-size:11px;font-family:var(--font);cursor:pointer;
-  background:none;color:var(--gray-mid);transition:all .15s;text-align:center;}
-.lag-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
-.lag-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
+/* feed cost lag — same "Lag __ months" input as the BZ trackers */
+.param-row{display:flex;align-items:center;gap:0;margin-bottom:7px;}
+.param-name{font-size:12px;color:var(--gray-dark);width:90px;flex-shrink:0;}
+.param-input{width:40px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;
+  font-size:12px;font-family:var(--font);text-align:center;color:var(--black);}
+.param-input:focus{outline:none;border-color:var(--orange);}
+.param-unit{font-size:11px;color:var(--gray-mid);margin-left:4px;}
 
 /* reset button */
 .reset-btn{width:100%;padding:7px;margin-top:14px;
@@ -401,12 +401,12 @@ tr:hover td{background:#FFF8F5;}
       <!-- FIX #6: Cost Lag AFTER Parts Weights -->
       <!-- FIX #7: "FC" → "Feed Cost" -->
       <div class="wp-section">Feed Cost Lag</div>
-      <div class="lag-row">
-        <button class="lag-btn" data-lag="spot" onclick="setLag('spot')">Spot</button>
-        <button class="lag-btn active" data-lag="0q5" onclick="setLag('0q5')">0.5Q</button>
-        <button class="lag-btn" data-lag="1q5" onclick="setLag('1q5')">1.5Q</button>
+      <div class="param-row">
+        <span class="param-name">Lag</span>
+        <input type="number" id="lagInput" min="0" max="12" value="2"
+               class="param-input" oninput="onLagChange(this.value)">
+        <span class="param-unit">months</span>
       </div>
-      <div class="lag-desc" id="lag-desc">Feed Cost = 50% current quarter + 50% prior quarter</div>
 
       <button class="reset-btn" onclick="resetDefaults()">↺ Reset to default</button>
     </div>
@@ -439,10 +439,11 @@ let DB_ROWS     = [];     // raw quarterly rows from SQLite
 let WEEKLY_ROWS = [];     // raw weekly rows from SQLite
 let charts      = {};     // Chart.js instances
 let currentView = '3y';   // 'all' | '3y' | '1y'
-let currentLag  = '0q5';  // 'spot' | '0q5' | '1q5'
+let grainLag    = 2;      // months of feed-cost lag (0–12)
+let MONTH_FC    = {};     // { 'YYYY-MM': feed cost } from monthly corn/SBM averages
 let currentTab  = 'quarterly'; // 'quarterly' | 'monthly' | 'weekly'
 let seasonYears = 5;      // max/min band window, 0 = all years
-const DEFAULTS = { breast:40, leg:34, wings:17, tenders:9, lag:'0q5' };
+const DEFAULTS = { breast:40, leg:34, wings:17, tenders:9, lag:2 };
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
@@ -492,6 +493,7 @@ async function loadDB() {
     }
 
     db.close();
+    applyLag();
     loadEl.style.display = 'none';
     document.getElementById('note-bar').style.display = 'block';
     // latest quarter
@@ -584,16 +586,28 @@ function updatePartsSlider(changedId) {
   render();
 }
 
-function setLag(lag) {
-  currentLag = lag;
-  document.querySelectorAll('.lag-btn').forEach(b => b.classList.toggle('active', b.dataset.lag === lag));
-  const descs = {
-    'spot': 'Feed Cost = current quarter average (no lag)',
-    '0q5':  'Feed Cost = 50% current quarter + 50% prior quarter',
-    '1q5':  'Feed Cost = 50% prior quarter + 50% two-quarters-ago',
-  };
-  document.getElementById('lag-desc').textContent = descs[lag];
+function onLagChange(v) {
+  grainLag = Math.max(0, Math.min(12, parseInt(v) || 0));
+  document.getElementById('lagInput').value = grainLag;
+  applyLag();
   render();
+}
+
+// Quarterly: the quarter's own fc_spot taken lag/3 quarters back, linearly
+// interpolated between the two neighbouring quarters (so 3m = prior quarter,
+// 1.5m = 50% current + 50% prior). Weekly/monthly: the corn/SBM basket of
+// month M − lag (MONTH_FC), as in the BZ trackers.
+function applyLag() {
+  const k = grainLag / 3, n = Math.floor(k), f = k - n;
+  DB_ROWS.forEach((row, i) => {
+    const a = DB_ROWS[i - n]?.fc_spot, b = DB_ROWS[i - n - 1]?.fc_spot;
+    row.fc_lag = f === 0 ? (a ?? null)
+               : (a != null && b != null) ? (1 - f) * a + f * b : null;
+  });
+  MONTH_FC = {};
+  computeMonthly().forEach(r => {
+    if (r.corn != null && r.sbm != null) MONTH_FC[r.month] = 2.9802 * r.corn + 0.03851 * r.sbm;
+  });
 }
 
 function setView(v) {
@@ -622,7 +636,7 @@ function resetDefaults() {
     document.getElementById(`${id}-val`).textContent = DEFAULTS[id] + '%';
   });
   initSliders();
-  setLag(DEFAULTS.lag);
+  onLagChange(DEFAULTS.lag);
   const chk = document.getElementById('parts-total-check');
   chk.textContent = '✓ Total = 100%'; chk.className = 'total-check ok';
   render();
@@ -644,13 +658,12 @@ function getWeights() {
     wings:   raw.wings   / total,
     tenders: raw.tenders / total,
   } : { breast:.40, leg:.34, wings:.17, tenders:.09 };
-  return { parts: norm, lag: currentLag };
+  return { parts: norm, lag: grainLag };
 }
 
 // ─── COMPUTE SERIES ──────────────────────────────────────────────────────────
 function fcValue(row) {
-  const key = { spot:'fc_spot', '0q5':'fc_0q5', '1q5':'fc_1q5' }[currentLag] || 'fc_0q5';
-  return row[key];
+  return row.fc_lag;
 }
 
 function computeSpread(row, w) {
@@ -664,16 +677,24 @@ function computeSpread(row, w) {
   return (rev - fc) / rev;
 }
 
-// Spread for weekly/monthly aggregates: feed cost rebuilt from raw corn/sbm at
-// SPOT (no quarter lag — the lag concept is quarterly only).
+// Spread for weekly/monthly aggregates. Lag 0: feed cost rebuilt from the
+// row's own corn/sbm; otherwise the monthly basket of month M − lag.
 // FC = 2.9802×Corn($/bu) + 0.03851×SBM($/ton)  (validated == quarterly fc_spot).
-function computeSpreadSpot(row, w) {
+function fineFeedCost(row) {
+  if (grainLag === 0)
+    return (row.corn != null && row.sbm != null) ? 2.9802 * row.corn + 0.03851 * row.sbm : null;
+  const ym = row.month || row.week.slice(0, 7);
+  const d  = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 - grainLag, 1));
+  return MONTH_FC[d.toISOString().slice(0, 7)] ?? null;
+}
+
+function computeSpreadFine(row, w) {
   const { parts } = w;
   if (row.breast == null || row.leg_qtrs == null) return null;
   const partsComp = parts.breast * row.breast + parts.leg  * row.leg_qtrs
                   + parts.wings  * row.wings  + parts.tenders * row.tenders;
-  if (row.corn == null || row.sbm == null || !partsComp || partsComp <= 0) return null;
-  const fc = 2.9802 * row.corn + 0.03851 * row.sbm;
+  const fc = fineFeedCost(row);
+  if (fc == null || !partsComp || partsComp <= 0) return null;
   return (partsComp - fc) / partsComp;
 }
 
@@ -763,7 +784,7 @@ function render() {
     const isMonth = currentTab === 'monthly';
     const key     = isMonth ? 'month' : 'week';
     const agg     = (isMonth ? computeMonthly() : computeWeekly());      // newest-first
-    const asc     = [...agg].reverse().map(r => ({ ...r, spread: computeSpreadSpot(r, w) }));
+    const asc     = [...agg].reverse().map(r => ({ ...r, spread: computeSpreadFine(r, w) }));
     const vis     = filterFineByView(asc, key);
     renderLevelChart(
       vis.filter(r => r.spread != null).map(r => ({ label: r[key], spread: r.spread, gm: null })),
@@ -871,7 +892,7 @@ function renderLevelChart(series, showGm) {
 
   document.getElementById('chart2-stat').innerHTML = showGm
     ? 'Solid = Spread &nbsp;·&nbsp; Dashed = Gross Margin'
-    : `Spread Proxy % — ${currentTab === 'monthly' ? 'monthly' : 'weekly'} (spot feed cost) · GM is quarterly-only`;
+    : `Spread Proxy % — ${currentTab === 'monthly' ? 'monthly' : 'weekly'} (${grainLag}-mo feed cost lag) · GM is quarterly-only`;
   const lvlTitle = document.getElementById('level-title');
   if (lvlTitle) lvlTitle.textContent = showGm
     ? 'Spread Proxy % vs. PPC Gross Mg - U.S. Segment'
@@ -919,7 +940,7 @@ function renderLevelChart(series, showGm) {
 }
 
 // ─── SEASONALITY: monthly spread by calendar year ─────────────────────────────
-// { year: [Jan..Dec] spread values } — spot feed cost, current parts weights.
+// { year: [Jan..Dec] spread values } — selected feed cost lag, current parts weights.
 function buildSeasonality() {
   const w      = getWeights();
   const result = {};
@@ -927,7 +948,7 @@ function buildSeasonality() {
     const year = +r.month.slice(0, 4);
     const mi   = +r.month.slice(5, 7) - 1;
     if (!result[year]) result[year] = new Array(12).fill(null);
-    const s = computeSpreadSpot(r, w);
+    const s = computeSpreadFine(r, w);
     if (s != null) result[year][mi] = +(s * 100).toFixed(2);
   });
   // Drop years with no computable month (e.g. 2016 has parts prices but no feed cost)
@@ -1065,7 +1086,7 @@ function renderTableQuarterly(series) {
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
-    <th>Feed Cost<br><span style="font-weight:400;font-size:9.5px;">(selected lag)</span></th>
+    <th>Feed Cost<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag)</span></th>
     <th>Spread%</th>
     <th>PPC Gross Mg<br><span style="font-weight:400;font-size:9.5px;">U.S. Segment</span></th>
   </tr>`;
@@ -1128,7 +1149,7 @@ function renderMonthlyTable() {
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
-    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(spot FC)</span></th>
+    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag FC)</span></th>
     <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
   </tr>`;
   const rows = computeMonthly();
@@ -1140,7 +1161,7 @@ function renderMonthlyTable() {
     <td>${fmtN(r.tenders)}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
-    <td class="td-spread">${fmtPct(computeSpreadSpot(r, w))}</td>
+    <td class="td-spread">${fmtPct(computeSpreadFine(r, w))}</td>
     <td style="color:#aaa;">${r.n}</td>
   </tr>`).join('');
 }
@@ -1191,7 +1212,7 @@ function renderWeeklyTable() {
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
-    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(spot FC)</span></th>
+    <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag FC)</span></th>
   </tr>`;
   const rows = computeWeekly();
   tbody.innerHTML = rows.map(r => `<tr>
@@ -1202,7 +1223,7 @@ function renderWeeklyTable() {
     <td>${fmtN(r.tenders)}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
-    <td class="td-spread">${fmtPct(computeSpreadSpot(r, w))}</td>
+    <td class="td-spread">${fmtPct(computeSpreadFine(r, w))}</td>
   </tr>`).join('');
 }
 

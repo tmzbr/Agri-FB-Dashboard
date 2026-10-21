@@ -424,7 +424,7 @@ tr:hover td{background:#FFF8F5;}
 
       <div class="param-row">
         <span class="param-name">Lag</span>
-        <input type="number" id="lagInput" min="0" max="6" value="2"
+        <input type="number" id="lagInput" min="0" max="12" value="2"
                class="param-input" oninput="onLagChange(this.value)">
         <span class="param-unit">months</span>
       </div>
@@ -522,7 +522,7 @@ function goBack() {
 
 // ─── GRAIN PARAMETER CONTROLS ────────────────────────────────────────────────
 function onLagChange(v) {
-  grainLag = Math.max(0, Math.min(6, parseInt(v) || 0));
+  grainLag = Math.max(0, Math.min(12, parseInt(v) || 0));
   document.getElementById('lagInput').value = grainLag;
   recomputeAll();
 }
