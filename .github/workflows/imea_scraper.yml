@@ -32,6 +32,10 @@ jobs:
           IMEA_PASS: ${{ secrets.IMEA_PASS }}
         run: python "Agri Monitor/imea/extractor_imea.py"
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        run: python "Hub Export/export_agri_monitor_json.py" imea
+
       - name: Commit do banco
         run: |
           git config user.name  "github-actions[bot]"

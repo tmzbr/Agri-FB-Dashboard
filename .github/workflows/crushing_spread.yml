@@ -67,6 +67,10 @@ jobs:
           fi
 
       # ── 5. Commit do .db atualizado ──────────────────────────────────────
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        run: python "Hub Export/export_agri_monitor_json.py" crushing
+
       - name: Commit crushing_spread.db
         run: |
           git config user.name  "github-actions[bot]"
@@ -74,6 +78,7 @@ jobs:
 
           git add "Agri Monitor/crushing_spread/crushing_spread.db"
           git add "Agri Monitor/crushing_spread/crushing_spread.html"
+          git add "Agri Monitor/crushing_spread/crushing-spread.json"
 
           if git diff --cached --quiet; then
             echo "Nenhuma mudança no banco — nada a commitar."

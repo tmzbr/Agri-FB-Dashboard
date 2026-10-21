@@ -25,10 +25,14 @@ jobs:
       - name: Roda extractor
         run: python "Agri Monitor/secex/extractor_secex.py"
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        run: python "Hub Export/export_agri_monitor_json.py" secex
+
       - name: Commit e push do .db atualizado
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Agri Monitor/secex/secex.db"
+          git add "Agri Monitor/secex/secex.db" "Agri Monitor/secex/secex.json"
           git diff --cached --quiet || git commit -m "chore: atualiza secex.db $(date +'%Y-%m')"
           git push
