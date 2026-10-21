@@ -659,7 +659,7 @@ function buildQuarterly(monthly, qtrDailyVol) {
     const key = `${q}Q${yr2}`;
     if (!map[key]) map[key] = {
       period: key, year: r.year, quarter: q, year_q: r.year * 10 + q,
-      _usd: [], _fx: [], _brl: [], _grain: [], _spread: [], _spreadX: [], _vol: []
+      _usd: [], _fx: [], _brl: [], _grain: [], _spread: [], _spreadX: [], _vol: [], _rev: []
     };
     const e = map[key];
     if (r.secex_usd_kg != null) e._usd.push(r.secex_usd_kg);
@@ -669,6 +669,7 @@ function buildQuarterly(monthly, qtrDailyVol) {
     if (r.spread        != null) e._spread.push(r.spread);
     if (r.spreadX       != null) e._spreadX.push(r.spreadX);
     if (r.vol_tons      != null) e._vol.push(r.vol_tons);
+    if (r.secex_usd_kg != null && r.vol_tons != null) e._rev.push(revUsdMn(r));
   });
   const avg = arr => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
   const sum = arr => arr.length ? arr.reduce((s, v) => s + v, 0) : null;
@@ -685,6 +686,7 @@ function buildQuarterly(monthly, qtrDailyVol) {
       spread:       avg(e._spread),
       spreadX:      avg(e._spreadX),
       vol_tons:       sum(e._vol),
+      rev_usd_mn:     sum(e._rev),   // quarterly revenue = sum of monthly price × volume
       vol_tons_daily: qtrDailyVol[e.period] ?? null,
     }));
 }
@@ -1131,6 +1133,9 @@ function renderSeasonalityChart() {
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function fmt(v, dec=2)    { return v == null ? '<span class="td-na">—</span>' : v.toFixed(dec); }
 function fmtBRL(v, dec=2) { return v == null ? '<span class="td-na">—</span>' : v.toFixed(dec); }
+// Export revenue, USD mn = Export Price (USD/kg) × Volume (t) × 1,000 kg/t ÷ 1e6
+function revUsdMn(r)      { return (r.secex_usd_kg != null && r.vol_tons != null) ? r.secex_usd_kg * r.vol_tons / 1000 : null; }
+function fmtRev(v)        { return v == null ? '<span class="td-na">—</span>' : v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
 function fmtVol(v)        {
   if (v == null) return '<span class="td-na">—</span>';
   return (v / 1000).toFixed(1);
@@ -1155,6 +1160,7 @@ function renderTable() {
       <th style="width:16%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg avg</span></th>
       <th style="width:16%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:16%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
       <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
     body.innerHTML = QUARTERLY.slice().reverse().map(r => `<tr>
@@ -1164,6 +1170,7 @@ function renderTable() {
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${r.cepea_r_kg != null ? (r.cepea_r_kg * 60).toFixed(2) : '<span class="td-na">—</span>'}</td>
       <td>${fmtVol(r.vol_tons)}</td>
+      <td>${fmtRev(r.rev_usd_mn)}</td>
       <td>${fmtSpread(r)}</td>
     </tr>`).join('');
 
@@ -1175,6 +1182,7 @@ function renderTable() {
       <th style="width:15%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:15%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:17%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
       <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
     body.innerHTML = MONTHLY.slice().reverse().map(r => `<tr>
@@ -1184,6 +1192,7 @@ function renderTable() {
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${r.cepea_r_kg != null ? (r.cepea_r_kg * 60).toFixed(2) : '<span class="td-na">—</span>'}</td>
       <td>${fmtVol(r.vol_tons)}</td>
+      <td>${fmtRev(revUsdMn(r))}</td>
       <td>${fmtSpread(r)}</td>
     </tr>`).join('');
 
@@ -1197,6 +1206,7 @@ function renderTable() {
       <th style="width:12%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:12%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
+      <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
       <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/biz day</span></th>
       <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
@@ -1208,6 +1218,7 @@ function renderTable() {
       <td>${fmtBRL(r.secex_brl_kg)}</td>
       <td>${r.cepea_r_kg != null ? (r.cepea_r_kg * 60).toFixed(2) : '<span class="td-na">—</span>'}</td>
       <td>${r.vol_tons != null ? (r.vol_tons / 1000).toFixed(1) : '<span class="td-na">—</span>'}</td>
+      <td>${fmtRev(revUsdMn(r))}</td>
       <td>${r.vol_tons_daily != null ? r.vol_tons_daily.toFixed(0) + (r.biz_days != null ? `<span style="font-size:9px;color:#888;"> (${r.biz_days}d)</span>` : '') : '<span class="td-na">—</span>'}</td>
       <td>${fmtSpread(r)}</td>
     </tr>`).join('');
