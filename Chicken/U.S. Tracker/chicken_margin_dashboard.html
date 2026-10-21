@@ -670,12 +670,16 @@ function fcValue(row) {
   return row.fc_lag;
 }
 
-function computeSpread(row, w) {
+// Parts Composite (cts/lb): parts prices weighted by the Parts Weights sliders.
+function partsComposite(row, w) {
   const { parts } = w;
   if (row.breast == null || row.leg_qtrs == null) return null;
-  const partsComp = parts.breast * row.breast + parts.leg  * row.leg_qtrs
-                  + parts.wings  * row.wings  + parts.tenders * row.tenders;
-  const rev = partsComp;
+  return parts.breast * row.breast + parts.leg  * row.leg_qtrs
+       + parts.wings  * row.wings  + parts.tenders * row.tenders;
+}
+
+function computeSpread(row, w) {
+  const rev = partsComposite(row, w);
   const fc = fcValue(row);
   if (!rev || !fc || rev <= 0) return null;
   return (rev - fc) / rev;
@@ -693,10 +697,7 @@ function fineFeedCost(row) {
 }
 
 function computeSpreadFine(row, w) {
-  const { parts } = w;
-  if (row.breast == null || row.leg_qtrs == null) return null;
-  const partsComp = parts.breast * row.breast + parts.leg  * row.leg_qtrs
-                  + parts.wings  * row.wings  + parts.tenders * row.tenders;
+  const partsComp = partsComposite(row, w);
   const fc = fineFeedCost(row);
   if (fc == null || !partsComp || partsComp <= 0) return null;
   return (partsComp - fc) / partsComp;
@@ -1088,12 +1089,14 @@ function renderTableQuarterly(series) {
     <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
     <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb)</span></th>
+    <th>Parts Composite<br><span style="font-weight:400;font-size:9.5px;">(cts/lb, weighted)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu)</span></th>
     <th>Feed Cost<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag)</span></th>
     <th>Spread%</th>
     <th>PPC Gross Mg<br><span style="font-weight:400;font-size:9.5px;">U.S. Segment</span></th>
   </tr>`;
+  const w     = getWeights();
   const rows  = [...series].reverse();
   tbody.innerHTML = rows.map(r => {
     const spreadClass = r.spread != null ? 'td-spread' : 'td-na';
@@ -1104,6 +1107,7 @@ function renderTableQuarterly(series) {
       <td>${fmtN(r.leg_qtrs)}</td>
       <td>${fmtN(r.wings)}</td>
       <td>${fmtN(r.tenders)}</td>
+      <td style="font-weight:700;">${fmtN(partsComposite(r, w))}</td>
       <td>${fmtN(r.sbm,0)}</td>
       <td>${fmtN(r.corn,2)}</td>
       <td>${fmtN(r.fc,2)}</td>
@@ -1151,6 +1155,7 @@ function renderMonthlyTable() {
     <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Parts Composite<br><span style="font-weight:400;font-size:9.5px;">(cts/lb, weighted)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
     <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag FC)</span></th>
@@ -1163,6 +1168,7 @@ function renderMonthlyTable() {
     <td>${fmtN(r.leg_qtrs)}</td>
     <td>${fmtN(r.wings)}</td>
     <td>${fmtN(r.tenders)}</td>
+    <td style="font-weight:700;">${fmtN(partsComposite(r, w))}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
     <td class="td-spread">${fmtPct(computeSpreadFine(r, w))}</td>
@@ -1214,6 +1220,7 @@ function renderWeeklyTable() {
     <th>Leg Qtrs<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Wings<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
     <th>Tenders<br><span style="font-weight:400;font-size:9.5px;">(cts/lb avg)</span></th>
+    <th>Parts Composite<br><span style="font-weight:400;font-size:9.5px;">(cts/lb, weighted)</span></th>
     <th>Soybean Meal<br><span style="font-weight:400;font-size:9.5px;">($/t avg)</span></th>
     <th>Corn<br><span style="font-weight:400;font-size:9.5px;">($/bu avg)</span></th>
     <th>Spread%<br><span style="font-weight:400;font-size:9.5px;">(${grainLag}-mo lag FC)</span></th>
@@ -1225,6 +1232,7 @@ function renderWeeklyTable() {
     <td>${fmtN(r.leg_qtrs)}</td>
     <td>${fmtN(r.wings)}</td>
     <td>${fmtN(r.tenders)}</td>
+    <td style="font-weight:700;">${fmtN(partsComposite(r, w))}</td>
     <td>${fmtN(r.sbm,0)}</td>
     <td>${fmtN(r.corn,2)}</td>
     <td class="td-spread">${fmtPct(computeSpreadFine(r, w))}</td>
