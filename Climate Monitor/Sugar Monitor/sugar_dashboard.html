@@ -65,6 +65,10 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .view-btn{padding:4px 11px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--gray-mid);font-family:var(--font);transition:all .12s;}
 .view-btn.active{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700;}
 .view-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
+/* selo "NEW" nas variáveis novas; inverte quando o botão está ativo (fundo laranja) */
+.new-badge{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:8px;background:var(--orange);color:#fff;
+  font-size:8.5px;font-weight:800;letter-spacing:.4px;line-height:1.3;vertical-align:1px;}
+.view-btn.active .new-badge{background:#fff;color:var(--orange);}
 .ctrl-sep{width:1px;height:22px;background:var(--border);}
 .main{display:grid;grid-template-columns:minmax(380px,44fr) 56fr;gap:12px;padding:12px 16px;align-items:stretch;}
 .card{background:var(--white);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;min-height:0;}
@@ -188,6 +192,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <span class="view-label">Variable:</span>
   <div class="view-btns">
     <button class="view-btn active" data-var="p" onclick="setVar('p')">🌧️ Rainfall</button>
+    <button class="view-btn" data-var="d" onclick="setVar('d')">☔ Rain days<span class="new-badge">NEW</span></button>
     <button class="view-btn" data-var="t" onclick="setVar('t')">🌡️ Temperature</button>
   </div>
   <div class="ctrl-sep" id="sep-grp"></div>
@@ -210,7 +215,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <span class="view-label">Granularity:</span>
   <div class="view-btns">
     <button class="view-btn active" data-gran="m" onclick="setGran('m')">Monthly</button>
-    <button class="view-btn" data-gran="w" onclick="setGran('w')">Weekly</button>
+    <button class="view-btn" data-gran="w" id="gran-w" onclick="setGran('w')">Weekly</button>
   </div>
   <div class="ctrl-sep"></div>
   <span class="view-label">History:</span>
@@ -251,7 +256,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
 <div class="note-bar">
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
   <em>My mills</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two points less than ~50 km apart legitimately share the same series.
-  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total. Mill location is a proxy for the surrounding cane-supply region. A multi-mill average has a naturally narrow band (spatial cancellation) — select a single mill to see the real spread.
+  Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across mills, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month. Mill location is a proxy for the surrounding cane-supply region. A multi-mill average has a naturally narrow band (spatial cancellation) — select a single mill to see the real spread.
 </div>
 
 <!-- ── editor de clusters do usuário ── -->
@@ -677,7 +682,13 @@ async function fetchLive(pts){
 }
 
 /* ── CONTROLES ── */
-function setVar(v){STATE.vr=v;act("var",v);render();}
+/* Rain days só existe no mensal (0 a 28–31 dias): contagem por janela de 7
+   dias não é uma leitura natural de "dias de chuva", então o Weekly some e,
+   se estava ativo, volta para Monthly. */
+function setVar(v){STATE.vr=v;act("var",v);
+  document.getElementById("gran-w").style.display=v==="d"?"none":"";
+  if(v==="d"&&STATE.gran!=="m"){STATE.gran="m";act("gran","m");}
+  render();}
 async function setGrp(v){
   STATE.grp=v;act("grp",v);
   /* A série do cluster é buscada uma vez e fica em MINE.byId[].series; trocar
@@ -727,12 +738,20 @@ function bucketize(days){
   else{let cur=null;days.forEach(dy=>{if(!cur||cur.m!==dy.m){cur={m:dy.m,label:MES[dy.m-1],days:[]};bk.push(cur);}cur.days.push(dy);});}
   return bk;
 }
+/* "Rain days" (vr="d") não tem série própria: sai da chuva diária ("p"),
+   virando 0/1 pelo limiar de dia chuvoso da OMM (≥1 mm — abaixo disso é
+   garoa/ruído de reanálise). Somado no bucket, dá nº de dias com chuva no
+   mês; num grupo, a média ponderada dos 0/1 vira a fração de usinas com
+   chuva, e a soma, o nº médio de dias chuvosos. */
+const RAIN_DAY_MM=1;
+const srcVar=vr=>vr==="d"?"p":vr;
+const dayVal=(v,vr)=>v==null?null:vr==="d"?(v>=RAIN_DAY_MM?1:0):v;
 function aggHist(days,y,vr,sel,wtd){
   const W=p=>wtd?(p.w||0):1;
   if(vr==="t"){let s=0,w=0;for(const dy of days)for(const p of sel){const a=p.h.t[y];const v=a?a[dy.idx]:null;if(v!=null){s+=v*W(p);w+=W(p);}}return w?s/w:null;}
-  let tot=0,any=false;for(const dy of days){let s=0,w=0;for(const p of sel){const a=p.h.p[y];const v=a?a[dy.idx]:null;if(v!=null){s+=v*W(p);w+=W(p);}}if(w){tot+=s/w;any=true;}}return any?tot:null;
+  let tot=0,any=false;for(const dy of days){let s=0,w=0;for(const p of sel){const a=p.h.p[y];const v=dayVal(a?a[dy.idx]:null,vr);if(v!=null){s+=v*W(p);w+=W(p);}}if(w){tot+=s/w;any=true;}}return any?tot:null;
 }
-function curVal(p,idx,vr){const a=p.h[vr][STATE.curYear];let v=a?a[idx]:null;if(v==null&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][vr];return v;}
+function curVal(p,idx,vr){const sv=srcVar(vr),a=p.h[sv][STATE.curYear];let v=a?a[idx]:null;if(v==null&&p.liveIdx&&p.liveIdx[idx])v=p.liveIdx[idx][sv];return dayVal(v,vr);}
 function aggCur(days,vr,sel,wtd){
   if(!days.length)return null;
   const W=p=>wtd?(p.w||0):1;
@@ -752,15 +771,41 @@ function computeSeries(sel,wtd){
   const curObs=buckets.map(b=>{const obs=b.days.filter(d=>!d.future);
     return obs.length?aggCur(obs,vr,sel,wtd):null;});
   const bucketMonth=buckets.map(b=>b.m!=null?b.m:b.days[Math.floor(b.days.length/2)].m);
-  return {labels,yearSeries,bandMin,bandMax,mean,curObs,yrs,bucketMonth};
+  /* Mês/semana corrente pela metade: em chuva (mm e dias) o total parcial não se
+     compara com o do bucket inteiro — "14 de 31 dias" sempre pareceria seco.
+     Recalcula o histórico só com os mesmos dias (até o último dia observado
+     do ano corrente, que pode ser ontem se o Open-Meteo ainda não fechou hoje).
+     As linhas do gráfico seguem com o bucket cheio (é o formato da sazonalidade);
+     o MTD vai para tabela, stats e um marcador no ponto corrente. */
+  let mtd=null;
+  if(vr!=="t"){
+    const i=buckets.findIndex(b=>b.days.some(d=>d.future)&&b.days.some(d=>!d.future));
+    if(i>=0){
+      const b=buckets[i];let last=null;
+      for(const d of b.days)if(!d.future&&sel.some(p=>curVal(p,d.idx,vr)!=null))last=d;
+      if(last){
+        const md=b.days.filter(d=>d.idx<=last.idx);
+        const vv=yrs.map(y=>aggHist(md,y,vr,sel,wtd)).filter(v=>v!=null);
+        if(vv.length)mtd={i,mean:vv.reduce((a,c)=>a+c,0)/vv.length,min:Math.min(...vv),max:Math.max(...vv),
+          label:dm(md[0].date)+"–"+dm(last.date)};
+      }
+    }
+  }
+  return {labels,yearSeries,bandMin,bandMax,mean,curObs,yrs,bucketMonth,mtd};
 }
 function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null)return k;return -1;}
 
 /* ── TABELA ── */
 function groupPts(){return STATE.pts.filter(p=>p.grp===STATE.grp&&p.h);}
-function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};}
-const fmtV=v=>v==null?"—":(STATE.vr==="t"?v.toFixed(1)+"°":Math.round(v)+"mm");
-function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const t=STATE.vr==="t"?Math.max(-1,Math.min(1,d/3)):Math.max(-1,Math.min(1,d/40));
+/* base de comparação do ponto corrente: MTD se o bucket está pela metade */
+function cmpAt(S,i){
+  if(S.mtd&&S.mtd.i===i)return{mean:S.mtd.mean,min:S.mtd.min,max:S.mtd.max,lbl:S.labels[i]+", "+S.mtd.label};
+  return{mean:S.mean[i],min:S.bandMin[i],max:S.bandMax[i],lbl:S.labels[i]};
+}
+function summary(sel,wtd){const S=computeSeries(sel,wtd),i=lastObsIdx(S);return i<0?{cur:null,mean:null,min:null,max:null,lbl:"—"}:{cur:S.curObs[i],...cmpAt(S,i)};}
+/* dias de chuva: inteiro numa usina só, 1 casa na média de grupo (fracionário) */
+const fmtV=v=>v==null?"—":(STATE.vr==="t"?v.toFixed(1)+"°":STATE.vr==="d"?(Math.abs(v-Math.round(v))<.05?Math.round(v):v.toFixed(1))+"d":Math.round(v)+"mm");
+function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const sc=STATE.vr==="t"?3:STATE.vr==="d"?(STATE.gran==="m"?5:2):40,t=Math.max(-1,Math.min(1,d/sc));
   const warm=STATE.vr==="t"?t>=0:t<0,mag=Math.abs(t),al=0.12+0.5*mag;
   const c=warm?"192,57,43":"44,111,181";return{bg:`rgba(${c},${al})`,fg:mag>.55?"#fff":(warm?"#7a1f15":"#1c4870")};}
 
@@ -770,10 +815,10 @@ function vsColor(d){if(d==null)return{bg:"#f4f4f4",fg:"#bbb"};const t=STATE.vr==
 function lastDataIdx(){
   let last=-1;
   for(const p of groupPts()){
-    const a=p.h&&p.h[STATE.vr]?p.h[STATE.vr][STATE.curYear]:null;
+    const sv=srcVar(STATE.vr),a=p.h&&p.h[sv]?p.h[sv][STATE.curYear]:null;
     for(let i=365;i>=0;i--){
       let v=a?a[i]:null;
-      if(v==null&&p.liveIdx&&p.liveIdx[i])v=p.liveIdx[i][STATE.vr];
+      if(v==null&&p.liveIdx&&p.liveIdx[i])v=p.liveIdx[i][sv];
       if(v!=null){if(i>last)last=i;break;}
     }
   }
@@ -837,7 +882,7 @@ function renderChart(){
   const sel=selEntityPts();if(!sel.length){if(STATE.chart){STATE.chart.destroy();STATE.chart=null;}return;}
   const wtd=STATE.entity==="wavg", isGroup=STATE.entity==="group"||wtd;
   const head=wtd?`${GRPLBL[STATE.grp]} — weighted by ${WLBL[STATE.grp]} (${sel.length})`:isGroup?`Average of ${sel.length} points · ${GRPLBL[STATE.grp]}`:sel[0].nome+" · "+sel[0].sub;
-  document.getElementById("chart-title").textContent=(STATE.vr==="t"?"Mean temperature":"Rainfall")+" — "+head;
+  document.getElementById("chart-title").textContent=(STATE.vr==="t"?"Mean temperature":STATE.vr==="d"?`Rain days (≥${RAIN_DAY_MM} mm)`:"Rainfall")+" — "+head;
   document.getElementById("chart-sub").textContent=`Year ${STATE.curYear} · ${STATE.gran==="m"?"monthly":"weekly"} · ${STATE.yrs}-year history · ${MODELLBL[STATE.model]}`+(isGroup?" · narrow band (spatial average) — click a mill":"");
   const S=computeSeries(sel,wtd);drawChart(S);drawLegend(S);drawStats(S);
 }
@@ -854,12 +899,13 @@ function drawLegend(S){
   document.getElementById("chart-legend").innerHTML=
   `<span><i class="ln" style="border-color:var(--orange);width:20px"></i>${STATE.curYear}</span>
    <span><i class="ln" style="border-color:#999;border-top-style:dashed"></i>Mean ${S.yrs[0]}–${S.yrs[S.yrs.length-1]}</span>
-   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail;}
-function drawStats(S){const i=lastObsIdx(S);const cur=i>=0?S.curObs[i]:null,mean=i>=0?S.mean[i]:null,mn=i>=0?S.bandMin[i]:null,mx=i>=0?S.bandMax[i]:null;
+   <span><i class="sw" style="background:rgba(120,120,120,.18)"></i>Min–max range</span>`+tail+
+  (S.mtd?`<span><span style="color:#555;font-size:12px;line-height:1">◇</span>Mean same days (${S.mtd.label})</span>`:"");}
+function drawStats(S){const i=lastObsIdx(S),c=i>=0?cmpAt(S,i):{};const cur=i>=0?S.curObs[i]:null,mean=i>=0?c.mean:null,mn=i>=0?c.min:null,mx=i>=0?c.max:null;
   const d=(cur!=null&&mean!=null)?cur-mean:null,dc=d==null?"var(--gray-mid)":(STATE.vr==="t"?(d>0?"var(--red)":"var(--blue)"):(d>0?"var(--blue)":"var(--brown)"));
   document.getElementById("stat-row").innerHTML=
-   `<div class="stat"><span class="k">Current (${i>=0?S.labels[i]:"—"})</span><span class="v" style="color:var(--orange)">${fmtV(cur)}</span></div>
-    <div class="stat"><span class="k">Avg ${STATE.yrs}y</span><span class="v">${fmtV(mean)}</span></div>
+   `<div class="stat"><span class="k">Current (${i>=0?c.lbl:"—"})</span><span class="v" style="color:var(--orange)">${fmtV(cur)}</span></div>
+    <div class="stat"><span class="k">Avg ${STATE.yrs}y${S.mtd&&S.mtd.i===i?" · same days":""}</span><span class="v">${fmtV(mean)}</span></div>
     <div class="stat"><span class="k">vs avg</span><span class="v" style="color:${dc}">${d==null?"—":(d>0?"+":"−")+fmtV(Math.abs(d))}</span></div>
     <div class="stat"><span class="k">Historical range</span><span class="v" style="font-size:14px">${fmtV(mn)} – ${fmtV(mx)}</span></div>`;}
 function drawChart(S){
@@ -874,18 +920,21 @@ function drawChart(S){
     if(ensoOn)d.segment={borderColor:ctx=>{const a=RONI[yr],mo=S.bucketMonth[ctx.p0DataIndex];return a?ensoColor(a[mo-1],STATE.enso,yr,mo):undefined;}};
     ds.push(d);});
   ds.push({label:"Mean "+yl,data:S.mean,borderColor:"#888",borderWidth:1.6,borderDash:[5,3],pointRadius:0,fill:false,order:5,_to:3,tension:.3,spanGaps:true});
+  if(S.mtd){const at=a=>S.labels.map((_,k)=>k===S.mtd.i?a:null);
+    ds.push({label:"Mean "+S.mtd.label,data:at(S.mtd.mean),borderColor:"#555",backgroundColor:"#fff",borderWidth:1.6,pointStyle:"rectRot",pointRadius:5,pointHoverRadius:6,showLine:false,order:2,_to:2});
+    ds.push({label:"Range "+S.mtd.label,data:at(S.mtd.max),_min:S.mtd.min,borderColor:"transparent",pointRadius:0,showLine:false,order:2,_to:2.5});}
   ds.push({label:String(STATE.curYear),data:S.curObs,borderColor:"#FF5500",borderWidth:2.8,pointRadius:STATE.gran==="m"?2.5:0,fill:false,order:1,_to:1,tension:.25,spanGaps:true});
   if(!Chart.Tooltip.positioners.awayCursor)Chart.Tooltip.positioners.awayCursor=function(items,ev){const a=this.chart.chartArea;if(!a)return ev;const midX=(a.left+a.right)/2;return{x:ev.x<midX?a.right:a.left,y:a.top+2};};
   STATE.chart=new Chart(document.getElementById("chart"),{type:"line",data:{labels:S.labels,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},animation:false,
     plugins:{legend:{display:false},tooltip:{position:"awayCursor",caretSize:0,filter:it=>!it.dataset._skip&&it.parsed.y!=null,itemSort:(a,b)=>(a.dataset._to||9)-(b.dataset._to||9),callbacks:{
-      label:c=>`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
+      label:c=>c.dataset._min!=null?`${c.dataset.label}: ${fmtV(c.dataset._min)} – ${fmtV(c.parsed.y)}`:`${c.dataset.label}: ${fmtV(c.parsed.y)}`,
       labelColor:c=>{const ds=c.dataset,bc=ds.borderColor||"#888";
         if(ensoOn&&/^\d{4}$/.test(ds.label||"")&&(+ds.label)!==STATE.curYear){const mo=S.bucketMonth[c.dataIndex],col=ensoColor(RONI[+ds.label]&&RONI[+ds.label][mo-1],STATE.enso,+ds.label,mo)||"rgba(120,120,120,.5)";return{borderColor:col,backgroundColor:col,borderWidth:2};}
         return{borderColor:bc,backgroundColor:bc,borderWidth:2};}
     }}},
     scales:{x:{ticks:{maxTicksLimit:STATE.gran==="m"?12:14,font:{size:9},color:"#999"},grid:{display:false}},
-            y:{title:{display:true,text:STATE.vr==="t"?"°C":"mm",font:{size:10},color:"#888"},ticks:{font:{size:9},color:"#999"},grid:{color:"#f2f2f2"}}}}});
+            y:{title:{display:true,text:STATE.vr==="t"?"°C":STATE.vr==="d"?"days with rain":"mm",font:{size:10},color:"#888"},...(STATE.vr==="d"?{min:0,max:31}:{}),ticks:{font:{size:9},color:"#999",...(STATE.vr==="d"?{stepSize:5,callback:v=>v%5===0?v:""}:{})},grid:{color:"#f2f2f2"}}}}});
 }
 function goBack(){if(window.parent&&window.parent!==window)window.parent.postMessage({action:"closeDash"},"*");else history.back();}
 boot();
