@@ -82,6 +82,14 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 
 /* ── ORANGE RULE ── */
 .orange-rule{height:3px;background:var(--orange);flex-shrink:0;}
+/* ── SUB-TABS (Exports | Domestic) ── */
+.subtab-bar{background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:flex-end;padding:0 20px;height:38px;gap:4px;flex-shrink:0;}
+.subtab{padding:9px 16px 8px;font-size:12.5px;font-weight:600;color:var(--gray-mid);
+  cursor:pointer;border:none;background:none;font-family:var(--font);
+  border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.subtab:hover:not(.active){color:var(--gray-dark);}
+.subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
 
 /* ── VIEW CONTROLS — FIX #1: view buttons pushed to RIGHT ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
@@ -282,6 +290,11 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-latest">Latest: <strong id="latest-q">—</strong></div>
 </div>
 <div class="orange-rule"></div>
+
+<!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
+<div class="subtab-bar">
+  <button class="subtab active">Domestic</button>
+</div>
 
 <!-- CONTROLS — PERIOD (granularity, drives charts + table) on the left, VIEW on the right -->
 <div class="controls-bar">
