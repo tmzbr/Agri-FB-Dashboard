@@ -133,6 +133,12 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .param-input{width:40px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;
   font-size:12px;font-family:var(--font);text-align:center;color:var(--black);}
 .param-input:focus{outline:none;border-color:var(--orange);}
+/* Feed cost lag — same buttons as the U.S. trackers' Feed Cost Lag */
+.lag-row{display:flex;gap:5px;margin-bottom:7px;}
+.lag-btn{flex:1;padding:5px 4px;border:1.5px solid var(--border);border-radius:4px;
+  font-size:11px;font-family:var(--font);cursor:pointer;
+  background:none;color:var(--gray-mid);transition:all .15s;text-align:center;}
+.lag-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
 .param-unit{font-size:11px;color:var(--gray-mid);margin-left:4px;}
 .params-reset{margin-top:14px;padding:7px 0;width:100%;
   border:1px solid var(--orange);border-radius:4px;background:none;
@@ -408,11 +414,10 @@ tr:hover td{background:#FFF8F5;}
 
       <div class="params-section-label">Price Lag</div>
 
-      <div class="param-row">
-        <span class="param-name">Lag</span>
-        <input type="number" id="lagInput" min="0" max="12" value="6"
-               class="param-input" oninput="onLagChange(this.value)">
-        <span class="param-unit">months</span>
+      <div class="lag-row">
+        <button class="lag-btn" data-lag="0" onclick="onLagChange(0)">Spot</button>
+        <button class="lag-btn" data-lag="3" onclick="onLagChange(3)">3m</button>
+        <button class="lag-btn active" data-lag="6" onclick="onLagChange(6)">6m</button>
       </div>
 
       <button class="params-reset" onclick="resetParams()">↺ &nbsp;Reset to default</button>
@@ -501,8 +506,8 @@ function goBack() {
 
 // ─── GRAIN PARAMETER CONTROLS ────────────────────────────────────────────────
 function onLagChange(v) {
-  grainLag = Math.max(0, Math.min(12, parseInt(v) || 0));
-  document.getElementById('lagInput').value = grainLag;
+  grainLag = v;   // 0 (spot) | 3 | 6 months
+  document.querySelectorAll('.lag-btn').forEach(b => b.classList.toggle('active', +b.dataset.lag === grainLag));
   recomputeAll();
 }
 
@@ -521,9 +526,8 @@ function updateBasketDesc() {
 }
 
 function resetParams() {
-  grainLag   = 6;
   cornWeight = 0.66;
-  document.getElementById('lagInput').value  = 6;
+  onLagChange(6);
   document.getElementById('cornSlider').value = 66;
   document.getElementById('soySlider').value  = 34;
   document.getElementById('cornPct').textContent = '66%';
@@ -624,7 +628,17 @@ function recomputeAll() {
   WEEKLY     = recomputeWeekly();
   QUARTERLY  = buildQuarterly(MONTHLY, dvol.qtr);
   SEASONALITY = buildSeasonality(MONTHLY);
+  updateLatestSpread();
   render();
+}
+
+// Header "Latest monthly / Spread" — follows the grain lag and basket weights.
+function updateLatestSpread() {
+  const latestM = MONTHLY.filter(r => r.spreadX != null).slice(-1)[0];
+  if (latestM) {
+    document.getElementById('latest-period').textContent = latestM.period;
+    document.getElementById('latest-spread').textContent = latestM.spreadX.toFixed(2) + '×';
+  }
 }
 
 // ─── QUARTERLY AGGREGATION ───────────────────────────────────────────────────
@@ -745,12 +759,7 @@ async function loadDB() {
 
     loadEl.style.display = 'none';
 
-    const latestM = MONTHLY.filter(r => r.spreadX != null).slice(-1)[0];
-    if (latestM) {
-      document.getElementById('latest-period').textContent = latestM.period;
-      document.getElementById('latest-spread').textContent = latestM.spreadX.toFixed(2) + '×';
-    }
-
+    updateLatestSpread();
     updateCurrentPrices();
     render();
   } catch(e) {
@@ -1124,7 +1133,7 @@ function fmtSpread(r) {
 function renderTable() {
   const head = document.getElementById('table-head');
   const body = document.getElementById('table-body');
-  const lagNote = `BRL/bag (${grainLag}-mo lag)`;
+  const lagNote = `BRL/bag (${grainLag ? grainLag + '-mo lag' : 'spot'})`;
 
   if (currentTab === 'quarterly') {
     head.innerHTML = `<tr>

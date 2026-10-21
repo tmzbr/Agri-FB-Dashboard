@@ -114,6 +114,13 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .ptype-btn.active[data-mode="integrated"]{background:var(--int-color);color:#fff;border-color:var(--int-color);}
 .ptype-btn.active[data-mode="non-integrated"]{background:var(--nint-color);color:#fff;border-color:var(--nint-color);}
 .ptype-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
+/* Feed cost lag — same buttons as Chicken's Feed Cost Lag */
+.lag-row{display:flex;gap:5px;margin-bottom:4px;}
+.lag-btn{flex:1;padding:5px 4px;border:1.5px solid var(--border);border-radius:4px;
+  font-size:11px;font-family:var(--font);cursor:pointer;
+  background:none;color:var(--gray-mid);transition:all .15s;text-align:center;}
+.lag-btn.active{background:var(--orange);color:white;border-color:var(--orange);font-weight:700;}
+.lag-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
 
 /* ── MAIN LAYOUT ── */
 .main-wrap{display:flex;flex-direction:column;}
@@ -326,6 +333,16 @@ tr:hover td{background:#FFF8F5;}
       </div>
       <div class="ptype-desc" id="ptype-desc"></div>
 
+      <div id="lag-block">
+        <div class="wp-section">Feed Cost Lag</div>
+        <div class="lag-row">
+          <button class="lag-btn" data-lag="spot" onclick="setLag('spot')">Spot</button>
+          <button class="lag-btn" data-lag="3m" onclick="setLag('3m')">3m</button>
+          <button class="lag-btn active" data-lag="6m" onclick="setLag('6m')">6m</button>
+        </div>
+        <div class="lag-desc" id="lag-desc"></div>
+      </div>
+
       <div class="wp-section">Latest Quarter</div>
       <div class="info-row">
         <span class="info-label">Carcass Cutout</span>
@@ -336,7 +353,7 @@ tr:hover td{background:#FFF8F5;}
         <span class="info-val" id="info-hog">—</span>
       </div>
       <div class="info-row" id="row-feedgrain">
-        <span class="info-label">Feed Grain (6m)</span>
+        <span class="info-label" id="info-fg-label">Feed Grain (6m)</span>
         <span class="info-val" id="info-fg">—</span>
       </div>
       <div class="info-row" style="margin-top:4px;border-top:2px solid var(--border);padding-top:6px;">
@@ -377,7 +394,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="note-bar" id="note-bar">
     <em>Integrated spread</em>: (Carcass ÷ 45.36) ÷ (Feed Grain USD/kg × 5.8) &nbsp;·&nbsp;
     <em>Non-Integrated spread</em>: (Carcass ÷ Hog Price) ÷ 45.36 &nbsp;·&nbsp;
-    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (6-month lag, ⅔ corn + ⅓ SBM) · FCR: 5.8×
+    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (Spot / 3m / 6m lag, ⅔ corn + ⅓ SBM) · FCR: 5.8×
   </div>
 
 </div><!-- main-wrap -->
@@ -390,6 +407,13 @@ let charts      = {};
 let currentMode = 'integrated';   // 'integrated' | 'non-integrated'
 let currentView = '3y';           // 'all' | '3y' | '1y'
 let currentTab  = 'quarterly';    // 'quarterly' | 'monthly' | 'weekly'
+let currentLag  = '6m';           // 'spot' | '3m' | '6m' — feed cost lag
+
+const LAG_DESCS = {
+  'spot': 'Feed Cost = current quarter average (no lag)',
+  '3m':   'Feed Cost = prior quarter average (≈3-month lag)',
+  '6m':   'Feed Cost = two-quarters-ago average (≈6-month lag)',
+};
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function goBack() {
@@ -415,8 +439,10 @@ async function loadDB() {
 
     const stmt = db.exec(`
       SELECT quarter, year_q, year, q,
-             carcass, hog_price, corn, sbm, fc_spot, fc_6m, feed_grain_6m,
-             spread_integrated, spread_non_integrated
+             carcass, hog_price, corn, sbm, fc_spot, fc_6m,
+             feed_grain_spot, feed_grain_3m, feed_grain_6m,
+             spread_integrated_spot, spread_integrated_3m,
+             spread_integrated AS spread_integrated_6m, spread_non_integrated
       FROM quarterly ORDER BY year_q ASC
     `);
     if (!stmt.length) throw new Error("Empty database");
@@ -429,7 +455,9 @@ async function loadDB() {
     // granularities support both modes and show the grain cost.
     const wstmt = db.exec(`
       SELECT report_date, carcass, hog_price, corn, sbm, fc_spot,
-             feed_grain_6m, spread_integrated, spread_non_integrated
+             feed_grain_spot, feed_grain_3m, feed_grain_6m,
+             spread_integrated_spot, spread_integrated_3m,
+             spread_integrated AS spread_integrated_6m, spread_non_integrated
       FROM weekly ORDER BY report_date ASC
     `);
     if (wstmt.length) {
@@ -440,6 +468,7 @@ async function loadDB() {
     }
 
     db.close();
+    applyLag();
     loadEl.style.display = 'none';
     document.getElementById('note-bar').style.display = 'block';
 
@@ -458,6 +487,23 @@ function setMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.ptype-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
+  updateLatestLabel();
+  render();
+}
+
+// Point every row's feed_grain / spread_integrated at the selected lag's
+// columns, so the rest of the page reads one field whatever the lag.
+function applyLag() {
+  for (const r of [...DB_ROWS, ...WEEKLY_ROWS]) {
+    r.feed_grain        = r['feed_grain_' + currentLag];
+    r.spread_integrated = r['spread_integrated_' + currentLag];
+  }
+}
+
+function setLag(lag) {
+  currentLag = lag;
+  document.querySelectorAll('.lag-btn').forEach(b => b.classList.toggle('active', b.dataset.lag === lag));
+  applyLag();
   updateLatestLabel();
   render();
 }
@@ -578,7 +624,7 @@ function updateInfoPanel() {
   const isInt = currentMode === 'integrated';
 
   document.getElementById('ptype-desc').textContent = isInt
-    ? 'Integrated producers own hog farms — cost is the feed-grain basket (6-month lag). Spread = Carcass ÷ Feed Grain (×).'
+    ? 'Integrated producers own hog farms — cost is the feed-grain basket. Spread = Carcass ÷ Feed Grain (×).'
     : 'Non-integrated packers buy live hogs on the open market. Spread = Carcass ÷ Hog Price (USD/kg packing margin).';
 
   document.getElementById('top-sub').innerHTML = isInt
@@ -587,6 +633,9 @@ function updateInfoPanel() {
 
   // Feed grain row is only meaningful in integrated mode
   document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
+  document.getElementById('lag-block').style.display     = isInt ? '' : 'none';
+  document.getElementById('lag-desc').textContent        = LAG_DESCS[currentLag];
+  document.getElementById('info-fg-label').textContent   = `Feed Grain (${currentLag})`;
 
   // Latest quarter for the active mode
   const latest = latestRowForMode();
@@ -596,7 +645,7 @@ function updateInfoPanel() {
     document.getElementById('info-hog').textContent =
       latest.hog_price != null ? `$${latest.hog_price.toFixed(2)}/cwt` : '—';
     document.getElementById('info-fg').textContent =
-      latest.feed_grain_6m != null ? `$${latest.feed_grain_6m.toFixed(4)}/kg` : '—';
+      latest.feed_grain != null ? `$${latest.feed_grain.toFixed(4)}/kg` : '—';
 
     const sv = getSpread(latest);
     const infoSpread = document.getElementById('info-spread');
@@ -799,7 +848,7 @@ function aggRow(rows, extra) {
     hog_price:             avgField(rows,'hog_price'),
     corn:                  avgField(rows,'corn'),
     sbm:                   avgField(rows,'sbm'),
-    feed_grain_6m:         avgField(rows,'feed_grain_6m'),
+    feed_grain:            avgField(rows,'feed_grain'),
     spread_integrated:     avgField(rows,'spread_integrated'),
     spread_non_integrated: avgField(rows,'spread_non_integrated'),
     ...extra,
@@ -861,7 +910,7 @@ function renderTable() {
     <th style="text-align:left;">Quarter</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
-    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg (6m lag)</span></th>
+    <th>Feed Grain ${currentLag}<br><span style="font-weight:400;font-size:9.5px;">USD/kg (${currentLag === 'spot' ? 'no' : currentLag} lag)</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
                 : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg)</span>'}</th>
   </tr>`;
@@ -877,7 +926,7 @@ function renderTable() {
       <td>${r.quarter}</td>
       <td>${fmtN(r.carcass)}</td>
       <td>${fmtN(r.hog_price)}</td>
-      <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+      <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
       <td>${spreadFmt}</td>
     </tr>`;
   }).join('');
@@ -890,7 +939,7 @@ function renderMonthlyTable() {
     <th style="text-align:left;">Month</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
+    <th>Feed Grain ${currentLag}<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
                 : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
     <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
@@ -901,7 +950,7 @@ function renderMonthlyTable() {
     <td>${r.month}</td>
     <td>${fmtN(r.carcass)}</td>
     <td>${fmtN(r.hog_price)}</td>
-    <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+    <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
     <td>${fineSpreadCell(r)}</td>
     <td style="color:#aaa;">${r.n}</td>
   </tr>`).join('');
@@ -914,7 +963,7 @@ function renderWeeklyTable() {
     <th style="text-align:left;">Week of (Mon)</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
-    <th>Feed Grain 6m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
+    <th>Feed Grain ${currentLag}<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
     <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
                 : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
   </tr>`;
@@ -924,7 +973,7 @@ function renderWeeklyTable() {
     <td>${r.week}</td>
     <td>${fmtN(r.carcass)}</td>
     <td>${fmtN(r.hog_price)}</td>
-    <td>${r.feed_grain_6m != null ? r.feed_grain_6m.toFixed(4) : '<span class="td-na">—</span>'}</td>
+    <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
     <td>${fineSpreadCell(r)}</td>
   </tr>`).join('');
 }

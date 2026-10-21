@@ -102,6 +102,10 @@ CORN_SHARE      = 2 / 3
 SBM_SHARE       = 1 / 3
 HOG_FCR         = 5.8      # kg feed per kg carcass (for spread_integrated)
 GRAIN_LAG_Q     = 2        # quarters lag (≈6 months) for fc_6m
+# Feed-cost lags the dashboard lets the user pick (suffix → quarters of lag).
+# '6m' is the default and keeps the legacy column names (feed_grain_6m /
+# spread_integrated); the others get their own _spot / _3m columns.
+GRAIN_LAGS      = {"spot": 0, "3m": 1, "6m": GRAIN_LAG_Q}
 
 # Feed-grain basket, taken verbatim from extractor_chicken.py's fc_spot so both
 # trackers share one definition:  fc_spot = 2.9802·corn_$/bu + 0.03851·sbm_$/ton
@@ -798,6 +802,13 @@ def init_db(conn):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(quarterly)").fetchall()}
     if "feed_grain_6m" not in cols:
         conn.execute("ALTER TABLE quarterly ADD COLUMN feed_grain_6m REAL")
+    # ── Migration: spot / 3m feed-cost variants (dashboard lag selector) ──
+    for table in ("weekly", "quarterly"):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col in ("feed_grain_spot", "feed_grain_3m",
+                    "spread_integrated_spot", "spread_integrated_3m"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} REAL")
     conn.commit()
 
 
@@ -1386,7 +1397,9 @@ def materialise_quarterly(conn):
     ts = datetime.now().isoformat(timespec="seconds")
     rows = conn.execute(
         "SELECT report_date, carcass, hog_price, corn, sbm, fc_spot, "
-        "       feed_grain_6m, spread_integrated, spread_non_integrated "
+        "       feed_grain_6m, spread_integrated, spread_non_integrated, "
+        "       feed_grain_spot, feed_grain_3m, "
+        "       spread_integrated_spot, spread_integrated_3m "
         "FROM weekly ORDER BY report_date"
     ).fetchall()
 
@@ -1394,7 +1407,8 @@ def materialise_quarterly(conn):
     from collections import defaultdict
     qdata = defaultdict(lambda: {k: [] for k in
         ["carcass","hog_price","corn","sbm","fc_spot",
-         "feed_grain_6m","spread_int","spread_nint"]})
+         "feed_grain_6m","spread_int","spread_nint",
+         "feed_grain_spot","feed_grain_3m","spread_int_spot","spread_int_3m"]})
 
     for r in rows:
         dt  = r[0]
@@ -1413,6 +1427,10 @@ def materialise_quarterly(conn):
         if r[6] is not None and r[6] > 0: d["feed_grain_6m"].append(r[6])
         if r[7] is not None: d["spread_int"].append(r[7])
         if r[8] is not None: d["spread_nint"].append(r[8])
+        if r[9]  is not None and r[9]  > 0: d["feed_grain_spot"].append(r[9])
+        if r[10] is not None and r[10] > 0: d["feed_grain_3m"].append(r[10])
+        if r[11] is not None: d["spread_int_spot"].append(r[11])
+        if r[12] is not None: d["spread_int_3m"].append(r[12])
 
     def avg(lst): return sum(lst)/len(lst) if lst else None
 
@@ -1443,18 +1461,28 @@ def materialise_quarterly(conn):
         # spread_non_integrated = (Carcass/Hog) / 45.36
         spread_int  = ((carcass / 45.36) / (feed_grain_6m * HOG_FCR)) if (carcass and feed_grain_6m) else avg(d["spread_int"])
         spread_nint = ((carcass / hog_price) / 45.36)                  if (carcass and hog_price)     else avg(d["spread_nint"])
+        # Same spread at the other selectable feed-cost lags (spot / 3m).
+        lag_cols = {}
+        for sfx in ("spot", "3m"):
+            fg = avg(d[f"feed_grain_{sfx}"])
+            sp = ((carcass / 45.36) / (fg * HOG_FCR)) if (carcass and fg) else avg(d[f"spread_int_{sfx}"])
+            lag_cols[f"feed_grain_{sfx}"]        = round(fg, 6) if fg else None
+            lag_cols[f"spread_integrated_{sfx}"] = round(sp, 4) if sp else None
 
         conn.execute("""
             INSERT OR REPLACE INTO quarterly
             (quarter, year_q, year, q, carcass, hog_price, corn, sbm,
-             fc_spot, fc_6m, feed_grain_6m, spread_integrated, spread_non_integrated, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             fc_spot, fc_6m, feed_grain_6m, spread_integrated, spread_non_integrated, updated_at,
+             feed_grain_spot, feed_grain_3m, spread_integrated_spot, spread_integrated_3m)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (label, yq, yr, q, carcass, hog_price,
               avg(d["corn"]), avg(d["sbm"]), avg(d["fc_spot"]), fc_6m,
               round(feed_grain_6m, 6) if feed_grain_6m else None,
               round(spread_int,  4) if spread_int  else None,
               round(spread_nint, 4) if spread_nint else None,
-              ts))
+              ts,
+              lag_cols["feed_grain_spot"], lag_cols["feed_grain_3m"],
+              lag_cols["spread_integrated_spot"], lag_cols["spread_integrated_3m"]))
         written += 1
 
     conn.commit()
@@ -1624,14 +1652,18 @@ def compute_feed_grain_6m(conn):
 
     Trade-off: chicken.db pairs corn+SBM only from 4Q17, so with the 2-quarter
     lag the integrated series starts 2Q18 — earlier weeks lose it.
+
+    The same basket is also priced at the other GRAIN_LAGS (spot = same
+    quarter, 3m = 1 quarter back) into feed_grain_spot / _3m and
+    spread_integrated_spot / _3m, so the dashboard can switch the cost lag.
     """
     basket = quarterly_feed_basket()
     if not basket:
         print("  ⚠ no corn/SBM basket available — skipping feed_grain_6m")
         return
 
-    def lag_quarter(yr, q):
-        yr2, q2 = yr, q - GRAIN_LAG_Q
+    def lag_quarter(yr, q, lag):
+        yr2, q2 = yr, q - lag
         while q2 <= 0:
             q2 += 4
             yr2 -= 1
@@ -1639,30 +1671,30 @@ def compute_feed_grain_6m(conn):
 
     rows = conn.execute("SELECT report_date, carcass FROM weekly").fetchall()
     ts = datetime.now().isoformat(timespec="seconds")
-    filled = cleared = 0
+    filled = {k: 0 for k in GRAIN_LAGS}
     for dt, carcass in rows:
         yr, mo = int(dt[:4]), int(dt[5:7])
-        lagged = basket.get(lag_quarter(yr, (mo - 1) // 3 + 1))
-        if lagged is None:
+        q = (mo - 1) // 3 + 1
+        for suffix, lag in GRAIN_LAGS.items():
+            fg_col = f"feed_grain_{suffix}"
+            sp_col = "spread_integrated" if suffix == "6m" else f"spread_integrated_{suffix}"
+            lagged = basket.get(lag_quarter(yr, q, lag))
             # Before the basket starts — blank it rather than leave a value
             # built on the old, incompatible methodology.
+            feed_grain = round(lagged[0], 6) if lagged else None
+            spread_int = (round((carcass / 45.36) / (lagged[0] * HOG_FCR), 4)
+                          if (lagged and carcass) else None)
             conn.execute(
-                "UPDATE weekly SET feed_grain_6m=NULL, fc_6m=NULL, "
-                "spread_integrated=NULL, updated_at=? WHERE report_date=?", (ts, dt))
-            cleared += 1
-            continue
-        feed_grain_6m, fc_6m = lagged
-        spread_int = (round((carcass / 45.36) / (feed_grain_6m * HOG_FCR), 4)
-                      if carcass else None)
-        conn.execute(
-            "UPDATE weekly SET feed_grain_6m=?, fc_6m=?, spread_integrated=?, updated_at=? "
-            "WHERE report_date=?",
-            (round(feed_grain_6m, 6), round(fc_6m, 4), spread_int, ts, dt)
-        )
-        filled += 1
+                f"UPDATE weekly SET {fg_col}=?, {sp_col}=?, updated_at=? WHERE report_date=?",
+                (feed_grain, spread_int, ts, dt))
+            if suffix == "6m":
+                conn.execute("UPDATE weekly SET fc_6m=? WHERE report_date=?",
+                             (round(lagged[1], 4) if lagged else None, dt))
+            if lagged:
+                filled[suffix] += 1
     conn.commit()
-    print(f"  feed_grain_6m (corn/SBM basket, {GRAIN_LAG_Q}Q lag): "
-          f"{filled} weeks priced, {cleared} weeks before basket start left blank")
+    print("  feed grain (corn/SBM basket) weeks priced: " +
+          ", ".join(f"{k} {filled[k]}/{len(rows)}" for k in GRAIN_LAGS))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
