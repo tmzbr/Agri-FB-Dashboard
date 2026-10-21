@@ -88,6 +88,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.subtab-formula{margin-left:auto;align-self:center;min-width:0;padding-left:16px;
+  font-size:11px;color:var(--gray-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.subtab-formula b{font-weight:600;color:var(--gray-dark);}
 .new-badge{display:inline-block;margin-left:6px;padding:1px 6px 2px;border-radius:9px;
   background:var(--orange);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;
   line-height:13px;vertical-align:2px;box-shadow:0 0 0 0 rgba(255,85,0,.55);
@@ -282,7 +285,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Brazil Chicken Spread Tracker</div>
-    <div class="top-sub">Spread = Chicken Price ÷ Grain Cost (×) — CEPEA Frango Resfriado SP · BRL/kg</div>
+    <div class="top-sub">Chicken Price vs. Grain Cost — CEPEA Frango Resfriado SP · BRL/kg</div>
   </div>
   <div class="top-latest">Latest: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
@@ -292,6 +295,7 @@ tr:hover td{background:#FFF8F5;}
 <div class="subtab-bar">
   <button class="subtab" onclick="openSiblingModule('chicken_bz_dashboard.html', 10)">Exports</button>
   <button class="subtab active">Domestic<span class="new-badge">NEW</span></button>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months"><b>Spread</b> = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months</div>
 </div>
 
 <!-- VIEW CONTROLS -->
@@ -313,7 +317,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Chicken Domestic Spread — Chicken Price ÷ Grain Cost (×)</div>
+        <div class="chart-title">Chicken Domestic Spread (×)</div>
         <div class="chart-stat">
           Solid = Spread &nbsp;·&nbsp; Dashed = Period Avg &nbsp;·&nbsp;
           Avg: <strong id="avg-display">—</strong>
@@ -390,7 +394,7 @@ tr:hover td{background:#FFF8F5;}
         <div>
           <div class="chart-title">Spread — <span id="comp-period-label2">Period Comparison</span></div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
-            Chicken Price ÷ Grain Cost (×)
+            (Chicken Price − Grain Cost) ÷ Chicken Price (×)
           </div>
         </div>
       </div>
@@ -475,7 +479,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="note-bar">
     Sources: <em>CEPEA/ESALQ</em> Fresh Chicken (Frango Resfriado) — wholesale, State of SP, BRL/kg, daily ·
     <em>CEPEA/ESALQ</em> Corn ESALQ/BM&amp;F + Soy PNA (BRL/sc60kg) ·
-    Spread = Chicken Price BRL/kg ÷ Grain Basket BRL/kg ·
+    Spread = (Chicken Price BRL/kg − Grain Basket BRL/kg) ÷ Chicken Price BRL/kg ·
     Monthly grain = avg of month M−lag (same as Exports) · Daily grain = 30-day avg ending d−lag · Weekly = Mon–Sun average · Grain basket weights &amp; lag adjustable above ·
     Q/M/W/D tab drives comparison charts + table
   </div>
@@ -973,7 +977,7 @@ function renderSeasonalityChart() {
              grid: { color: 'rgba(0,0,0,0.04)' } },
         y: { ticks: { color: '#888', font: { size: 9 }, callback: v => v.toFixed(2) + '×' },
              grid: { color: 'rgba(0,0,0,0.05)' },
-             title: { display: true, text: 'Price / Grain Cost (×)', color: '#999', font: { size: 9 } } },
+             title: { display: true, text: 'Spread (×)', color: '#999', font: { size: 9 } } },
       },
     },
   });
@@ -997,7 +1001,7 @@ function renderTable() {
     <th style="width:17%;">Grain Cost${sub(lagNote)}</th>
     <th style="width:17%;">Grain Cost${sub('BRL/kg')}</th>
     <th style="width:13%;">${nCol ? 'N' + sub(nCol) : ''}</th>
-    <th style="width:20%;">Spread${sub('price / grain (×)')}</th>
+    <th style="width:20%;">Spread${sub('(price − grain) ÷ price')}</th>
   </tr>`;
   // Daily history is ~5.7k rows — cap the table so the DOM stays light.
   const rows = tabRows().slice().reverse().slice(0, currentTab === 'daily' ? 750 : undefined);

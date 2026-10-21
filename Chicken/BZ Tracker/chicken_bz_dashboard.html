@@ -88,6 +88,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.subtab-formula{margin-left:auto;align-self:center;min-width:0;padding-left:16px;
+  font-size:11px;color:var(--gray-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.subtab-formula b{font-weight:600;color:var(--gray-dark);}
 .new-badge{display:inline-block;margin-left:6px;padding:1px 6px 2px;border-radius:9px;
   background:var(--orange);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;
   line-height:13px;vertical-align:2px;box-shadow:0 0 0 0 rgba(255,85,0,.55);
@@ -277,7 +280,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Brazil Chicken Spread Tracker</div>
-    <div class="top-sub">Spread = Export Price ÷ Grain Cost (×) — NCM 0207 · BRL/kg</div>
+    <div class="top-sub">Export Price vs. Grain Cost — NCM 0207 · BRL/kg</div>
   </div>
   <div class="top-latest">Latest monthly: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
@@ -287,6 +290,7 @@ tr:hover td{background:#FFF8F5;}
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
   <button class="subtab" onclick="openSiblingModule('chicken_bz_domestic_dashboard.html', 33)">Domestic<span class="new-badge">NEW</span></button>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months"><b>Spread</b> = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months</div>
 </div>
 
 <!-- VIEW CONTROLS: granularity (drives all charts + table) + chart view (drives time window) -->
@@ -316,7 +320,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Chicken Export Spread — Export Price ÷ Grain Cost (×)</div>
+        <div class="chart-title">Chicken Export Spread (×)</div>
         <div class="chart-stat">
           Solid = Spread &nbsp;·&nbsp; Dashed = Period Avg &nbsp;·&nbsp;
           Avg: <strong id="avg-display">—×</strong>
@@ -468,7 +472,7 @@ tr:hover td{background:#FFF8F5;}
     Sources: <em>SECEX/MDIC</em> — NCM 0207 (all poultry sub-codes) ·
     <em>CEPEA/ESALQ</em> Corn Paranaguá + Soy PNA (BRL/sc60kg) ·
     <em>BCB PTAX</em> BRL/USD ·
-    Spread = Export Price BRL/kg ÷ Grain Basket BRL/kg ·
+    Spread = (Export Price BRL/kg − Grain Basket BRL/kg) ÷ Export Price BRL/kg ·
     Grain basket weights &amp; lag adjustable above ·
     Vol = total export volume ('000 t) in the table; comparison chart shows t/biz day so partial periods compare fairly ·
     Granularity drives all charts &amp; table · Chart View narrows the time window of the spread &amp; price line charts
@@ -1117,7 +1121,7 @@ function renderSeasonalityChart() {
         y: { ticks: { color: '#888', font: { size: 9 },
               callback: v => v.toFixed(2) + '×' },
              grid: { color: 'rgba(0,0,0,0.05)' },
-             title: { display: true, text: 'Price / Grain Cost (×)', color: '#999',
+             title: { display: true, text: 'Spread (×)', color: '#999',
                font: { size: 9 } } },
       },
     },
@@ -1151,7 +1155,7 @@ function renderTable() {
       <th style="width:16%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg avg</span></th>
       <th style="width:16%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:16%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
-      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / grain (×)</span></th>
+      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
     body.innerHTML = QUARTERLY.slice().reverse().map(r => `<tr>
       <td>${r.period}</td>
@@ -1171,7 +1175,7 @@ function renderTable() {
       <th style="width:15%;">Export Price<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:15%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:17%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
-      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / grain (×)</span></th>
+      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
     body.innerHTML = MONTHLY.slice().reverse().map(r => `<tr>
       <td>${r.period ?? '—'}</td>
@@ -1194,7 +1198,7 @@ function renderTable() {
       <th style="width:12%;">Grain Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">${lagNote}</span></th>
       <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
       <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/biz day</span></th>
-      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / grain (×)</span></th>
+      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − grain) ÷ price</span></th>
     </tr>`;
     body.innerHTML = WEEKLY.slice().reverse().map(r => `<tr>
       <td>${r.start_date ?? '—'}</td>

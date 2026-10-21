@@ -90,6 +90,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.subtab-formula{margin-left:auto;align-self:center;min-width:0;padding-left:16px;
+  font-size:11px;color:var(--gray-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.subtab-formula b{font-weight:600;color:var(--gray-dark);}
 
 /* ── VIEW CONTROLS — FIX #1: view buttons pushed to RIGHT ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
@@ -294,6 +297,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = 2.9802 × Corn + 0.03851 × SBM, lagged N months"><b>Spread</b> = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = 2.9802 × Corn + 0.03851 × SBM, lagged N months</div>
 </div>
 
 <!-- CONTROLS — PERIOD (granularity, drives charts + table) on the left, VIEW on the right -->

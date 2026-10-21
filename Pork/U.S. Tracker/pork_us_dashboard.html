@@ -85,6 +85,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.subtab-formula{margin-left:auto;align-self:center;min-width:0;padding-left:16px;
+  font-size:11px;color:var(--gray-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.subtab-formula b{font-weight:600;color:var(--gray-dark);}
 
 /* ── CONTROLS BAR — Period (left) · View (right) — matches Chicken ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
@@ -274,6 +277,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months"><b>Spread</b> = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months</div>
 </div>
 
 <!-- CONTROLS — Period (granularity) on the left, View on the right -->
@@ -639,6 +643,12 @@ function updateInfoPanel() {
 
   // Feed grain row is only meaningful in integrated mode
   document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
+  const formula = isInt
+    ? '<b>Spread</b> = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
+    : '<b>Spread</b> = (Carcass ÷ Hog Price) ÷ 45.36 · Carcass &amp; Hog in USD/cwt → USD/kg';
+  const fEl = document.getElementById('spread-formula');
+  fEl.innerHTML = formula;
+  fEl.title = fEl.textContent;
   document.getElementById('lag-block').style.display     = isInt ? '' : 'none';
   document.getElementById('info-fg-label').textContent   = `Feed Grain (${grainLag}m)`;
 

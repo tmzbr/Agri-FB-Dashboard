@@ -90,6 +90,9 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   border-bottom:3px solid transparent;margin-bottom:-1px;transition:all .15s;}
 .subtab:hover:not(.active){color:var(--gray-dark);}
 .subtab.active{color:var(--orange);border-bottom-color:var(--orange);cursor:default;}
+.subtab-formula{margin-left:auto;align-self:center;min-width:0;padding-left:16px;
+  font-size:11px;color:var(--gray-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.subtab-formula b{font-weight:600;color:var(--gray-dark);}
 
 /* ── VIEW CONTROLS ── */
 .controls-bar{background:var(--white);border-bottom:1px solid var(--border);
@@ -218,7 +221,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="top-bar-divider"></div>
   <div>
     <div class="top-title">🇧🇷 Brazil Beef Export Spread Tracker</div>
-    <div class="top-sub">Spread = Export Price ÷ Cattle Cost (×) — NCM 0201 + 0202 · BRL/kg</div>
+    <div class="top-sub">Export Price vs. Cattle Cost — NCM 0201 + 0202 · BRL/kg</div>
   </div>
   <div class="top-latest">Latest monthly: <strong id="latest-period">—</strong> &nbsp;·&nbsp; Spread: <strong id="latest-spread">—</strong></div>
 </div>
@@ -227,6 +230,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; export-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
+  <div class="subtab-formula" id="spread-formula" title="Spread (×) = Export Price ÷ Cattle Cost · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15"><b>Spread (×)</b> = Export Price ÷ Cattle Cost · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15</div>
 </div>
 
 <!-- VIEW CONTROLS: granularity (drives all charts + table) + chart view (drives time window) -->
