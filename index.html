@@ -769,10 +769,10 @@ const STATIC_DASHBOARDS = [
     id: 10,
     sector: 'fnb',
     subsector: 'chicken',
-    title: 'Brazil Chicken Spread Tracker — Exports',
-    description: 'Weekly and monthly SECEX chicken export price vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag. NCM 0207 with BCB PTAX FX.',
+    title: 'Brazil Chicken Spread Tracker',
+    description: 'Chicken price vs. grain basket spread, in two subtabs. Exports: weekly and monthly SECEX export price (NCM 0207, BCB PTAX FX). Domestic: daily, weekly and monthly CEPEA fresh chicken wholesale price (SP, BRL/kg). Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
     source: 'MDIC · CEPEA/ESALQ · BCB',
-    tags: ['Brazil', 'Chicken', 'Spread', 'SECEX', 'CEPEA'],
+    tags: ['Brazil', 'Chicken', 'Spread', 'SECEX', 'CEPEA', 'Domestic'],
     visible_to_all: true,
     coming_soon: false,
     display_order: 10,
@@ -787,7 +787,7 @@ const STATIC_DASHBOARDS = [
     description: 'Daily, weekly and monthly CEPEA fresh chicken wholesale price (SP, BRL/kg) vs. grain basket spread. Corn 66% + Soy PNA 34% (BRL/sc60kg), 2-month lag.',
     source: 'CEPEA/ESALQ',
     tags: ['Brazil', 'Chicken', 'Spread', 'Domestic', 'CEPEA'],
-    visible_to_all: false,
+    visible_to_all: true,   // no card of its own (SUBTAB_DASH_IDS) — Domestic subtab of id 10
     coming_soon: false,
     display_order: 11,
     note: null,
@@ -1051,9 +1051,11 @@ function closeDashView(){ STATE.activeDash=null; renderContent(); }
 function switchDashInPlace(id){
   const d=STATE.dashboards.find(x=>Number(x.id)===id);
   if(!d||d.coming_soon) return;
-  STATE.activeDash=d;
   logEvent('dash_open', d);
-  const t=document.querySelector('.dash-view-title'); if(t) t.textContent=d.title;
+  /* a subtab keeps the hosting card as the open module (header + Back) */
+  const host=SUBTAB_DASH_IDS[id]?STATE.dashboards.find(x=>Number(x.id)===SUBTAB_DASH_IDS[id]):null;
+  STATE.activeDash=host||d;
+  const t=document.querySelector('.dash-view-title'); if(t) t.textContent=STATE.activeDash.title;
 }
 /* Messages from the open module iframe (same origin only). */
 window.addEventListener('message', e=>{
@@ -1103,7 +1105,7 @@ function getDashes(sector, subsector){
   const isAdmin=STATE.currentUser?.is_admin;
   // Normalize legacy sector/subsector IDs from Supabase
   let list = STATE.dashboards
-    .filter(d=>d.sector===sector && (d.subsector||null)===(subsector||null) && (isAdmin||d.visible_to_all))
+    .filter(d=>d.sector===sector && (d.subsector||null)===(subsector||null) && (isAdmin||d.visible_to_all) && !SUBTAB_DASH_IDS[Number(d.id)])
     .sort((a,b)=>(a.display_order||0)-(b.display_order||0));
   if(STATE.searchQuery){
     const q=STATE.searchQuery.toLowerCase();
@@ -1116,7 +1118,11 @@ function getDashes(sector, subsector){
    Use the numeric ID from the Supabase dashboards table.
    To add a new module: 2: 'Agri Monitor/secex/exportacoes_dashboard.html'     */
 /* Cards that get the pulsing NEW badge next to the title — remove the id to drop it. */
-const NEW_DASH_IDS = [33, 34];   // 33 = Brazil Chicken Spread Tracker — Domestic · 34 = Cattle Cycle
+const NEW_DASH_IDS = [10, 34];   // 10 = Brazil Chicken Spread Tracker (now with Domestic) · 34 = Cattle Cycle
+/* Modules reached only through a subtab of another card: no card of their own,
+   but they keep their id (and their row in Supabase) so a subtab switch is
+   still logged as its own dash_open. Maps subtab id → the card that hosts it. */
+const SUBTAB_DASH_IDS = { 33: 10 };   // Chicken Domestic lives inside the Chicken Spread Tracker
 
 const DASH_MODULES = {
   1: 'Agri Monitor/conab/producao_dashboard.html',
