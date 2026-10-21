@@ -1384,13 +1384,18 @@ def main():
     if args.cepea:
         load_cepea_grain(conn, args.cepea)
 
-    # ── 3. SECEX monthly (optional — only needed if you use the monthly table) ──
-    # The weekly table is fully driven by WEEKLY_SEED + fetch_weekly_bulletin(),
-    # so fetch_secex() is skipped in the normal run. Pass --init once if you
-    # ever want to backfill the monthly table from SECEX annual CSVs.
+    # ── 3. SECEX monthly ──────────────────────────────────────────────────────
+    # Must run every time (as in the chicken extractor): the monthly table and
+    # its volume come from _secex_raw, and fill_secex_from_weekly() only seeds
+    # the current month once, from the first weekly bulletin (INSERT OR IGNORE).
+    # Without this, every month stayed frozen at its first-week MTD volume
+    # (Jun–Sep 2026 showed ~25–40k t instead of ~115k t).
     if args.init:
         print("[SECEX] Full reseed — all years …")
         fetch_secex(conn)
+    else:
+        cur_year = datetime.now().year
+        fetch_secex(conn, years=[cur_year - 1, cur_year])
 
     # ── 4. BCB PTAX FX ───────────────────────────────────────────────────────
     fetch_fx(conn)
