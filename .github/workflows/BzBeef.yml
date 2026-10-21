@@ -61,11 +61,15 @@ jobs:
               raise ValueError(f"Suspiciously few monthly rows: {nm}")
           EOF
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export bz-beef-export-spread.json
+        run: python "Hub Export/export_bz_spread_json.py" beef
+
       - name: Commit updated beef_bz.db
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
-          git add "Beef/BZ Tracker/beef_bz.db"
+          git add "Beef/BZ Tracker/beef_bz.db" "Beef/BZ Tracker/bz-beef-export-spread.json"
           if git diff --staged --quiet; then
             echo "No changes to beef_bz.db — skipping commit."
           else
