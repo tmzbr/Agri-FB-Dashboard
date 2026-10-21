@@ -1,0 +1,37 @@
+name: One-shot — apply migration_brl_instead_of_rs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      URL: ${{ secrets.SUPABASE_URL }}
+      KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Replace R$ with BRL in card texts
+        run: |
+          set -euo pipefail
+          rows=$(curl -sf "$URL/rest/v1/dashboards?select=id,title,description,source,note,footer&order=id" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          hits=$(echo "$rows" | jq -c '[.[] | select([.title,.description,.source,.note,.footer] | map(. // "") | join(" ") | contains("R$"))]')
+          echo "Rows with R\$: $(echo "$hits" | jq 'length')"
+          echo "$hits" | jq -c '.[]' | while read -r row; do
+            id=$(echo "$row" | jq -r .id)
+            body=$(echo "$row" | jq -c 'del(.id) | with_entries(select(.value != null) | .value |= gsub("R\\$"; "BRL"))')
+            echo "id $id → $body"
+            curl -sf -X PATCH "$URL/rest/v1/dashboards?id=eq.$id" \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+              -H "Content-Type: application/json" -H "Prefer: return=minimal" \
+              --data "$body"
+          done
+      - name: Verify
+        run: |
+          set -euo pipefail
+          rows=$(curl -sf "$URL/rest/v1/dashboards?select=id,title,description,source,note,footer&order=id" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          left=$(echo "$rows" | jq '[.[] | select([.title,.description,.source,.note,.footer] | map(. // "") | join(" ") | contains("R$"))] | length')
+          echo "Rows still with R\$: $left"
+          echo "$rows" | jq -r '.[] | select(.id == 26) | "26: \(.description)"'
+          test "$left" -eq 0
