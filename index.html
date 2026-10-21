@@ -1065,6 +1065,20 @@ window.addEventListener('message', e=>{
   if(e.data.action==='closeDash')  closeDashView();
   if(e.data.action==='openModule') switchDashInPlace(Number(e.data.id));
 });
+/* Modules carry their own Back for standalone use; inside the portal the
+   header's Back already does that, so hide the module's copy (and the divider
+   next to it). Runs on every load, so subtab navigation inside the iframe
+   is covered too. */
+function hideModuleBack(frame){
+  try{
+    const doc=frame.contentDocument;
+    if(!doc||doc.getElementById('portal-hide-back')) return;
+    const st=doc.createElement('style');
+    st.id='portal-hide-back';
+    st.textContent='.back-btn,.back-btn+.top-bar-divider,.navbar-back{display:none!important;}';
+    doc.head.appendChild(st);
+  }catch(e){ /* cross-origin module: leave it as is */ }
+}
 function handleSearch(q){ STATE.searchQuery=q; renderContent(); }
 
 /* ══ RENDER ══ */
@@ -1162,6 +1176,7 @@ function renderContent(){
            src="${moduleSrc}${moduleSrc.includes('?')?'&':'?'}v=${Date.now()}"
            style="width:100%;height:calc(100vh - 200px);border:none;display:block;"
            allowfullscreen
+           onload="hideModuleBack(this)"
            title="${esc(d.title)}"
          ></iframe>`
       : `<div class="under-construction">
