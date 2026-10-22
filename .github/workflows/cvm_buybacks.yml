@@ -41,6 +41,11 @@ jobs:
         if: ${{ github.event.inputs.bootstrap == 'true' }}
         run: python cvm_buybacks.py --bootstrap
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        working-directory: ${{ github.workspace }}
+        run: python "Hub Export/export_market_watch_json.py" cvm
+
       - name: Commit DB + HTMLs
         working-directory: ${{ github.workspace }}
         run: |
@@ -49,6 +54,7 @@ jobs:
           git add "CVM Buybacks/cvm_buybacks.db"
           [ -f "CVM Buybacks/cvm_buybacks.html" ] && git add "CVM Buybacks/cvm_buybacks.html"
           [ -f "CVM Buybacks/cvm_insider.html"  ] && git add "CVM Buybacks/cvm_insider.html"
+          git add "CVM Buybacks/cvm.json"
           if git diff --staged --quiet; then
             echo "Sem mudanças."
           else

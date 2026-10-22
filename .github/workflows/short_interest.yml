@@ -40,6 +40,11 @@ jobs:
           BACKFILL="${BACKFILL:-7}"
           python short_interest.py --backfill "$BACKFILL"
 
+      # JSON for the Research Dashboard Hub (Feeder upload step comes later).
+      - name: Export hub JSON
+        working-directory: ${{ github.workspace }}
+        run: python "Hub Export/export_market_watch_json.py" short
+
       - name: Commit DB + HTML
         working-directory: ${{ github.workspace }}
         run: |
@@ -47,6 +52,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "Market Watch/Short Interest/short_interest.db"
           [ -f "Market Watch/Short Interest/short_interest.html" ] && git add "Market Watch/Short Interest/short_interest.html"
+          git add "Market Watch/Short Interest/short-interest.json"
           if git diff --staged --quiet; then
             echo "Sem mudanças."
           else
