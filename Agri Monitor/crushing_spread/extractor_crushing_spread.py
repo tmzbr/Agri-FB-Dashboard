@@ -59,6 +59,9 @@ FORCE_ALL     = False
 
 # Freshness — dias sem atualização antes de tentar nova busca
 SOJA_STALE_DAYS   = 5    # semanal
+# Idade maxima do preco de soja usado no spread. Cobre o historico mensal
+# (Siagro, ate 2024) sem deixar um preco velho mascarar uma fonte parada.
+SOJA_MAX_AGE_DAYS = 45
 BIO_STALE_DAYS    = 10   # ANP publica ~12 dias após fechamento da semana
 FARELO_STALE_DAYS = 25   # mensal
 
@@ -279,6 +282,12 @@ HEADERS = {
 }
 
 
+def is_html_page(content: bytes) -> bool:
+    """CONAB's portal answers missing files with its site page (HTTP 200), not a 404."""
+    head = content[:512].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
+
+
 def download(url, label, fatal=True, extra_headers=None):
     hdrs = {**HEADERS, **(extra_headers or {})}
     for attempt in range(1, 4):
@@ -286,6 +295,9 @@ def download(url, label, fatal=True, extra_headers=None):
             log.info(f"[{label}] Download (tentativa {attempt}): {url}")
             r = requests.get(url, headers=hdrs, timeout=120, verify=False)
             r.raise_for_status()
+            if is_html_page(r.content):
+                # Nao e transitorio: o arquivo saiu do endereco. Falha sem repetir.
+                raise RuntimeError(f"[{label}] o servidor devolveu uma pagina HTML em vez do arquivo — o endereco mudou ou saiu do ar ({url})")
             log.info(f"[{label}] {len(r.content):,} bytes")
             return r.content
         except requests.RequestException as e:
@@ -857,6 +869,11 @@ def run_spread(conn):
             soja_dates = sorted(soja_map.keys())
             p_soja_sc60 = _last_value(soja_map, soja_dates, d_str)
             if p_soja_sc60 is None:
+                continue
+            # Sem preco de soja recente, nao calcula: repetir indefinidamente o
+            # ultimo preco faria uma fonte parada parecer dado novo.
+            soja_ref = max(k for k in soja_dates if k <= d_str)
+            if (d - datetime.strptime(soja_ref, "%Y-%m-%d").date()).days > SOJA_MAX_AGE_DAYS:
                 continue
 
             # Farelo — exige mes exato realizado/publicado pela SECEX.

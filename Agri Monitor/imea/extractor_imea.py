@@ -58,7 +58,7 @@ ANNUAL SNAPS (hardcoded — melhor data de custo e preço/yield por safra):
     ALGODÃO y1/y2 → preço/yield em Dez/y1
 """
 
-import os, json, sqlite3, re, logging, time
+import os, sys, json, sqlite3, re, logging, time
 from datetime import datetime, date
 from pathlib import Path
 
@@ -533,12 +533,24 @@ def fetch_imea_custo(conn, token, cultura, cadeia_id, now_str):
 # ════════════════════════════════════════════════════════════════════════════════
 # HELPERS CONAB TXT — mesmo padrão do extractor_conab.py
 # ════════════════════════════════════════════════════════════════════════════════
+def is_html_page(content: bytes) -> bool:
+    """CONAB's portal answers missing files with its site page (HTTP 200), not a 404."""
+    head = content[:512].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
+
+
+# Falhas de download da CONAB nesta execucao — main() termina com erro se houver.
+CONAB_FALHAS = []
+
+
 def _baixa_conab_txt(url):
     """Baixa e parseia arquivo .txt bulk da CONAB (latin1, sep=';')."""
     import io as _io
     r = requests.get(url, timeout=180, verify=False,
         headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
+    if is_html_page(r.content):
+        raise ValueError(f"o portal da CONAB devolveu uma pagina HTML em vez do arquivo ({url})")
     df = pd.read_csv(_io.StringIO(r.content.decode("latin1")), sep=";", dtype=str)
     df.columns = [c.strip() for c in df.columns]
     for c in df.columns:
@@ -635,8 +647,11 @@ def fetch_conab_preco(conn, now_str):
             headers={"User-Agent": "Mozilla/5.0"})
         r.raise_for_status()
         content_bytes = r.content
+        if is_html_page(content_bytes):
+            raise ValueError(f"o portal da CONAB devolveu uma pagina HTML em vez do arquivo ({CONAB_SEMANAL_URL})")
     except Exception as e:
-        log.warning(f"  [CONAB] Preço falhou: {e}")
+        log.error(f"  [CONAB] Preço falhou: {e}")
+        CONAB_FALHAS.append(f"preço: {e}")
         return 0
 
     # Detectar encoding e separador
@@ -661,7 +676,8 @@ def fetch_conab_preco(conn, now_str):
     preco_col = next((c for c in df.columns if "VALOR" in c or "PRECO" in c), None)
 
     if not all([uf_col, prod_col, date_col, preco_col]):
-        log.warning(f"  [CONAB] Colunas não encontradas: {list(df.columns)}")
+        log.error(f"  [CONAB] Colunas não encontradas: {list(df.columns)}")
+        CONAB_FALHAS.append(f"preço: colunas não encontradas {list(df.columns)}")
         return 0
 
     # Filtrar MT + produtos de interesse + nível RECEBIDO
@@ -773,7 +789,8 @@ def fetch_conab_safra(conn, now_str):
         df = _baixa_conab_txt(CONAB_GRAOS_URL)
         log.info(f"  [CONAB] Safra — {len(df)} linhas | colunas: {list(df.columns)}")
     except Exception as e:
-        log.warning(f"  [CONAB] Produtividade falhou: {e}")
+        log.error(f"  [CONAB] Produtividade falhou: {e}")
+        CONAB_FALHAS.append(f"produtividade: {e}")
         return 0
 
     # Mapeamento produto no arquivo → (cultura, bag_kg, safra_filter)
@@ -1460,6 +1477,11 @@ def main():
         log.info(f"  {c:8}: {m:3} meses ({ok} ok) | {a} safras anuais | "
                  f"último={last} | GM={gm_s}")
     log.info("=" * 60)
+
+    if CONAB_FALHAS:
+        # Erro visivel no GitHub; o commit roda mesmo assim (if: always()).
+        log.error(f"CONAB falhou ({len(CONAB_FALHAS)}): " + " | ".join(CONAB_FALHAS))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

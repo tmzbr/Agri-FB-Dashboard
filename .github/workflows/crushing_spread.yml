@@ -69,9 +69,12 @@ jobs:
       # ── 5. Commit do .db atualizado ──────────────────────────────────────
       # JSON for the Research Dashboard Hub (Feeder upload step comes later).
       - name: Export hub JSON
+        if: always()
         run: python "Hub Export/export_agri_monitor_json.py" crushing
 
       - name: Commit crushing_spread.db
+        # Saves whatever did update even when one source failed (the run stays red).
+        if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

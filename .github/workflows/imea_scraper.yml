@@ -34,9 +34,12 @@ jobs:
 
       # JSON for the Research Dashboard Hub (Feeder upload step comes later).
       - name: Export hub JSON
+        if: always()
         run: python "Hub Export/export_agri_monitor_json.py" imea
 
       - name: Commit do banco
+        # Saves whatever did update even when one source failed (the run stays red).
+        if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

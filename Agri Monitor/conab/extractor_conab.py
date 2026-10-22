@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import io
 import os
+import sys
 from datetime import datetime
 
 # ── Configurações ──────────────────────────────────────────────────────────────
@@ -44,10 +45,21 @@ conn.execute("""
 conn.commit()
 
 # ── Utilitários ────────────────────────────────────────────────────────────────
+def is_html_page(content: bytes) -> bool:
+    """CONAB's portal answers missing files with its site page (HTTP 200), not a 404."""
+    head = content[:512].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
+
+
+FALHAS = []  # arquivos que nao puderam ser processados — o job termina com erro
+
+
 def baixa_txt(url):
     print(f"Baixando {url}...")
     r = requests.get(url, timeout=180, verify=False)
     r.raise_for_status()
+    if is_html_page(r.content):
+        raise ValueError(f"o portal da CONAB devolveu uma pagina HTML em vez do arquivo — o endereco mudou ou saiu do ar ({url})")
     df = pd.read_csv(io.StringIO(r.content.decode("latin1")), sep=";", dtype=str)
     df.columns = [c.strip() for c in df.columns]
     for c in df.columns:
@@ -128,6 +140,7 @@ try:
 
 except Exception as e:
     print(f"  ERRO ao processar grãos: {e}")
+    FALHAS.append(f"grãos: {e}")
 
 # ── Cana-de-Acucar ─────────────────────────────────────────────────────────────
 # Estrutura real do arquivo:
@@ -179,6 +192,14 @@ try:
 
 except Exception as e:
     print(f"  ERRO ao processar cana: {e}")
+    FALHAS.append(f"cana: {e}")
 
 conn.close()
+if FALHAS:
+    # Termina com erro para o workflow ficar vermelho; o passo de commit roda
+    # mesmo assim (if: always()) e salva o que tiver sido atualizado.
+    print(f"\nConcluído com {len(FALHAS)} falha(s):")
+    for falha in FALHAS:
+        print(f"  * {falha}")
+    sys.exit(1)
 print("\nConcluído.")
