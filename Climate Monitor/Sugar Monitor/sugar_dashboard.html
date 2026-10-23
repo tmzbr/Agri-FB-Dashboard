@@ -69,6 +69,8 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .new-badge{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:8px;background:var(--orange);color:#fff;
   font-size:8.5px;font-weight:800;letter-spacing:.4px;line-height:1.3;vertical-align:1px;}
 .view-btn.active .new-badge{background:#fff;color:var(--orange);}
+.view-btn.parent{border-color:var(--orange);color:var(--orange);font-weight:700;}
+.sub-btns{padding-left:8px;border-left:2px solid var(--orange);}
 .ctrl-sep{width:1px;height:22px;background:var(--border);}
 .main{display:grid;grid-template-columns:minmax(380px,44fr) 56fr;gap:12px;padding:12px 16px;align-items:stretch;}
 .card{background:var(--white);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;min-height:0;}
@@ -205,6 +207,9 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   <div class="ctrl-sep"></div>
   <span class="view-label">Cane regions<span class="new-badge">NEW</span></span>
   <div class="view-btns">
+    <button class="view-btn" data-grp="uf-cs" onclick="setGrp('uf-cs')">Center South</button>
+  </div>
+  <div class="view-btns sub-btns" id="cs-btns" style="display:none">
     <button class="view-btn" data-grp="uf-sp" onclick="setGrp('uf-sp')">SP</button>
     <button class="view-btn" data-grp="uf-go" onclick="setGrp('uf-go')">GO</button>
     <button class="view-btn" data-grp="uf-mg" onclick="setGrp('uf-mg')">MG</button>
@@ -267,7 +272,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
   Source: <em>NASA POWER</em> / <em>ERA5</em> (selectable model, historical) + <em>Open-Meteo</em> (observed, to bridge the gap since the last historical refresh). <em>Observed data only — no forecast</em>: the series ends on the last day that has actually happened. Always the <em>current year</em> vs. the distribution of recent years. Thick line = current year · thin = individual years · shading = min–max range · dashed = mean.
   <em>My mills</em>: your own clusters are stored in your account, not in this browser — signing out or clearing the cache does not lose them, and they stay until you delete them. Only you can see them. Each point snaps to the NASA POWER grid cell (0.5° × 0.625°, ~55 × 67 km) that contains it, so two points less than ~50 km apart legitimately share the same series.
   Temperature = monthly/weekly mean · Rainfall = monthly/weekly total · Rain days = number of days in the month with ≥1 mm of rain, 0–31 (monthly only) (each day counts 0 or 1; for a group it is the weighted average across mills, hence fractional). For rainfall and rain days, a month/week still in progress is compared with the <em>same days</em> of past years (◇ marker; table and stats use it too) — the history lines keep the full month. Mill location is a proxy for the surrounding cane-supply region.
-  <em>Cane regions</em> (SP · GO · MG · MS · PR · MT): each row is an IBGE <em>mesoregion</em>, averaged over <em>every</em> municipality in it that grows cane (1,664 in total), weighted by its 2025 cane output (IBGE/SIDRA 1612); the ▣ row is the state mean under the same weights. NASA POWER only (ERA5 has no regional series). The live observed layer samples the highest-cane grid cells of each mesoregion; the historical series uses all of them. A multi-mill average has a naturally narrow band (spatial cancellation) — select a single mill to see the real spread.
+  <em>Center South</em>: every cane mesoregion of SP, GO, MG, MS, PR &amp; MT (50) combined by 2025 cane output — the table lists each state as a cane-weighted average; open a state for its mesoregions. <em>Cane regions</em> (SP · GO · MG · MS · PR · MT): each row is an IBGE <em>mesoregion</em>, averaged over <em>every</em> municipality in it that grows cane (1,664 in total), weighted by its 2025 cane output (IBGE/SIDRA 1612); the ▣ row is the state mean under the same weights. NASA POWER only (ERA5 has no regional series). The live observed layer samples the highest-cane grid cells of each mesoregion; the historical series uses all of them. A multi-mill average has a naturally narrow band (spatial cancellation) — select a single mill to see the real spread.
 </div>
 
 <!-- ── editor de clusters do usuário ── -->
@@ -313,7 +318,7 @@ tbody tr.grp.sel td{background:#FFE9DC;}
    corta a projeção — o gráfico termina no último dia que de fato aconteceu. */
 const FORECAST_URL="https://api.open-meteo.com/v1/forecast";
 const PAST_DAYS=92,FC_DAYS=0;
-const GRPLBL={smto:"São Martinho",jall:"Jalles Machado",agro:"Adecoagro",
+const GRPLBL={smto:"São Martinho",jall:"Jalles Machado",agro:"Adecoagro","uf-cs":"Center South",
   "uf-sp":"São Paulo","uf-go":"Goiás","uf-mg":"Minas Gerais","uf-ms":"Mato Grosso do Sul","uf-pr":"Paraná","uf-mt":"Mato Grosso"};
 const WLBL={smto:"crushing capacity",jall:"crushing capacity",agro:"crushing capacity"};
 /* Grupos "por estado": cada ponto é uma MESORREGIÃO inteira, cuja série já vem
@@ -322,6 +327,16 @@ const WLBL={smto:"crushing capacity",jall:"crushing capacity",agro:"crushing cap
    combina as mesos pelo mesmo peso, então reproduz a média estadual ponderada
    por cana sobre todos os municípios. */
 const isReg=g=>typeof g==="string"&&g.startsWith("uf-");
+/* Center South: o agregado das seis UFs, como o MATOPIBA do Weather Monitor —
+   abre os botões dos estados para isolar um deles. */
+const CS="uf-cs",CS_UFS=["uf-sp","uf-go","uf-mg","uf-ms","uf-pr","uf-mt"];
+const inCs=g=>g===CS||CS_UFS.includes(g);
+function syncCs(){
+  const on=inCs(STATE.grp);
+  document.getElementById("cs-btns").style.display=on?"":"none";
+  const pai=document.querySelector('[data-grp="'+CS+'"]');
+  if(pai)pai.classList.toggle("parent",on&&STATE.grp!==CS);
+}
 for(const g in GRPLBL)if(isReg(g))WLBL[g]="cane output (2025)";
 const CELL_LAT=0.5,CELL_LON=0.625;   /* grade do NASA POWER */
 /* ══ CLUSTERS DO USUÁRIO ═══════════════════════════════════════════════
@@ -616,7 +631,7 @@ async function deleteCluster(){
    os grupos das companhias sempre têm (moagem) */
 const hasW=g=>isMine(g)?!!(MINE.byId[mineId(g)]||{}).hasW:true;
 const SCOPE_GROUPS=["smto","jall","agro"];
-const SUBTITLE="Current year vs. historical distribution — sugarcane mills (São Martinho · Jalles Machado · Adecoagro) · cane regions of SP, GO, MG, MS, PR &amp; MT";
+const SUBTITLE="Current year vs. historical distribution — sugarcane mills (São Martinho · Jalles Machado · Adecoagro) · Center South cane regions (SP, GO, MG, MS, PR &amp; MT)";
 const MES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MODELFILE={nasa:"history.json",era5:"history_era5.json"};
 const MODELLBL={nasa:"NASA POWER",era5:"ERA5"};
@@ -721,6 +736,8 @@ async function fetchLiveRegions(regs){
   for(const r of regs)for(const c of r.cells)if(!LIVE_CELLS.has(ck(c)))want.set(ck(c),c);
   const list=[...want.values()],CH=45;
   for(let s=0;s<list.length;s+=CH){
+    /* Center South pede ~6 blocos: espaça para não estourar o limite por minuto */
+    if(s>0&&list.length>CH*2)await new Promise(res=>setTimeout(res,8000));
     const sl=list.slice(s,s+CH);
     const url=`${FORECAST_URL}?latitude=${sl.map(c=>c.lat).join(",")}&longitude=${sl.map(c=>c.lon).join(",")}&daily=temperature_2m_mean,precipitation_sum&past_days=${PAST_DAYS}&forecast_days=${FC_DAYS}&timezone=auto`;
     let arr=null;
@@ -762,7 +779,7 @@ function setVar(v){STATE.vr=v;act("var",v);
   if(v==="d"&&STATE.gran!=="m"){STATE.gran="m";act("gran","m");}
   render();}
 async function setGrp(v){
-  STATE.grp=v;act("grp",v);
+  STATE.grp=v;act("grp",v);syncCs();
   /* A série do cluster é buscada uma vez e fica em MINE.byId[].series; trocar
      de grupo e voltar não custa round-trip. */
   if(isMine(v)){
@@ -785,7 +802,7 @@ async function setGrp(v){
   render();
   /* regiões: o histórico aparece na hora; o observado recente entra quando chega */
   if(isReg(v)){
-    const regs=STATE.pts.filter(p=>p.grp===v&&!p.liveFetched);
+    const regs=STATE.pts.filter(p=>(v===CS?!!p.regKey:p.grp===v)&&!p.liveFetched);
     if(regs.length){try{await fetchLiveRegions(regs);}catch(e){console.warn("live fetch failed:",e);}if(STATE.grp===v)render();}
   }
 }
@@ -873,7 +890,9 @@ function computeSeries(sel,wtd){
 function lastObsIdx(S){for(let k=S.curObs.length-1;k>=0;k--)if(S.curObs[k]!=null)return k;return -1;}
 
 /* ── TABELA ── */
-function groupPts(){return STATE.pts.filter(p=>p.grp===STATE.grp&&p.h);}
+function groupPts(){return STATE.pts.filter(p=>(STATE.grp===CS?!!p.regKey:p.grp===STATE.grp)&&p.h);}
+/* linha de estado dentro do Center South: as mesos daquela UF, ponderadas por cana */
+const statePts=uf=>STATE.pts.filter(p=>p.regKey&&p.uf===uf&&p.h);
 /* base de comparação do ponto corrente: MTD se o bucket está pela metade */
 function cmpAt(S,i){
   if(S.mtd&&S.mtd.i===i)return{mean:S.mtd.mean,min:S.mtd.min,max:S.mtd.max,lbl:S.labels[i]+", "+S.mtd.label};
@@ -909,7 +928,7 @@ function stampUpdated(){
 function render(){renderTable();renderChart();stampUpdated();}
 function renderTable(){
   const ttl=document.getElementById("tbl-title");
-  ttl.textContent=(isReg(STATE.grp)?"Mesoregions — ":"Mills — ")+GRPLBL[STATE.grp];
+  ttl.textContent=(STATE.grp===CS?"States — ":isReg(STATE.grp)?"Mesoregions — ":"Mills — ")+GRPLBL[STATE.grp];
   if(isMine(STATE.grp))
     ttl.innerHTML=ttl.innerHTML+` <a href="#" onclick="openMine('${mineId(STATE.grp)}');return false;" style="color:var(--orange);font-weight:600;font-size:11px">✎ edit</a>`;
   const g=groupPts();
@@ -923,8 +942,11 @@ function renderTable(){
     return;
   }
   const head=[];
-  const rg=isReg(STATE.grp),totC=g.reduce((s,p)=>s+(p.cana_t||0),0);
-  if(rg){
+  const rg=isReg(STATE.grp),cs=STATE.grp===CS,totC=g.reduce((s,p)=>s+(p.cana_t||0),0);
+  if(cs){
+    head.push({id:"wavg",nome:"▣ Center South — 🌾 cane weighted",grpRow:true,
+      sub:g.reduce((s,p)=>s+p.n,0)+" municipalities · "+g.length+" mesoregions · "+(totC/1e6).toFixed(1)+" Mt cane (2025)",...summary(g,true)});
+  }else if(rg){
     // só a média ponderada por cana: a simples daria a uma meso de 0,01 Mt o
     // mesmo peso que Ribeirão Preto
     head.push({id:"wavg",nome:"▣ State average — 🌾 cane weighted",grpRow:true,
@@ -939,14 +961,17 @@ function renderTable(){
     :p.sub+(p.area?" · "+p.area+" Mt":"");
   /* mesos com <0,5% da cana do estado (Metropolitana de SP, Litoral Sul…) ficam
      fora da lista — só ruído no topo do ranking — mas seguem na média ▣ */
-  const MIN_SHARE=0.005,shown=rg?g.filter(p=>p.cana_t/totC>=MIN_SHARE):g,hidden=g.length-shown.length;
-  const rowsData=head.concat(shown.map(p=>({id:p.id,nome:p.nome,sub:rowSub(p),empresa:p.empresa,...summary([p],false)})));
+  const MIN_SHARE=0.005,shown=rg&&!cs?g.filter(p=>p.cana_t/totC>=MIN_SHARE):g,hidden=g.length-shown.length;
+  const stateRows=()=>[...new Set(g.map(p=>p.uf))].map(uf=>{const sp=statePts(uf),c=sp.reduce((s,p)=>s+p.cana_t,0);
+    return {id:"st|"+uf,nome:GRPLBL["uf-"+uf.toLowerCase()],
+      sub:`${sp.length} mesoregions · ${sp.reduce((s,p)=>s+p.n,0)} municipalities · ${(c/1e6).toFixed(1)} Mt · ${Math.round(c/totC*100)}% of Center South cane`,...summary(sp,true)};});
+  const rowsData=head.concat(cs?stateRows():shown.map(p=>({id:p.id,nome:p.nome,sub:rowSub(p),empresa:p.empresa,...summary([p],false)})));
   rowsData.forEach(r=>{r.vs=(r.cur!=null&&r.mean!=null)?r.cur-r.mean:null;r.range=(r.min!=null&&r.max!=null)?r.max-r.min:null;});
   const nHead=head.length;
   const body=rowsData.slice(nHead).sort((a,b)=>{let va=a[STATE.sortKey],vb=b[STATE.sortKey];
     if(STATE.sortKey==="nome"){return STATE.sortDir*(""+va).localeCompare(""+vb);}
     if(va==null)return 1;if(vb==null)return -1;return STATE.sortDir*(va-vb);});
-  const cols=[["nome",rg?"Mesoregion":"Mill"],["cur","Current"],["mean","Avg "+STATE.yrs+"y"],["vs","vs avg"],["range","Range"]];
+  const cols=[["nome",cs?"State":rg?"Mesoregion":"Mill"],["cur","Current"],["mean","Avg "+STATE.yrs+"y"],["vs","vs avg"],["range","Range"]];
   document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th onclick="sortBy('${c[0]}')">${c[1]}${STATE.sortKey===c[0]?' <span class="arr">'+(STATE.sortDir<0?'▼':'▲')+'</span>':''}</th>`).join("")+"</tr>";
   const rowHtml=r=>{const vc=vsColor(r.vs);const tag=r.empresa?` <span class="tag" style="background:${r.empresa==='SLC'?'#E8F0FA':'#FDEEE6'};color:${r.empresa==='SLC'?'#2C6FB5':'#C2581F'}">${r.empresa==='SLC'?'SLC':'BA'}</span>`:"";
     return `<tr class="${r.grpRow?'grp':''}${STATE.entity===r.id?' sel':''}" onclick="selectEntity('${r.id}')">
@@ -971,11 +996,13 @@ function renderTable(){
 }
 
 /* ── GRÁFICO ── */
-function selEntityPts(){if(STATE.entity==="group"||STATE.entity==="wavg")return groupPts();const p=STATE.pts.find(x=>x.id===STATE.entity);return p&&p.h?[p]:[];}   // meso no ERA5: sem série
+function selEntityPts(){if(STATE.entity==="group"||STATE.entity==="wavg")return groupPts();if(STATE.entity.startsWith("st|"))return statePts(STATE.entity.slice(3));const p=STATE.pts.find(x=>x.id===STATE.entity);return p&&p.h?[p]:[];}   // meso no ERA5: sem série
 function renderChart(){
   const sel=selEntityPts();if(!sel.length){if(STATE.chart){STATE.chart.destroy();STATE.chart=null;}return;}
-  const wtd=STATE.entity==="wavg", isGroup=STATE.entity==="group"||wtd;
-  const head=wtd?`${GRPLBL[STATE.grp]} — weighted by ${WLBL[STATE.grp]} (${sel.length}${isReg(STATE.grp)?" mesoregions":""})`
+  const st=STATE.entity.startsWith("st|")?STATE.entity.slice(3):null;
+  const wtd=STATE.entity==="wavg"||!!st, isGroup=STATE.entity==="group"||wtd;
+  const head=st?`${GRPLBL["uf-"+st.toLowerCase()]} — weighted by cane output (2025) (${sel.length} mesoregions)`
+    :wtd?`${GRPLBL[STATE.grp]} — weighted by ${WLBL[STATE.grp]} (${sel.length}${isReg(STATE.grp)?" mesoregions":""})`
     :isGroup?`Average of ${sel.length} points · ${GRPLBL[STATE.grp]}`
     :sel[0].regKey?`${sel[0].nome} (${sel[0].uf}) — cane-weighted mean of ${sel[0].n} municipalities`
     :sel[0].nome+" · "+sel[0].sub;
