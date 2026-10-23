@@ -35,10 +35,13 @@ jobs:
         working-directory: "Cost Model"
         run: python update_commodities.py
 
+      - name: Export hub JSON
+        run: python "Hub Export/export_cost_model_json.py"
+
       - name: Commit and push updated database
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Cost Model/commodities_prices.db"
+          git add "Cost Model/commodities_prices.db" "Cost Model/cost-model.json"
           git diff --staged --quiet || git commit -m "Daily update: commodity prices ($(date -u +'%Y-%m-%d'))"
           git push
