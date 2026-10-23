@@ -69,10 +69,13 @@ jobs:
         working-directory: Wasde
         run: python wasde.py wap-backfill --max-minutes 170
 
+      - name: Export hub JSON
+        run: python "Hub Export/export_wasde_json.py"
+
       - name: Commitar banco atualizado
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Wasde/wasde.db
+          git add Wasde/wasde.db Wasde/wasde-*.json
           git diff --cached --quiet || git commit -m "auto: refresh wasde.db — $(date -u +'%Y-%m-%d %H:%M') UTC"
           git push
