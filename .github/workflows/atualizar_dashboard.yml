@@ -15,10 +15,12 @@ jobs:
           python-version: '3.11'
       - name: Gerar dashboard
         run: python "Supermarket Prices/gerar_dashboard.py"
+      - name: Export hub JSON (beers only)
+        run: python "Hub Export/export_beer_prices_json.py"
       - name: Commit e push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Supermarket Prices/supermarket_prices.html"
+          git add "Supermarket Prices/supermarket_prices.html" "Supermarket Prices/beer-prices.json"
           git diff --cached --quiet || git commit -m "dashboard: atualiza supermarket prices [$(date '+%Y-%m-%d %H:%M')]"
           git push

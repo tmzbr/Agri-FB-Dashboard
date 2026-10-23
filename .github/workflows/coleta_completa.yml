@@ -31,16 +31,20 @@ jobs:
         run: python "Supermarket Prices/scraper.py" Biscoitos Massas
       - name: Gerar dashboard
         run: python "Supermarket Prices/gerar_dashboard.py"
+      - name: Export hub JSON (beers only)
+        run: python "Hub Export/export_beer_prices_json.py"
       - name: Commit e push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           cp "Supermarket Prices/precos.db" /tmp/precos_local.db
           cp "Supermarket Prices/supermarket_prices.html" /tmp/html_local.html
+          cp "Supermarket Prices/beer-prices.json" /tmp/beer_local.json
           git fetch origin main
           git reset --hard origin/main
           cp /tmp/precos_local.db "Supermarket Prices/precos.db"
           cp /tmp/html_local.html "Supermarket Prices/supermarket_prices.html"
+          cp /tmp/beer_local.json "Supermarket Prices/beer-prices.json"
           git add "Supermarket Prices/"
           git diff --staged --quiet || git commit -m "Coleta Completa: $(date '+%d/%m/%Y %H:%M')"
           git push origin main
