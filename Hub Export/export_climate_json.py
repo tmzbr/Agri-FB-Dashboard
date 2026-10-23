@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CM = ROOT / "Climate Monitor"
 OUT = CM / "Hub"
 MODELS = {"nasa": "history.json", "era5": "history_era5.json"}
+MAX_DAILY_RAIN_MM = 500
 REGION_FILES = {"rs": ["RS"], "pr": ["PR"], "ms": ["MS"], "mt": ["MT"], "go": ["GO"], "matopiba": ["MA", "TO", "PI", "BA"]}
 
 
@@ -88,6 +89,10 @@ def document(model, hist, points, keys):
         "series": {k: pack(hist["points"][k]) for k in sorted(keys)},
     }
     doc["asOf"] = as_of(doc)
+    # The NASA POWER API sometimes returns rain ×24 (see nasa_power.py); never publish it.
+    worst = max((v for s in doc["series"].values() for a in s["p"].values() for v in a if v is not None), default=0)
+    if worst > MAX_DAILY_RAIN_MM * 10:
+        raise SystemExit(f"[EXPORT] climate {model}: daily rain of {worst / 10:.0f} mm — refusing to publish")
     return doc
 
 
