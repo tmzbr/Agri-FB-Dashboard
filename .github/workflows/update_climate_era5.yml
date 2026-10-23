@@ -80,11 +80,14 @@ jobs:
                   sys.exit(f"ERA5 atrasado demais em {f} - abortando o commit")
           PY
 
+      - name: Export hub JSON
+        run: python "Hub Export/export_climate_json.py" era5
+
       - name: Commit e push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Climate Monitor/Weather Monitor/history_era5.json" "Climate Monitor/Sugar Monitor/history_era5.json"
+          git add "Climate Monitor/Weather Monitor/history_era5.json" "Climate Monitor/Sugar Monitor/history_era5.json" "Climate Monitor/Hub"
           git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
           git commit -m "auto: refresh ERA5 climate history $(date -u +'%Y-%m-%d')"
           git pull --rebase origin main || true

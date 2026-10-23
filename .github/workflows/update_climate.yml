@@ -65,11 +65,14 @@ jobs:
       - name: Refresh RONI (NOAA CPC)
         run: python "Climate Monitor/update_roni.py"
 
+      - name: Export hub JSON
+        run: python "Hub Export/export_climate_json.py" nasa
+
       - name: Commit e push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "Climate Monitor/Weather Monitor/history.json" "Climate Monitor/Sugar Monitor/history.json" "Climate Monitor/roni.json"
+          git add "Climate Monitor/Weather Monitor/history.json" "Climate Monitor/Sugar Monitor/history.json" "Climate Monitor/roni.json" "Climate Monitor/Hub"
           git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
           git commit -m "auto: refresh climate (NASA history + RONI) $(date -u +'%Y-%m-%d')"
           git pull --rebase origin main || true
