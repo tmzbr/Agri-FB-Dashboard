@@ -51,6 +51,11 @@ jobs:
       - name: Rebuild region series (Weather)
         run: python "Climate Monitor/Weather Monitor/build_regions.py" nasa
 
+      # Logo depois do Weather: reaproveita o _cells_nasa.json que ele acabou de
+      # baixar (MT/PR/GO/MS), então só as células canavieiras novas vão à API.
+      - name: Rebuild region series (Sugar — cane regions)
+        run: python "Climate Monitor/Sugar Monitor/build_regions.py"
+
       - name: Sanidade — regiões presentes no history.json
         run: |
           python - <<'PY'
@@ -60,6 +65,11 @@ jobs:
           print(f"{len(h['points'])} pontos, {len(regs)} séries de região")
           if len(regs) < 100:
               sys.exit("history.json sem as séries de região — abortando o commit")
+          h = json.load(open("Climate Monitor/Sugar Monitor/history.json", encoding="utf-8"))
+          regs = [k for k in h["points"] if "|" in k]
+          print(f"sugar: {len(h['points'])} pontos, {len(regs)} séries de região")
+          if len(regs) < 40:
+              sys.exit("sugar history.json sem as séries de região — abortando o commit")
           PY
 
       - name: Refresh RONI (NOAA CPC)

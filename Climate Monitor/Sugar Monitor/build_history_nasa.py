@@ -6,9 +6,11 @@ Inclui o ano corrente (NASA POWER tem ~2-3 dias de latência).
 
 Resumível (cache _hist_cache.json). Roda 1x (reexecute ~1x/ano).
 """
-import json, time, os, urllib.request, urllib.error, datetime
+import json, time, os, sys, urllib.request, urllib.error, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))          # Climate Monitor/
+import nasa_power
 LOC = os.path.join(HERE, "locations.json")
 OUT = os.path.join(HERE, "history.json")
 CACHE = os.path.join(HERE, "_hist_cache.json")
@@ -28,8 +30,13 @@ def build_md_index():
 MD = build_md_index()
 
 def fetch(lat, lon, tries=5):
+    """Em janelas e conferido: a API às vezes devolve a chuva ×24 — ver
+    Climate Monitor/nasa_power.py."""
+    return nasa_power.fetch(lambda a, b: fetch_window(lat, lon, a, b, tries), lat, lon, Y0)
+
+def fetch_window(lat, lon, start, end, tries):
     url = (f"{API}?parameters=T2M,PRECTOTCORR&community=AG"
-           f"&longitude={lon}&latitude={lat}&start={START}&end={END}&format=JSON")
+           f"&longitude={lon}&latitude={lat}&start={start}&end={end}&format=JSON")
     for t in range(tries):
         try:
             with urllib.request.urlopen(url, timeout=120) as r:

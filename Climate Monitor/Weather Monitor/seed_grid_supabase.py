@@ -45,6 +45,8 @@ import urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))          # Climate Monitor/
+import nasa_power
 GRID = os.path.join(HERE, "grid_br.json")
 DONE = os.path.join(HERE, "_grid_done.json")
 MESH = os.path.join(HERE, "_br_mesh.json")
@@ -155,7 +157,13 @@ MD = md_index()
 
 
 def fetch(lat, lon, y0, tries=8):
-    """Baixa de y0 até hoje. Backoff longo: um blip de DNS não pode matar
+    """Baixa de y0 até hoje, em janelas e conferido: a API às vezes devolve a
+    chuva ×24 — ver Climate Monitor/nasa_power.py."""
+    return nasa_power.fetch(lambda a, b: fetch_window(lat, lon, a, b, tries), lat, lon, y0)
+
+
+def fetch_window(lat, lon, start, end, tries):
+    """Uma janela [start, end]. Backoff longo: um blip de DNS não pode matar
     um job de 15 min.
 
     O 429 tem backoff próprio, bem mais largo. A POWER não publica limite e de
@@ -164,10 +172,9 @@ def fetch(lat, lon, y0, tries=8):
     2.447 células levou 429 em 16 delas (10/08/2026). Esperar 5-40 s como nos
     outros erros só devolve 429; a janela do limite é de minutos.
     """
-    end = datetime.date.today().strftime("%Y%m%d")
     url = (f"{POWER}?parameters=T2M,PRECTOTCORR&community=AG"
            f"&longitude={lon}&latitude={lat}"
-           f"&start={y0}0101&end={end}&format=JSON")
+           f"&start={start}&end={end}&format=JSON")
     last = None
     for t in range(tries):
         try:

@@ -33,7 +33,7 @@ import json, os, sys, time, datetime, urllib.request, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))          # Climate Monitor/
-import om_archive
+import om_archive, nasa_power
 
 LOC = os.path.join(HERE, "locations.json")
 
@@ -97,15 +97,21 @@ def load_cells():
 def fetch_nasa(lat, lon, tries=12):
     """Backoff longo: uma queda de rede/DNS não pode matar um job de 20 min —
     o cache é resumível, mas reiniciar à mão a cada blip é pior que esperar."""
+    # em janelas e conferido: a API às vezes devolve a chuva ×24 (nasa_power.py)
+    p = nasa_power.fetch(lambda a, b: _fetch_nasa_window(lat, lon, a, b, tries), lat, lon, Y0)
+    return ([f"{k[:4]}-{k[4:6]}-{k[6:]}" for k in p["T2M"]],
+            list(p["T2M"].values()), list(p["PRECTOTCORR"].values()))
+
+
+def _fetch_nasa_window(lat, lon, a, b, tries):
     url = ("https://power.larc.nasa.gov/api/temporal/daily/point"
            f"?parameters=T2M,PRECTOTCORR&community=AG&longitude={lon}&latitude={lat}"
-           f"&start={Y0}0101&end={datetime.date.today():%Y%m%d}&format=JSON")
+           f"&start={a}&end={b}&format=JSON")
     for t in range(tries):
         try:
             with urllib.request.urlopen(url, timeout=120) as r:
                 p = json.loads(r.read().decode())["properties"]["parameter"]
-            return ([f"{k[:4]}-{k[4:6]}-{k[6:]}" for k in p["T2M"]],
-                    list(p["T2M"].values()), list(p["PRECTOTCORR"].values()))
+            return p
         except Exception as e:
             w = min(120, 5 * 2 ** min(t, 5))          # 5,10,20,40,80,120,120…
             print(f"    retry {t+1}/{tries} em {w}s ({str(e)[:60]})", flush=True)
