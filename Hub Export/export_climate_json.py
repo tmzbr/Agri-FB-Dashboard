@@ -13,12 +13,14 @@ per group and model. The live Open-Meteo layer and the users' own clusters
 CONTRACT (schemaVersion 1) → Climate Monitor/Hub/climate-<file>[-era5].json
   files: capitals, farms (SLC + BrasilAgro), sugar (mills), and — NASA only —
          regions-rs, regions-pr, regions-ms, regions-mt, regions-go,
-         regions-matopiba (MA, TO, PI and BA together)
+         regions-matopiba (MA, TO, PI and BA together), sugar-regions (cane
+         mesoregions of SP, GO, MG, MS, PR and MT, weighted by cane output)
   { schemaVersion, asOf, model, years,
     roni:   { year: [12 monthly RONI values] },
     points: [ { id, group, name, sub, w, area?, empresa?, s } ]       # s = series key
          or [ { id, group, name, uf, n, milho_t, soja_t,
                 s: { n, m, s } } ]                                    # regions: one series per weighting
+                                                               # (cane regions: cana_t and s: { c })
     series: { key: { t: { year: [366] }, p: { year: [366] } } } }
   Values are tenths (°C ×10, mm ×10) as integers, null where missing; index
   0 = Jan 1 … 59 = Feb 29 … 365 = Dec 31 in every year.
@@ -149,6 +151,24 @@ def regions(hist, ufs):
     return points, keys
 
 
+def cane_regions(hist):
+    """Cane mesoregions of the Center South (Sugar locations.json), one cane-weighted series each ("UF|Meso|c")."""
+    loc = load(CM / "Sugar Monitor/locations.json")
+    by = {}
+    for m in loc.get("regioes", []):
+        key = f"{m['uf']}|{m['regiao']}"
+        r = by.setdefault(key, {"id": "r|" + key, "group": "uf-" + m["uf"].lower(), "name": m["regiao"], "uf": m["uf"], "n": 0, "cana_t": 0})
+        r["n"] += 1
+        r["cana_t"] += m.get("cana_t") or 0
+    points, keys = [], set()
+    for key, r in by.items():
+        if f"{key}|c" in hist["points"]:
+            r["s"] = {"c": f"{key}|c"}
+            keys.add(r["s"]["c"])
+        points.append(r)
+    return points, keys
+
+
 def strip(points):
     for p in points:
         p.pop("lat", None)
@@ -164,6 +184,8 @@ def export(model):
     if any("|" in k for k in weather["points"]):
         for name, ufs in REGION_FILES.items():
             jobs["regions-" + name] = (weather, lambda h, ufs=ufs: regions(h, ufs))
+    if any("|" in k for k in sugar_hist["points"]):
+        jobs["sugar-regions"] = (sugar_hist, cane_regions)
     OUT.mkdir(exist_ok=True)
     for name, (hist, build) in jobs.items():
         points, keys = build(hist)
