@@ -59,6 +59,9 @@ jobs:
           fi
           python "$SCRIPT_DIR/extractor.py" $FORCE_FLAG
 
+      - name: Export hub JSON
+        run: python "Hub Export/export_se_json.py"
+
       - name: Commit updated files
         env:
           SCRIPT_DIR: "Sugar and Ethanol"
@@ -67,6 +70,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$SCRIPT_DIR/commodities.db"
           git add "$SCRIPT_DIR/se_dashboard.html"
+          git add "$SCRIPT_DIR"/se-*.json
           git diff --staged --quiet || \
             git commit -m "chore: data update [$(date -u '+%Y-%m-%d %H:%M UTC')]"
           git pull --rebase origin main
