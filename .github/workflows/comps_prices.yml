@@ -1,9 +1,9 @@
 name: Update Comps Table prices (D-1 close → Supabase)
 
 # 1x por dia, antes da abertura da B3: o último candle completo é o D-1.
-# Não commita nada — grava em comps_price (Supabase) com a service role.
-# Os múltiplos (P/E, EV/EBITDA, FCFE yield, upside) são recalculados no
-# front com esse fechamento.
+# Grava em comps_price (Supabase) com a service role e publica, para o
+# research hub, a tabela final (múltiplos recalculados com esse fechamento)
+# em comps-table.json — o único arquivo commitado.
 
 on:
   schedule:
@@ -24,6 +24,8 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,3 +43,19 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python "Market Watch/Comps Table/comps_prices.py" --days "${{ github.event.inputs.days || '10' }}"
+
+      - name: Export hub JSON (read-only comps table)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python "Hub Export/export_comps_json.py"
+
+      - name: Commit comps-table.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Market Watch/Comps Table/comps-table.json"
+          git diff --cached --quiet && { echo "nada a commitar"; exit 0; }
+          git commit -m "auto: comps table hub JSON $(date -u +'%Y-%m-%d')"
+          git pull --rebase origin main
+          git push
