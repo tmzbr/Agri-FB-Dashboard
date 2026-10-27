@@ -277,7 +277,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months"><b>Spread</b> = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months"><b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months</div>
 </div>
 
 <!-- CONTROLS — Period (granularity) on the left, View on the right -->
@@ -396,8 +396,8 @@ tr:hover td{background:#FFF8F5;}
   </div><!-- bottom-row -->
 
   <div class="note-bar" id="note-bar">
-    <em>Integrated spread</em>: (Carcass ÷ 45.36) ÷ (Feed Grain USD/kg × 5.8) &nbsp;·&nbsp;
-    <em>Non-Integrated spread</em>: (Carcass ÷ Hog Price) ÷ 45.36 &nbsp;·&nbsp;
+    <em>Integrated spread</em>: (Carcass ÷ 45.36 − Feed Grain USD/kg × 5.8) ÷ (Carcass ÷ 45.36) &nbsp;·&nbsp;
+    <em>Non-Integrated spread</em>: (Carcass − Hog Price) ÷ Carcass &nbsp;·&nbsp; both as a margin on revenue (%) &nbsp;·&nbsp;
     Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (lag in months, ⅔ corn + ⅓ SBM) · FCR: 5.8×
   </div>
 
@@ -489,24 +489,29 @@ function setMode(mode) {
 // taken lag/3 quarters back, linearly interpolated between the two
 // neighbouring quarters (3m = prior quarter, 6m = two quarters back — the
 // published default). Weekly rows use their quarter's value, as before.
-// Integrated spread = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8).
+// Integrated spread = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36).
 function applyLag() {
   const k = grainLag / 3, n = Math.floor(k), f = k - n;
   const fgAt = i => {
     const a = DB_ROWS[i - n]?.feed_grain_spot, b = DB_ROWS[i - n - 1]?.feed_grain_spot;
     return f === 0 ? (a ?? null) : (a != null && b != null) ? (1 - f) * a + f * b : null;
   };
-  const spreadInt = (carcass, fg) => (carcass && fg) ? (carcass / 45.36) / (fg * 5.8) : null;
+  // Both spreads are a margin on revenue (%): (revenue − input) ÷ revenue. The db
+  // keeps the old ratio columns (WPI / verify step); the page derives margins here.
+  const spreadInt  = (carcass, fg)  => (carcass && fg)  ? 1 - (fg * 5.8) / (carcass / 45.36) : null;
+  const spreadNint = (carcass, hog) => (carcass && hog) ? 1 - hog / carcass : null;
   const idxByYq = {};
   DB_ROWS.forEach((r, i) => {
     idxByYq[r.year_q] = i;
     r.feed_grain        = fgAt(i);
     r.spread_integrated = spreadInt(r.carcass, r.feed_grain);
+    r.spread_non_integrated = spreadNint(r.carcass, r.hog_price);
   });
   for (const r of WEEKLY_ROWS) {
     const yq = +r.report_date.slice(0, 4) * 10 + Math.floor((+r.report_date.slice(5, 7) - 1) / 3) + 1;
     r.feed_grain        = idxByYq[yq] != null ? fgAt(idxByYq[yq]) : null;
     r.spread_integrated = spreadInt(r.carcass, r.feed_grain);
+    r.spread_non_integrated = spreadNint(r.carcass, r.hog_price);
   }
 }
 
@@ -533,6 +538,10 @@ function setTab(tab) {
 }
 
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+// Spreads are margins (fractions): shown as % and their changes as percentage points.
+const pctS = (v, d = 1) => (v * 100).toFixed(d) + '%';
+const ppS  = (v, d = 2) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + ' pp';
+
 function getSpread(row) {
   return currentMode === 'integrated'
     ? row.spread_integrated
@@ -551,15 +560,13 @@ function spreadBgColor() {
 
 function spreadLabel() {
   return currentMode === 'integrated'
-    ? 'Integrated Spread (×)'
-    : 'Non-Integrated Spread (USD/kg)';
+    ? 'Integrated Spread (%)'
+    : 'Non-Integrated Spread (%)';
 }
 
 function formatSpread(v) {
   if (v == null) return null;
-  return currentMode === 'integrated'
-    ? v.toFixed(3) + '×'
-    : v.toFixed(4) + ' USD/kg';
+  return pctS(v);
 }
 
 function latestRowForMode() {
@@ -634,18 +641,18 @@ function updateInfoPanel() {
   const isInt = currentMode === 'integrated';
 
   document.getElementById('ptype-desc').textContent = isInt
-    ? 'Integrated producers own hog farms — cost is the feed-grain basket. Spread = Carcass ÷ Feed Grain (×).'
-    : 'Non-integrated packers buy live hogs on the open market. Spread = Carcass ÷ Hog Price (USD/kg packing margin).';
+    ? 'Integrated producers own hog farms — cost is the feed-grain basket. Spread = (Carcass − Feed Grain) ÷ Carcass (%).'
+    : 'Non-integrated packers buy live hogs on the open market. Spread = (Carcass − Hog Price) ÷ Carcass (% packing margin).';
 
   document.getElementById('top-sub').innerHTML = isInt
-    ? 'Integrated spread — Carcass ÷ Feed Grain &nbsp;<span class="mode-badge integrated">Integrated</span>'
-    : 'Non-Integrated spread — Carcass ÷ Hog Price &nbsp;<span class="mode-badge non-integrated">Non-Integrated</span>';
+    ? 'Integrated spread — (Carcass − Feed Grain) ÷ Carcass &nbsp;<span class="mode-badge integrated">Integrated</span>'
+    : 'Non-Integrated spread — (Carcass − Hog Price) ÷ Carcass &nbsp;<span class="mode-badge non-integrated">Non-Integrated</span>';
 
   // Feed grain row is only meaningful in integrated mode
   document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
   const formula = isInt
-    ? '<b>Spread</b> = (Carcass ÷ 45.36) ÷ (Feed Grain × 5.8) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
-    : '<b>Spread</b> = (Carcass ÷ Hog Price) ÷ 45.36 · Carcass &amp; Hog in USD/cwt → USD/kg';
+    ? '<b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
+    : '<b>Spread</b> = (Carcass − Hog Price) ÷ Carcass · Carcass &amp; Hog in USD/cwt';
   const fEl = document.getElementById('spread-formula');
   fEl.innerHTML = formula;
   fEl.title = fEl.textContent;
@@ -692,7 +699,7 @@ function renderQuarterlyCharts() {
   document.getElementById('chart1-title').textContent =
     `QoQ ΔSpread — ${isInt ? 'Integrated' : 'Non-Integrated'}`;
   document.getElementById('chart2-title').textContent =
-    `Spread Level — ${isInt ? 'Integrated (×)' : 'Non-Integrated (USD/kg)'}`;
+    `Spread Level — ${isInt ? 'Integrated (%)' : 'Non-Integrated (%)'}`;
 
   const validSpreads = allSeries.filter(r => r.spread != null).map(r => r.spread);
   const avg = validSpreads.length ? validSpreads.reduce((s,v)=>s+v,0)/validSpreads.length : null;
@@ -726,15 +733,14 @@ function renderQuarterlyCharts() {
         tooltip: { callbacks: {
           label: ctx => {
             const v = ctx.parsed.y, sign = v >= 0 ? '+' : '';
-            return isInt ? `ΔSpread: ${sign}${v.toFixed(4)}×`
-                         : `ΔSpread: ${sign}${v.toFixed(5)} USD/kg`;
+            return `ΔSpread: ${ppS(v)}`;
           }
         } }
       },
       scales: {
         x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
         y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:'#888',
-             callback: v => (v>=0?'+':'')+v.toFixed(isInt?3:4)+(isInt?'×':'')} }
+             callback: v => ppS(v, 1)} }
       }
     }
   });
@@ -769,16 +775,15 @@ function renderQuarterlyCharts() {
         tooltip: { callbacks: {
           label: ctx => {
             const v = ctx.parsed.y; if (v == null) return null;
-            return isInt ? `${ctx.dataset.label}: ${v.toFixed(3)}×`
-                         : `${ctx.dataset.label}: ${v.toFixed(4)} USD/kg`;
+            return `${ctx.dataset.label}: ${pctS(v)}`;
           }
         } }
       },
       scales: {
         x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45} },
         y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:color,
-             callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
-             title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
+             callback: v => pctS(v, 0)},
+             title:{display:true,text: 'Spread (%)',
                font:{size:9.5},color:color} }
       }
     }
@@ -787,9 +792,9 @@ function renderQuarterlyCharts() {
   if (avg != null && levelData.length) {
     const latest = levelData[levelData.length-1];
     const vs = latest - avg;
-    const vsStr = (vs >= 0 ? '+' : '') + (isInt ? vs.toFixed(3)+'×' : vs.toFixed(4)+' USD/kg');
+    const vsStr = ppS(vs);
     document.getElementById('chart2-stat').innerHTML =
-      `Avg: <strong>${isInt ? avg.toFixed(3)+'×' : avg.toFixed(4)+' USD/kg'}</strong>
+      `Avg: <strong>${pctS(avg)}</strong>
        &nbsp;·&nbsp; Latest vs Avg: <strong>${vsStr}</strong>`;
   }
 }
@@ -808,7 +813,7 @@ function renderFineLevelChart(rows, key) {
   const period = currentTab === 'monthly' ? 'Monthly' : 'Weekly';
 
   document.getElementById('chart2-title').textContent =
-    `Spread Level — ${period} · ${isInt ? 'Integrated (×)' : 'Non-Integrated (USD/kg)'}`;
+    `Spread Level — ${period} · ${isInt ? 'Integrated (%)' : 'Non-Integrated (%)'}`;
   document.getElementById('chart2-stat').textContent =
     `${period} average · ${isInt ? 'Integrated' : 'Non-Integrated'} mode`;
 
@@ -834,8 +839,7 @@ function renderFineLevelChart(rows, key) {
         tooltip: { callbacks: {
           label: ctx => {
             const v = ctx.parsed.y; if (v == null) return null;
-            return isInt ? `${ctx.dataset.label}: ${v.toFixed(3)}×`
-                         : `${ctx.dataset.label}: ${v.toFixed(4)} USD/kg`;
+            return `${ctx.dataset.label}: ${pctS(v)}`;
           }
         } }
       },
@@ -843,8 +847,8 @@ function renderFineLevelChart(rows, key) {
         x: { grid:{display:false}, ticks:{font:{size:10},color:'#888',maxRotation:45,
              autoSkip:true, maxTicksLimit:14} },
         y: { grid:{color:'#f0f0f0'}, ticks:{font:{size:10},color:color,
-             callback: v => isInt ? v.toFixed(2)+'×' : v.toFixed(3)},
-             title:{display:true,text: isInt ? 'Spread (×)' : 'Spread (USD/kg)',
+             callback: v => pctS(v, 0)},
+             title:{display:true,text: 'Spread (%)',
                font:{size:9.5},color:color} }
       }
     }
@@ -911,7 +915,7 @@ function fineSpreadCell(r) {
   const v = isInt ? r.spread_integrated : r.spread_non_integrated;
   const cls = isInt ? 'td-spread-int' : 'td-spread-nint';
   if (v == null) return '<span class="td-na">—</span>';
-  return `<span class="${cls}">${isInt ? v.toFixed(3)+'×' : v.toFixed(4)+' USD/kg'}</span>`;
+  return `<span class="${cls}">${pctS(v)}</span>`;
 }
 
 // ─── QUARTERLY TABLE ──────────────────────────────────────────────────────────
@@ -926,8 +930,8 @@ function renderTable() {
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Feed Grain<br><span style="font-weight:400;font-size:9.5px;">USD/kg (${grainLag}-mo lag)</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(×)</span>'
-                : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg)</span>'}</th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(%)</span>'
+                : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(%)</span>'}</th>
   </tr>`;
 
   const rows = [...computeSeries()].reverse();
@@ -955,8 +959,8 @@ function renderMonthlyTable() {
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Feed Grain ${grainLag}m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
-                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'
+                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'}</th>
     <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
   </tr>`;
 
@@ -979,8 +983,8 @@ function renderWeeklyTable() {
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Feed Grain ${grainLag}m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(× avg)</span>'
-                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(USD/kg avg)</span>'}</th>
+    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'
+                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'}</th>
   </tr>`;
 
   const rows = computeWeekly();

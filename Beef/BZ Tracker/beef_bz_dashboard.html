@@ -230,7 +230,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; export-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread (×) = Export Price ÷ Cattle Cost · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15"><b>Spread (×)</b> = Export Price ÷ Cattle Cost · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Cattle Cost) ÷ Export Price · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15"><b>Spread</b> = (Export Price − Cattle Cost) ÷ Export Price · Cattle Cost = CEPEA Boi Gordo (BRL/@) ÷ 15</div>
 </div>
 
 <!-- VIEW CONTROLS: granularity (drives all charts + table) + chart view (drives time window) -->
@@ -259,10 +259,10 @@ tr:hover td{background:#FFF8F5;}
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-card-header">
-        <div class="chart-title">Beef Export Spread — Export Price ÷ Cattle Cost (×)</div>
+        <div class="chart-title">Beef Export Spread — (Export Price − Cattle Cost) ÷ Export Price (%)</div>
         <div class="chart-stat">
           Solid = Spread &nbsp;·&nbsp; Dashed = Period Avg &nbsp;·&nbsp;
-          Avg: <strong id="avg-display">—×</strong>
+          Avg: <strong id="avg-display">—</strong>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="spreadChart"></canvas></div>
@@ -284,7 +284,7 @@ tr:hover td{background:#FFF8F5;}
     <div class="chart-card">
       <div class="chart-card-header">
         <div>
-          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year (×)</div>
+          <div class="chart-title">Seasonal Spread Pattern — Monthly by Year (%)</div>
           <div style="font-size:10.5px;color:var(--gray-mid);margin-top:3px;">
             Each line = one year &nbsp;·&nbsp;
             <span style="color:var(--orange);font-weight:700;">—</span> = current year &nbsp;·&nbsp;
@@ -358,6 +358,8 @@ tr:hover td{background:#FFF8F5;}
 </div><!-- main-wrap -->
 
 <script>
+// Spreads are margins on revenue (fractions), shown as %.
+const pctX = (v, d = 1) => (v * 100).toFixed(d) + '%';
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
 let MONTHLY    = [];   // [{period, year, month, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread, vol_tons}]
 let WEEKLY     = [];   // [{start_date, end_date, secex_usd_kg, fx, secex_brl_kg, cepea_r_kg, spread}]
@@ -500,6 +502,12 @@ async function loadDB() {
 
     db.close();
 
+    // Spread as a margin on the export price: (price − cattle) ÷ price. The db keeps
+    // the old price ÷ cattle ratio; the page derives the margin from both legs.
+    const margin = r => ({ ...r, spread: r.secex_brl_kg > 0 && r.cepea_r_kg != null ? 1 - r.cepea_r_kg / r.secex_brl_kg : null });
+    MONTHLY = MONTHLY.map(margin);
+    WEEKLY  = WEEKLY.map(margin);
+
     const dvol  = _buildDailyVolLookup();
     MONTHLY     = MONTHLY.map(r => ({ ...r, vol_tons_daily: dvol.mon[r.period] ?? null }));
     QUARTERLY   = buildQuarterly(MONTHLY, dvol.qtr);
@@ -510,7 +518,7 @@ async function loadDB() {
     const latestM = MONTHLY.filter(r => r.spread != null).slice(-1)[0];
     if (latestM) {
       document.getElementById('latest-period').textContent = latestM.period;
-      document.getElementById('latest-spread').textContent = latestM.spread.toFixed(2) + '×';
+      document.getElementById('latest-spread').textContent = pctX(latestM.spread);
     }
 
     render();
@@ -632,7 +640,7 @@ function renderCharts() {
   const avgLine  = spreads.map(() => mean);
 
   if (mean != null)
-    document.getElementById('avg-display').textContent = mean.toFixed(2) + '×';
+    document.getElementById('avg-display').textContent = pctX(mean);
 
   const ptRadius = rows.length > 60 ? 0 : 2;
 
@@ -643,19 +651,19 @@ function renderCharts() {
     data: {
       labels,
       datasets: [
-        { label: 'Spread (×)', data: spreads,
+        { label: 'Spread (%)', data: spreads,
           borderColor: '#FF5500', backgroundColor: 'rgba(255,85,0,0.07)',
           borderWidth: 1.8, pointRadius: ptRadius, pointHoverRadius: 4,
           fill: true, tension: 0.3, order: 2 },
-        { label: 'Period Avg (×)', data: avgLine,
+        { label: 'Period Avg (%)', data: avgLine,
           borderColor: '#FF9966', backgroundColor: 'transparent',
           borderWidth: 1.8, borderDash: [6, 4],
           pointRadius: 0, tension: 0, order: 1 },
       ],
     },
     options: chartOpts({
-      yCallback: v => v.toFixed(2) + '×',
-      tooltipCb:  ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(3) ?? '—'}×`,
+      yCallback: v => pctX(v, 0),
+      tooltipCb:  ctx => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '—' : pctX(ctx.parsed.y)}`,
     }),
   });
 
@@ -859,7 +867,7 @@ function renderSeasonalityChart() {
               const lbl = ctx.dataset.label;
               // Shorten band label in tooltip
               const displayLbl = lbl.startsWith('Max/Min') ? 'Band Max' : lbl;
-              return `${displayLbl}: ${ctx.parsed.y.toFixed(3)}×`;
+              return `${displayLbl}: ${pctX(ctx.parsed.y)}`;
             },
           },
         },
@@ -871,9 +879,9 @@ function renderSeasonalityChart() {
         },
         y: {
           ticks: { color: '#888', font: { size: 9 },
-            callback: v => v.toFixed(2) + '×' },
+            callback: v => pctX(v, 0) },
           grid: { color: 'rgba(0,0,0,0.05)' },
-          title: { display: true, text: 'Price / Cattle Cost (×)', color: '#999',
+          title: { display: true, text: 'Spread (%)', color: '#999',
             font: { size: 9 } },
         },
       },
@@ -894,7 +902,7 @@ function fmtVol(v)        {
 function fmtSpread(v)     {
   return v == null
     ? '<span class="td-na">—</span>'
-    : `<span class="td-spread">${v.toFixed(3)}×</span>`;
+    : `<span class="td-spread">${pctX(v)}</span>`;
 }
 
 function renderTable() {
@@ -910,7 +918,7 @@ function renderTable() {
       <th style="width:16%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg avg</span></th>
       <th style="width:16%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
       <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
-      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
+      <th style="width:16%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − cattle) ÷ price (%)</span></th>
     </tr>`;
     body.innerHTML = QUARTERLY.slice().reverse().map(r => `<tr>
       <td>${r.period}</td>
@@ -932,7 +940,7 @@ function renderTable() {
       <th style="width:15%;">Cattle Cost<br><span style="font-weight:400;font-size:9px;text-transform:none;">BRL/kg</span></th>
       <th style="width:17%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
       <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
-      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
+      <th style="width:18%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − cattle) ÷ price (%)</span></th>
     </tr>`;
     body.innerHTML = MONTHLY.slice().reverse().map(r => `<tr>
       <td>${r.period ?? '—'}</td>
@@ -957,7 +965,7 @@ function renderTable() {
       <th style="width:10%;">Volume<br><span style="font-weight:400;font-size:9px;text-transform:none;">'000 t</span></th>
       <th style="width:12%;">Revenue<br><span style="font-weight:400;font-size:9px;text-transform:none;">USD mn</span></th>
       <th style="width:10%;">Daily Vol<br><span style="font-weight:400;font-size:9px;text-transform:none;">t/biz day</span></th>
-      <th style="width:14%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">price / cattle (×)</span></th>
+      <th style="width:14%;">Spread<br><span style="font-weight:400;font-size:9px;text-transform:none;">(price − cattle) ÷ price (%)</span></th>
     </tr>`;
     body.innerHTML = WEEKLY.slice().reverse().map(r => `<tr>
       <td>${r.start_date ?? '—'}</td>
