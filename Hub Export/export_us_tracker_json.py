@@ -15,7 +15,8 @@ CONTRACT (schemaVersion 1)
     "weekly":    [ {...one object per report...} ] }
 
   beef     quarterly: quarter, quarter_start, choice, select_, ct150_steer, ct150_all,
-                      ks_avg, ne_avg, mbrf_gm, jbs_gm  ·  weekly: week_ending + prices
+                      ks_avg, ne_avg, ks_est, ne_est, mbrf_gm, jbs_gm  ·  weekly: week_ending + prices
+                      (ks_est / ne_est = CT150-delta estimate for confidential KS / NE weeks)
   chicken  quarterly: quarter, year_q, breast, leg_qtrs, wings, tenders, sbm, corn,
                       fc_spot, ppc_us_gm, ppc_cnl_gm  ·  weekly: report_date + parts, sbm, corn
   pork     quarterly: quarter, year_q, carcass, hog_price, feed_grain_spot,
@@ -34,8 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TRACKERS = {
     "beef": ("Beef/U.S. Tracker/beef.db",
              "SELECT quarter, quarter_start, choice, select_, ct150_steer, ct150_all, ks_avg, ne_avg, "
-             "mbrf_gm, jbs_gm FROM beef_quarterly ORDER BY quarter_start",
-             "SELECT week_ending, choice, select_, ct150_steer, ct150_all, ks_avg, ne_avg "
+             "ks_est, ne_est, mbrf_gm, jbs_gm FROM beef_quarterly ORDER BY quarter_start",
+             "SELECT week_ending, choice, select_, ct150_steer, ct150_all, ks_avg, ne_avg, ks_est, ne_est "
              "FROM beef_weekly ORDER BY week_ending", "week_ending"),
     "chicken": ("Chicken/U.S. Tracker/chicken.db",
                 "SELECT quarter, year_q, breast, leg_qtrs, wings, tenders, sbm, corn, fc_spot, "

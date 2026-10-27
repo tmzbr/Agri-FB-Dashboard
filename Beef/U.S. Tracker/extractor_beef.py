@@ -41,13 +41,53 @@ HEADERS = {
 
 # ══ DATABASE ══════════════════════════════════════════════════════════════════
 
+# KS / NE weeks that USDA withholds as confidential are estimated from the CT150:
+# the last published KS (NE) − CT150 gap is carried forward, i.e. the estimate moves
+# with the CT150 delta. Estimates live in ks_est / ne_est (ks_avg / ne_avg stay the
+# published numbers); a quarter's ks_est is its mean with the estimated weeks in,
+# set only when some week was estimated. Dashboards show ks_est with a "*".
+ESTIMATE_COLS = ("ks_est", "ne_est")
+
+
+def _ensure_estimate_columns(conn: sqlite3.Connection) -> None:
+    for table in ("beef_weekly", "beef_quarterly"):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col in ESTIMATE_COLS:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} REAL")
+    conn.commit()
+
+
+def estimate_confidential(conn: sqlite3.Connection) -> None:
+    """Fill ks_est / ne_est for weeks without a published KS / NE, from the CT150 delta."""
+    rows = conn.execute("SELECT week_ending, ct150_all, ks_avg, ne_avg FROM beef_weekly ORDER BY week_ending").fetchall()
+    updates, counts = [], {"ks": 0, "ne": 0}
+    gap = {"ks": None, "ne": None}   # last published (state − CT150)
+    for week, ct, ks, ne in rows:
+        est = {}
+        for key, val in (("ks", ks), ("ne", ne)):
+            if val is not None:
+                if ct is not None:
+                    gap[key] = val - ct
+                est[key] = None
+            elif ct is not None and gap[key] is not None:
+                est[key] = round(ct + gap[key], 4)
+                counts[key] += 1
+            else:
+                est[key] = None
+        updates.append((est["ks"], est["ne"], week))
+    conn.executemany("UPDATE beef_weekly SET ks_est = ?, ne_est = ? WHERE week_ending = ?", updates)
+    conn.commit()
+    log.info("✓ confidential weeks estimated from CT150 delta: KS %d · NE %d", counts["ks"], counts["ne"])
+
+
 def _migrate_schema(conn: sqlite3.Connection) -> None:
     """Migrate old fat schema → slim schema if needed."""
     weekly_cols = {r[1] for r in conn.execute("PRAGMA table_info(beef_weekly)")}
     quarterly_cols = {r[1] for r in conn.execute("PRAGMA table_info(beef_quarterly)")}
 
-    need_weekly = bool(weekly_cols - {"week_ending", "choice", "select_", "ct150_steer", "ct150_all", "ks_avg", "ne_avg"})
-    need_quarterly = bool(quarterly_cols - {"quarter", "quarter_start", "choice", "select_", "ct150_steer", "ct150_all", "ks_avg", "ne_avg", "mbrf_gm", "jbs_gm"})
+    need_weekly = bool(weekly_cols - {"week_ending", "choice", "select_", "ct150_steer", "ct150_all", "ks_avg", "ne_avg", *ESTIMATE_COLS})
+    need_quarterly = bool(quarterly_cols - {"quarter", "quarter_start", "choice", "select_", "ct150_steer", "ct150_all", "ks_avg", "ne_avg", "mbrf_gm", "jbs_gm", *ESTIMATE_COLS})
 
     if need_weekly:
         log.info("Migrating beef_weekly to slim schema …")
@@ -121,6 +161,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     """)
     conn.commit()
     _migrate_schema(conn)
+    _ensure_estimate_columns(conn)
 
 
 def upsert_weekly(conn: sqlite3.Connection, rows: list[dict]) -> int:
@@ -417,6 +458,12 @@ def recompute_quarterly(conn: sqlite3.Connection, full: bool = False) -> None:
     df["quarter"]       = df["week_ending"].apply(quarter_label)
     df["quarter_start"] = df["week_ending"].apply(lambda d: quarter_start(d).isoformat())
 
+    # Published or estimated, whichever the week has; a quarter gets an estimate only
+    # when at least one of its weeks was estimated.
+    for col in ("ks", "ne"):
+        df[f"{col}_fill"] = df[f"{col}_avg"].fillna(df[f"{col}_est"])
+        df[f"{col}_any"] = df[f"{col}_est"].notna()
+
     agg = df.groupby(["quarter", "quarter_start"]).agg(
         choice      =("choice",      "mean"),
         select_     =("select_",     "mean"),
@@ -424,7 +471,14 @@ def recompute_quarterly(conn: sqlite3.Connection, full: bool = False) -> None:
         ct150_all   =("ct150_all",   "mean"),
         ks_avg      =("ks_avg",      "mean"),
         ne_avg      =("ne_avg",      "mean"),
+        ks_fill     =("ks_fill",     "mean"),
+        ne_fill     =("ne_fill",     "mean"),
+        ks_any      =("ks_any",      "any"),
+        ne_any      =("ne_any",      "any"),
     ).reset_index()
+    for col in ("ks", "ne"):
+        agg[f"{col}_est"] = agg[f"{col}_fill"].where(agg[f"{col}_any"])
+    agg = agg.drop(columns=["ks_fill", "ne_fill", "ks_any", "ne_any"])
 
     # Preserve manually-entered mbrf_gm / jbs_gm
     existing = pd.read_sql("SELECT quarter, mbrf_gm, jbs_gm FROM beef_quarterly", conn)
@@ -432,9 +486,9 @@ def recompute_quarterly(conn: sqlite3.Connection, full: bool = False) -> None:
 
     sql = """
     INSERT INTO beef_quarterly
-        (quarter, quarter_start, choice, select_, ct150_steer, ct150_all, ks_avg, ne_avg, mbrf_gm, jbs_gm)
+        (quarter, quarter_start, choice, select_, ct150_steer, ct150_all, ks_avg, ne_avg, ks_est, ne_est, mbrf_gm, jbs_gm)
     VALUES
-        (:quarter, :quarter_start, :choice, :select_, :ct150_steer, :ct150_all, :ks_avg, :ne_avg, :mbrf_gm, :jbs_gm)
+        (:quarter, :quarter_start, :choice, :select_, :ct150_steer, :ct150_all, :ks_avg, :ne_avg, :ks_est, :ne_est, :mbrf_gm, :jbs_gm)
     ON CONFLICT(quarter) DO UPDATE SET
         quarter_start = excluded.quarter_start,
         choice        = COALESCE(excluded.choice,      choice),
@@ -443,6 +497,8 @@ def recompute_quarterly(conn: sqlite3.Connection, full: bool = False) -> None:
         ct150_all     = COALESCE(excluded.ct150_all,   ct150_all),
         ks_avg        = COALESCE(excluded.ks_avg,      ks_avg),
         ne_avg        = COALESCE(excluded.ne_avg,      ne_avg),
+        ks_est        = excluded.ks_est,
+        ne_est        = excluded.ne_est,
         mbrf_gm       = COALESCE(mbrf_gm, excluded.mbrf_gm),
         jbs_gm        = COALESCE(jbs_gm,  excluded.jbs_gm)
     """
@@ -533,6 +589,8 @@ if __name__ == "__main__":
         load_history(conn, args.history)
     else:
         update_weekly(conn)
+
+    estimate_confidential(conn)
 
     log.info("=== Recomputing quarterly averages ===")
     recompute_quarterly(conn, full=args.full)

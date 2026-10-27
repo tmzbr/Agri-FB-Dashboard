@@ -235,6 +235,12 @@ let W = WByCompany['MBRF'];
 
 const CHARTS={};
 
+// Kansas / Nebraska cell: the CT150-delta estimate with a "*" when there is one.
+function estCell(r,k){
+  const est=r[k+'_est'];
+  return est!=null?`${n1(est)}*`:n1(r[k+'_avg']);
+}
+
 // ══ SPREAD FORMULA ═══════════════════════════════════════════════════════════
 function ctP(w){ w=w||W; return Math.max(0,100-w.ksP-w.neP); }
 
@@ -242,7 +248,8 @@ function calcSpread(row, snap){
   const w=snap||W;
   const ct=row.ct150_steer??row.ct150_all;
   if(!row.choice||!row.select_||!ct) return null;
-  const ks=row.ks_avg??ct, ne=row.ne_avg??ct;
+  // ks_est / ne_est: CT150-delta estimate where USDA withheld KS / NE as confidential
+  const ks=row.ks_est??row.ks_avg??ct, ne=row.ne_est??row.ne_avg??ct;
   const rev=(w.choiceP/100)*row.choice+(1-w.choiceP/100)*row.select_;
   const _ks=w.ksP/100, _ne=w.neP/100, _ct=ctP(w)/100;
   const sum=_ks+_ne+_ct||1;
@@ -455,7 +462,7 @@ function updateCostBreakdown(){
   const last=allQtr[allQtr.length-1];
   const w=W;
   const ct=last.ct150_steer??last.ct150_all??0;
-  const ks=last.ks_avg??ct, ne=last.ne_avg??ct;
+  const ks=last.ks_est??last.ks_avg??ct, ne=last.ne_est??last.ne_avg??ct;
   const _ks=w.ksP/100, _ne=w.neP/100, _ct=ctP(w)/100;
   const sum=_ks+_ne+_ct||1;
 
@@ -494,7 +501,7 @@ function renderTable(){
       <td>${r.quarter??r.month??r.week_ending}</td>
       <td>${n1(r.choice)}</td><td>${n1(r.select_)}</td>
       <td>${n1(r.ct150_steer??r.ct150_all)}</td>
-      <td>${n1(r.ks_avg)}</td><td>${n1(r.ne_avg)}</td>
+      <td>${estCell(r,'ks')}</td><td>${estCell(r,'ne')}</td>
       <td class="ov">${p1(sp)}</td>
       ${showMargin?`<td class="${cls(mg)}">${p1(mg)}</td>`:''}
     </tr>`;
@@ -559,7 +566,15 @@ function buildMonthly(wk){
   return Object.entries(grp).sort().map(([month,rows])=>({month,
     choice:avg(rows,'choice'),select_:avg(rows,'select_'),
     ct150_steer:avg(rows,'ct150_steer'),ct150_all:avg(rows,'ct150_all'),
-    ks_avg:avg(rows,'ks_avg'),ne_avg:avg(rows,'ne_avg')}));
+    ks_avg:avg(rows,'ks_avg'),ne_avg:avg(rows,'ne_avg'),
+    ks_est:estAvg(rows,'ks'),ne_est:estAvg(rows,'ne')}));
+}
+// A month gets an estimate only when one of its weeks was estimated: the mean of
+// the published and estimated weeks together.
+function estAvg(rows,k){
+  if(!rows.some(r=>r[k+'_est']!=null)) return null;
+  const vs=rows.map(r=>r[k+'_avg']??r[k+'_est']).filter(v=>v!=null);
+  return vs.length?vs.reduce((a,b)=>a+b)/vs.length:null;
 }
 
 // ══ LAYOUT ═══════════════════════════════════════════════════════════════════
@@ -658,6 +673,7 @@ function buildLayout(){
         <div class="tbl-wrap">
           <table><thead id="tbl-head"></thead><tbody id="tbl-body"></tbody></table>
         </div>
+        <div class="src">* Kansas / Nebraska withheld by USDA as confidential: estimated from the CT150 delta (last published gap to the CT150 carried forward).</div>
         <div class="src">Sources: USDA AMS lm_ct150 · ams_2461 · ams_2484 · ams_2667 · MBRF/IFRS · JBS/US GAAP</div>
       </div>
 
