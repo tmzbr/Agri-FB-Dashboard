@@ -540,7 +540,7 @@ function setTab(tab) {
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
 // Spreads are margins (fractions): shown as % and their changes as percentage points.
 const pctS = (v, d = 1) => (v * 100).toFixed(d) + '%';
-const ppS  = (v, d = 2) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + ' pp';
+const ppS  = (v, d = 2) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + 'pp';
 
 function getSpread(row) {
   return currentMode === 'integrated'
