@@ -1,0 +1,30 @@
+name: Feeder — upload all hub JSONs
+
+# Manual run that sends every hub JSON at once: the first load before the hub goes
+# live, or a resync after a Feeder/Mindassets problem. The daily workflows only
+# send the files they regenerate. Dry run by default; a real send also needs the
+# repo variable DASHBOARD_FEEDER_ENABLED = "true".
+on:
+  workflow_dispatch:
+    inputs:
+      send:
+        description: "Send for real (otherwise only check the files)"
+        type: boolean
+        default: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Upload hub JSON to the Feeder
+        env:
+          DASHBOARD_FEEDER_ENABLED: ${{ inputs.send && vars.DASHBOARD_FEEDER_ENABLED || 'false' }}
+          DASHBOARD_FEEDER_PROJECT_ID: ${{ vars.DASHBOARD_FEEDER_PROJECT_ID }}
+          DASHBOARD_FEEDER_API_KEY: ${{ secrets.DASHBOARD_FEEDER_API_KEY }}
+        run: python "Hub Export/feeder_upload.py" --all

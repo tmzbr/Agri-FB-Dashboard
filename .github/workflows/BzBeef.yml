@@ -79,3 +79,13 @@ jobs:
             git push
             echo "beef_bz.db committed and pushed."
           fi
+
+      # Research Dashboard Hub: sends the JSON to the Feeder only when the repo variable
+      # DASHBOARD_FEEDER_ENABLED is "true"; until then it checks the files and sends nothing.
+      - name: Upload hub JSON to the Feeder
+        working-directory: ${{ github.workspace }}
+        env:
+          DASHBOARD_FEEDER_ENABLED: ${{ vars.DASHBOARD_FEEDER_ENABLED }}
+          DASHBOARD_FEEDER_PROJECT_ID: ${{ vars.DASHBOARD_FEEDER_PROJECT_ID }}
+          DASHBOARD_FEEDER_API_KEY: ${{ secrets.DASHBOARD_FEEDER_API_KEY }}
+        run: python "Hub Export/feeder_upload.py" bz-beef-export-spread.json
