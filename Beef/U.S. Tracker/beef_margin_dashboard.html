@@ -186,7 +186,7 @@ tbody td:first-child{text-align:left;font-weight:600;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Cutout − Cattle Cost) ÷ Cutout · Cutout = Choice/Select mix · Cattle Cost = KS / NE / 5-Area mix"><b>Spread</b> = (Cutout − Cattle Cost) ÷ Cutout · Cutout = Choice/Select mix · Cattle Cost = KS / NE / 5-Area mix</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Cutout − Cattle Cost) ÷ Cutout · Cutout = Choice/Select mix · Cattle Cost = KS / NE / 5-Area mix (live) ÷ 0.635 dressing yield"><b>Spread</b> = (Cutout − Cattle Cost) ÷ Cutout · Cutout = Choice/Select mix · Cattle Cost = KS / NE / 5-Area mix (live) ÷ 0.635 dressing yield</div>
 </div>
 
 <div class="nav-strip">
@@ -244,6 +244,7 @@ function estCell(r,k){
 // ══ SPREAD FORMULA ═══════════════════════════════════════════════════════════
 function ctP(w){ w=w||W; return Math.max(0,100-w.ksP-w.neP); }
 
+const DRESSING=0.635;
 function calcSpread(row, snap){
   const w=snap||W;
   const ct=row.ct150_steer??row.ct150_all;
@@ -253,7 +254,9 @@ function calcSpread(row, snap){
   const rev=(w.choiceP/100)*row.choice+(1-w.choiceP/100)*row.select_;
   const _ks=w.ksP/100, _ne=w.neP/100, _ct=ctP(w)/100;
   const sum=_ks+_ne+_ct||1;
-  const cattle=(_ks*ks+_ne*ne+_ct*ct)/sum;
+  // Cattle prices are per cwt live; the cutout is per cwt of carcass: ÷ DRESSING puts
+  // cattle on the carcass basis (63.5% dressing yield).
+  const cattle=(_ks*ks+_ne*ne+_ct*ct)/sum/DRESSING;
   return rev>0?(rev-cattle)/rev:null;
 }
 

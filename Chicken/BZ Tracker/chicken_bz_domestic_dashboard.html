@@ -295,7 +295,7 @@ tr:hover td{background:#FFF8F5;}
 <div class="subtab-bar">
   <button class="subtab" onclick="openSiblingModule('chicken_bz_dashboard.html', 10)">Exports</button>
   <button class="subtab active">Domestic<span class="new-badge">NEW</span></button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months"><b>Spread</b> = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.70, lagged N months"><b>Spread</b> = (Chicken Price − Grain Cost) ÷ Chicken Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.70, lagged N months</div>
 </div>
 
 <!-- VIEW CONTROLS -->
@@ -479,7 +479,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="note-bar">
     Sources: <em>CEPEA/ESALQ</em> Fresh Chicken (Frango Resfriado) — wholesale, State of SP, BRL/kg, daily ·
     <em>CEPEA/ESALQ</em> Corn ESALQ/BM&amp;F + Soy PNA (BRL/sc60kg) ·
-    Spread = (Chicken Price BRL/kg − Feed Cost BRL/kg) ÷ Chicken Price BRL/kg · Feed Cost = Grain Basket BRL/kg × 2.439 kg feed per kg of chicken (1.669 corn + 0.770 soy, the same quantities as the U.S. Chicken feed cost) ·
+    Spread = (Chicken Price BRL/kg − Feed Cost BRL/kg) ÷ Chicken Price BRL/kg · Feed Cost = Grain Basket BRL/kg × 2.439 kg feed per kg of chicken (1.669 corn + 0.770 soy, the same quantities as the U.S. Chicken feed cost) ÷ 0.70 (feed ≈ 70% of the cost of a chicken) ·
     Monthly grain = avg of month M−lag (same as Exports) · Daily grain = 30-day avg ending d−lag · Weekly = Mon–Sun average · Grain basket weights &amp; lag adjustable above ·
     Q/M/W/D tab drives comparison charts + table
   </div>
@@ -515,7 +515,8 @@ let cornWeight = 0.68;  // 0–1
 // Same feed quantities as the U.S. Chicken tracker (2.9802 × corn $/bu + 0.03851 × SBM $/t,
 // ¢/lb): 1.669 kg corn + 0.770 kg soy = 2.439 kg of feed per kg of chicken, 68% corn.
 // The grain basket is BRL per kg of grain; × FEED_KG_PER_KG puts it per kg of chicken.
-const FEED_KG_PER_KG = 2.439;
+// Feed ≈ 70% of the cost of producing a chicken: ÷ FEED_COST_SHARE grosses it up to full cost.
+const FEED_KG_PER_KG = 2.439, FEED_COST_SHARE = 0.70;
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const VIEW_MONTHS  = { all: null, '3y': 36, '1y': 12, '3m': 3, '1m': 1 };
@@ -616,7 +617,7 @@ function dailyGrainCost(dt) {
   return (cornWeight * corn + (1 - cornWeight) * soy) / 60;
 }
 
-const spreadOf = (px, g) => (px != null && g != null && px > 0) ? (px - g * FEED_KG_PER_KG) / px : null;
+const spreadOf = (px, g) => (px != null && g != null && px > 0) ? (px - g * FEED_KG_PER_KG / FEED_COST_SHARE) / px : null;
 const avg = arr => { const v = arr.filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
 
 // ─── RECOMPUTE ───────────────────────────────────────────────────────────────

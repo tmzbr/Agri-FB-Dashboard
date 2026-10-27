@@ -277,7 +277,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months"><b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months"><b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months</div>
 </div>
 
 <!-- CONTROLS — Period (granularity) on the left, View on the right -->
@@ -396,9 +396,9 @@ tr:hover td{background:#FFF8F5;}
   </div><!-- bottom-row -->
 
   <div class="note-bar" id="note-bar">
-    <em>Integrated spread</em>: (Carcass ÷ 45.36 − Feed Grain USD/kg × 5.8) ÷ (Carcass ÷ 45.36) &nbsp;·&nbsp;
+    <em>Integrated spread</em>: (Carcass ÷ 45.36 − Feed Grain USD/kg × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) &nbsp;·&nbsp;
     <em>Non-Integrated spread</em>: (Carcass − Hog Price) ÷ Carcass &nbsp;·&nbsp; both as a margin on revenue (%) &nbsp;·&nbsp;
-    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (lag in months, ⅔ corn + ⅓ SBM) · FCR: 5.8×
+    Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (lag in months, ⅔ corn + ⅓ SBM) · 4 kg feed per kg carcass · feed = 65% of the cost of producing a hog (÷ 0.65 grosses feed up to full cost)
   </div>
 
 </div><!-- main-wrap -->
@@ -489,7 +489,7 @@ function setMode(mode) {
 // taken lag/3 quarters back, linearly interpolated between the two
 // neighbouring quarters (3m = prior quarter, 6m = two quarters back — the
 // published default). Weekly rows use their quarter's value, as before.
-// Integrated spread = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36).
+// Integrated spread = (Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36).
 function applyLag() {
   const k = grainLag / 3, n = Math.floor(k), f = k - n;
   const fgAt = i => {
@@ -498,7 +498,9 @@ function applyLag() {
   };
   // Both spreads are a margin on revenue (%): (revenue − input) ÷ revenue. The db
   // keeps the old ratio columns (WPI / verify step); the page derives margins here.
-  const spreadInt  = (carcass, fg)  => (carcass && fg)  ? 1 - (fg * 5.8) / (carcass / 45.36) : null;
+  // 4 kg of feed per kg of carcass, grossed up to the full cost of a hog (feed ≈ 65%), so the
+  // integrated margin compares with the non-integrated one, whose hog price carries every cost.
+  const spreadInt  = (carcass, fg)  => (carcass && fg)  ? 1 - (fg * PORK_FEED_KG / FEED_COST_SHARE) / (carcass / 45.36) : null;
   const spreadNint = (carcass, hog) => (carcass && hog) ? 1 - hog / carcass : null;
   const idxByYq = {};
   DB_ROWS.forEach((r, i) => {
@@ -538,6 +540,7 @@ function setTab(tab) {
 }
 
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+const PORK_FEED_KG = 4, FEED_COST_SHARE = 0.65;
 // Spreads are margins (fractions): shown as % and their changes as percentage points.
 const pctS = (v, d = 1) => (v * 100).toFixed(d) + '%';
 const ppS  = (v, d = 2) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + 'pp';
@@ -651,7 +654,7 @@ function updateInfoPanel() {
   // Feed grain row is only meaningful in integrated mode
   document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
   const formula = isInt
-    ? '<b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 5.8) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
+    ? '<b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
     : '<b>Spread</b> = (Carcass − Hog Price) ÷ Carcass · Carcass &amp; Hog in USD/cwt';
   const fEl = document.getElementById('spread-formula');
   fEl.innerHTML = formula;

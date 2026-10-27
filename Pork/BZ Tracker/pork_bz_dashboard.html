@@ -281,7 +281,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; export-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months"><b>Spread</b> = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 4 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.65, lagged N months"><b>Spread</b> = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 4 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.65, lagged N months</div>
 </div>
 
 <!-- VIEW CONTROLS: granularity (drives all charts + table) + chart view (drives time window) -->
@@ -463,7 +463,7 @@ tr:hover td{background:#FFF8F5;}
     Sources: <em>SECEX/MDIC</em> — NCM 0203 (all swine meat sub-codes) ·
     <em>CEPEA/ESALQ</em> Corn Paranaguá + Soy PNA (BRL/sc60kg) ·
     <em>BCB PTAX</em> BRL/USD ·
-    Spread = (Export Price BRL/kg − Grain Basket BRL/kg) ÷ Export Price BRL/kg ·
+    Spread = (Export Price BRL/kg − Pig Cost BRL/kg) ÷ Export Price BRL/kg · Pig Cost = Grain Basket BRL/kg × 4 kg feed per kg ÷ 0.65 (feed ≈ 65% of the cost of a hog; same as the U.S. Pork integrated spread) ·
     Grain basket weights &amp; lag adjustable above ·
     Vol = total export volume ('000 t) in the table; comparison chart shows t/biz day so partial periods compare fairly ·
     Granularity drives all charts &amp; table · Chart View narrows the time window of the spread &amp; price line charts
@@ -472,6 +472,8 @@ tr:hover td{background:#FFF8F5;}
 </div><!-- main-wrap -->
 
 <script>
+// Same as the U.S. Pork integrated spread: 4 kg of feed per kg of pork, feed ≈ 65% of the cost.
+const FEED_KG_PER_KG = 4, FEED_COST_SHARE = 0.65;
 // Spreads are margins on revenue (fractions), shown as %.
 const pctX = (v, d = 1) => (v * 100).toFixed(d) + '%';
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
@@ -582,7 +584,7 @@ function recomputeMonthly() {
   return MONTHLY_RAW.map(r => {
     const grain   = computeGrainCost(r.year, r.month);
     const spreadX = (grain != null && r.secex_brl_kg != null && r.secex_brl_kg > 0)
-      ? (r.secex_brl_kg - grain) / r.secex_brl_kg : null;
+      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG / FEED_COST_SHARE) / r.secex_brl_kg : null;
     return { ...r, cepea_r_kg: grain, spread: spreadX, spreadX };
   });
 }
@@ -593,7 +595,7 @@ function recomputeWeekly() {
     const mo = parseInt(r.start_date.slice(5, 7));
     const grain   = computeGrainCost(yr, mo);
     const spreadX = (grain != null && r.secex_brl_kg != null && r.secex_brl_kg > 0)
-      ? (r.secex_brl_kg - grain) / r.secex_brl_kg : null;
+      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG / FEED_COST_SHARE) / r.secex_brl_kg : null;
     return { ...r, cepea_r_kg: grain, spread: spreadX, spreadX };
   });
 }

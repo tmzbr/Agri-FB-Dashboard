@@ -297,7 +297,7 @@ tr:hover td{background:#FFF8F5;}
 <!-- SUB-TABS: same Exports | Domestic bar as the BZ Chicken tracker; domestic-only tracker -->
 <div class="subtab-bar">
   <button class="subtab active">Domestic</button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = 2.9802 × Corn + 0.03851 × SBM, lagged N months"><b>Spread</b> = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = 2.9802 × Corn + 0.03851 × SBM, lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = (2.9802 × Corn + 0.03851 × SBM) ÷ 0.70, lagged N months"><b>Spread</b> = (Parts Composite − Feed Cost) ÷ Parts Composite · Feed Cost = (2.9802 × Corn + 0.03851 × SBM) ÷ 0.70, lagged N months</div>
 </div>
 
 <!-- CONTROLS — PERIOD (granularity, drives charts + table) on the left, VIEW on the right -->
@@ -432,7 +432,7 @@ tr:hover td{background:#FFF8F5;}
 
   <div class="note-bar" id="note-bar">
     * Sliders adjust Parts Weights and Feed Cost Lag only — PPC data is as reported.
-    Feed cost: <em>FC = 2.9802×Corn($/bu) + 0.03851×Soybean Meal($/ton)</em>. Revenue = Parts Composite mix only.
+    Feed cost: <em>FC = 2.9802×Corn($/bu) + 0.03851×Soybean Meal($/ton)</em>. Revenue = Parts Composite mix only. Spread cost = FC ÷ 0.70 (feed ≈ 70% of the cost of a chicken).
   </div>
 
 </div><!-- main-wrap -->
@@ -678,11 +678,15 @@ function partsComposite(row, w) {
        + parts.wings  * row.wings  + parts.tenders * row.tenders;
 }
 
+// Feed ≈ 70% of the cost of producing a chicken: ÷ FEED_COST_SHARE grosses it up to
+// full cost, the same rule as the BZ chicken trackers (and 65% for pork).
+const FEED_COST_SHARE = 0.70;
+
 function computeSpread(row, w) {
   const rev = partsComposite(row, w);
   const fc = fcValue(row);
   if (!rev || !fc || rev <= 0) return null;
-  return (rev - fc) / rev;
+  return (rev - fc / FEED_COST_SHARE) / rev;
 }
 
 // Spread for weekly/monthly aggregates. Lag 0: feed cost rebuilt from the
@@ -700,7 +704,7 @@ function computeSpreadFine(row, w) {
   const partsComp = partsComposite(row, w);
   const fc = fineFeedCost(row);
   if (fc == null || !partsComp || partsComp <= 0) return null;
-  return (partsComp - fc) / partsComp;
+  return (partsComp - fc / FEED_COST_SHARE) / partsComp;
 }
 
 // View-window filter for fine granularities (key = 'month' YYYY-MM | 'week' YYYY-MM-DD)

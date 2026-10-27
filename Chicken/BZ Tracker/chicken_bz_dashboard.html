@@ -290,7 +290,7 @@ tr:hover td{background:#FFF8F5;}
 <div class="subtab-bar">
   <button class="subtab active">Exports</button>
   <button class="subtab" onclick="openSiblingModule('chicken_bz_domestic_dashboard.html', 33)">Domestic<span class="new-badge">NEW</span></button>
-  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months"><b>Spread</b> = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60, lagged N months</div>
+  <div class="subtab-formula" id="spread-formula" title="Spread = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.70, lagged N months"><b>Spread</b> = (Export Price − Grain Cost) ÷ Export Price · Grain Cost = 2.439 × (Corn × w + Soy PNA × (1 − w)) ÷ 60 ÷ 0.70, lagged N months</div>
 </div>
 
 <!-- VIEW CONTROLS: granularity (drives all charts + table) + chart view (drives time window) -->
@@ -472,7 +472,7 @@ tr:hover td{background:#FFF8F5;}
     Sources: <em>SECEX/MDIC</em> — NCM 0207 (all poultry sub-codes) ·
     <em>CEPEA/ESALQ</em> Corn Paranaguá + Soy PNA (BRL/sc60kg) ·
     <em>BCB PTAX</em> BRL/USD ·
-    Spread = (Export Price BRL/kg − Feed Cost BRL/kg) ÷ Export Price BRL/kg · Feed Cost = Grain Basket BRL/kg × 2.439 kg feed per kg of chicken (1.669 corn + 0.770 soy, the same quantities as the U.S. Chicken feed cost) ·
+    Spread = (Export Price BRL/kg − Feed Cost BRL/kg) ÷ Export Price BRL/kg · Feed Cost = Grain Basket BRL/kg × 2.439 kg feed per kg of chicken (1.669 corn + 0.770 soy, the same quantities as the U.S. Chicken feed cost) ÷ 0.70 (feed ≈ 70% of the cost of a chicken) ·
     Grain basket weights &amp; lag adjustable above ·
     Vol = total export volume ('000 t) in the table; comparison chart shows t/biz day so partial periods compare fairly ·
     Granularity drives all charts &amp; table · Chart View narrows the time window of the spread &amp; price line charts
@@ -512,7 +512,8 @@ let cornWeight  = 0.68;  // 0–1
 // Same feed quantities as the U.S. Chicken tracker (2.9802 × corn $/bu + 0.03851 × SBM $/t,
 // ¢/lb): 1.669 kg corn + 0.770 kg soy = 2.439 kg of feed per kg of chicken, 68% corn.
 // The grain basket is BRL per kg of grain; × FEED_KG_PER_KG puts it per kg of chicken.
-const FEED_KG_PER_KG = 2.439;
+// Feed ≈ 70% of the cost of producing a chicken: ÷ FEED_COST_SHARE grosses it up to full cost.
+const FEED_KG_PER_KG = 2.439, FEED_COST_SHARE = 0.70;
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const VIEW_MONTHS  = { all: null, '3y': 36, '1y': 12, '3m': 3, '1m': 1 };
@@ -604,7 +605,7 @@ function recomputeMonthly() {
   return MONTHLY_RAW.map(r => {
     const grain   = computeGrainCost(r.year, r.month);
     const spreadX = (grain != null && r.secex_brl_kg != null && r.secex_brl_kg > 0)
-      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG) / r.secex_brl_kg : null;
+      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG / FEED_COST_SHARE) / r.secex_brl_kg : null;
     return { ...r, cepea_r_kg: grain, spread: spreadX, spreadX };
   });
 }
@@ -615,7 +616,7 @@ function recomputeWeekly() {
     const mo = parseInt(r.start_date.slice(5, 7));
     const grain   = computeGrainCost(yr, mo);
     const spreadX = (grain != null && r.secex_brl_kg != null && r.secex_brl_kg > 0)
-      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG) / r.secex_brl_kg : null;
+      ? (r.secex_brl_kg - grain * FEED_KG_PER_KG / FEED_COST_SHARE) / r.secex_brl_kg : null;
     return { ...r, cepea_r_kg: grain, spread: spreadX, spreadX };
   });
 }
