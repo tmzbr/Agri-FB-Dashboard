@@ -1347,7 +1347,8 @@ function makeScorer(sel,wtd){
   return{lm,ld,partial,at};
 }
 const fmtCat=(k,v)=>v==null?"—":k==="t"?v.toFixed(1)+"°":k==="d"?Math.round(v*100)+"%":v.toFixed(1)+"mm/d";
-const fmtSc=s=>s==null?"—":(Math.abs(s-Math.round(s))<.05?String(Math.round(s)):s.toFixed(1));
+// Sempre 1 casa: "2" e "1.7" lado a lado nao deixavam claro se o 2 era 2.0 ou arredondado.
+const fmtSc=s=>s==null?"—":s.toFixed(1);
 function scoreColor(s){if(s==null)return{bg:"#f4f4f4",fg:"#bbb"};
   const t=Math.max(-1,Math.min(1,(s-5.5)/4.5)),mag=Math.abs(t),al=0.12+0.5*mag,c=t>=0?"39,174,96":"192,57,43";
   return{bg:`rgba(${c},${al})`,fg:mag>.55?"#fff":(t>=0?"#14562f":"#7a1f15")};}
