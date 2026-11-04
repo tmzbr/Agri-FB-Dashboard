@@ -35,10 +35,13 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # reset --hard wipes the working tree: keep both generated files across it.
           cp "Beef/U.S. Tracker/beef.db" /tmp/beef.db
+          cp "Beef/U.S. Tracker/us-beef-tracker.json" /tmp/us-beef-tracker.json
           git fetch origin main
           git reset --hard origin/main
           cp /tmp/beef.db "Beef/U.S. Tracker/beef.db"
+          cp /tmp/us-beef-tracker.json "Beef/U.S. Tracker/us-beef-tracker.json"
           git add "Beef/U.S. Tracker/beef.db" "Beef/U.S. Tracker/us-beef-tracker.json"
           git diff --staged --quiet || git commit -m "chore: weekly beef data update $(date +'%Y-%m-%d')"
           git push origin HEAD:main
