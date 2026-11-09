@@ -53,7 +53,9 @@
   --orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
   --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
   --green:#27AE60;--red:#C0392B;--blue:#2980B9;
-  --int-color:#FF5500;--nint-color:#2980B9;--blend-color:#8E44AD;
+  /* Every producer type shares the house orange — the active mode is named,
+     not colour-coded, so switching modes never recolours the page. */
+  --int-color:#FF5500;--nint-color:#FF5500;--blend-color:#FF5500;
   --font:'Segoe UI',Helvetica,Arial,sans-serif;
 }
 html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);
@@ -121,7 +123,7 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 #blend-block{margin-bottom:8px;}
 .blend-range{-webkit-appearance:none;appearance:none;width:100%;height:14px;border-radius:2px;
   /* 14px tall so it is easy to grab; the painted track stays a 4px bar, centred */
-  background:linear-gradient(90deg,var(--int-color) 0%,var(--int-color) 50%,var(--nint-color) 50%,var(--nint-color) 100%);
+  background:linear-gradient(90deg,var(--orange) 0%,var(--orange) 50%,var(--border) 50%,var(--border) 100%);
   background-size:100% 4px;background-position:center;background-repeat:no-repeat;
   outline:none;cursor:pointer;margin:2px 0 4px;}
 .blend-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
@@ -129,8 +131,8 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .blend-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--blend-color);
   border:2px solid var(--white);box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:pointer;}
 .blend-val{font-size:11px;font-weight:700;color:var(--gray-dark);display:flex;justify-content:space-between;}
-.blend-val .bi{color:var(--int-color);}
-.blend-val .bn{color:var(--nint-color);}
+.blend-val .bi{color:var(--orange);}
+.blend-val .bn{color:var(--gray-mid);}
 .ptype-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
 /* feed cost lag — same "Lag __ months" input as the BZ trackers */
 .param-row{display:flex;align-items:center;gap:0;margin-bottom:7px;}
@@ -159,9 +161,8 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 /* ── MODE BADGE ── */
 .mode-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;
   font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-left:6px;vertical-align:middle;}
-.mode-badge.integrated{background:rgba(255,85,0,.12);color:var(--int-color);}
-.mode-badge.non-integrated{background:rgba(41,128,185,.12);color:var(--nint-color);}
-.mode-badge.blend{background:rgba(142,68,173,.12);color:var(--blend-color);}
+.mode-badge.integrated,.mode-badge.non-integrated,.mode-badge.blend{
+  background:rgba(255,85,0,.12);color:var(--orange);}
 
 /* ── BOTTOM ROW ── */
 .bottom-row{display:grid;grid-template-columns:236px 1fr;gap:0;
@@ -518,12 +519,12 @@ function setMode(mode) {
 // Both legs are margins on revenue (dimensionless fractions), so they can be
 // weighted directly — no USD/cwt vs USD/kg mixing. blendW = % integrated.
 function paintBlendSlider() {
-  const int  = getComputedStyle(document.documentElement).getPropertyValue('--int-color').trim();
-  const nint = getComputedStyle(document.documentElement).getPropertyValue('--nint-color').trim();
+  const on  = getComputedStyle(document.documentElement).getPropertyValue('--orange').trim();
+  const off = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
   const el = document.getElementById('blendRange');
   el.value = blendW;
   el.style.background =
-    `linear-gradient(90deg,${int} 0%,${int} ${blendW}%,${nint} ${blendW}%,${nint} 100%)`;
+    `linear-gradient(90deg,${on} 0%,${on} ${blendW}%,${off} ${blendW}%,${off} 100%)`;
   el.style.backgroundSize     = '100% 4px';
   el.style.backgroundPosition = 'center';
   el.style.backgroundRepeat   = 'no-repeat';
@@ -635,9 +636,7 @@ function spreadColor() {
 }
 
 function spreadBgColor() {
-  return currentMode === 'integrated'     ? 'rgba(255,85,0,0.07)'
-       : currentMode === 'non-integrated' ? 'rgba(41,128,185,0.07)'
-       :                                    'rgba(142,68,173,0.07)';
+  return 'rgba(255,85,0,0.07)';
 }
 
 function spreadLabel() {
@@ -781,9 +780,7 @@ function renderQuarterlyCharts() {
   const allSeries = computeSeries();
   const series    = filterByView(allSeries);
   const color     = spreadColor();
-  const barPos    = currentMode === 'integrated'     ? 'rgba(255,85,0,0.80)'
-                  : currentMode === 'non-integrated' ? 'rgba(41,128,185,0.80)'
-                  :                                    'rgba(142,68,173,0.80)';
+  const barPos    = 'rgba(255,85,0,0.80)';
 
   const allValid = allSeries.filter(r => r.dSpread != null);
   document.getElementById('chart1-stat').innerHTML =
