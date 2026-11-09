@@ -22,10 +22,14 @@ SPREAD DEFINITIONS
     → FCR 5.8 = kg feed per kg carcass weight (pork industry average)
     → Result: ~1.5–2.5×
 
-  • spread_non_integrated = (Carcass / Hog Price) / 45.36
+  • spread_non_integrated = 1 − (Hog Price / Carcass)
     → Non-integrated packers: buy live hogs on open market
-    → (Carcass ÷ Hog) ratio then /45.36 → USD/kg packer margin
-    → Result: ~0.015–0.030 USD/kg
+    → Packer margin as a share of revenue; Carcass and Hog are both USD/cwt,
+      so the ratio is dimensionless — no cwt↔kg conversion belongs here.
+    → Result: fraction (~0.05–0.35, i.e. 5–35%); can go negative
+    → NOTE: until Nov 2026 this column held (Carcass ÷ Hog) / 45.36, a
+      dimensionless ratio divided by a cwt→kg factor — not a valid unit.
+      It was rebuilt as the margin above, matching the dashboard.
 
   Feed cost basket (fc_spot, $/ton):
     fc_spot = (2/3) × corn_$/bu × 39.368  +  (1/3) × sbm_$/ton
@@ -39,7 +43,7 @@ UNITS
   Carcass & Hog prices:   USD/cwt
   fc_spot / fc_6m:        USD/ton feed
   spread_integrated:      dimensionless ratio (~1.5–2.5×)
-  spread_non_integrated:  USD/kg (~0.015–0.030)
+  spread_non_integrated:  margin on revenue, fraction (~0.05–0.35)
 
 USAGE
   pip install requests openpyxl pdfplumber
@@ -59,7 +63,7 @@ SCHEMA — table: weekly
   fc_6m        REAL               Feed cost 2Q lag ($/ton feed)
   feed_grain_6m REAL              Legacy — kept for seed rows, ignored in new logic
   spread_integrated    REAL       carcass / fc_6m  (×)
-  spread_non_integrated REAL      carcass / hog_price  (×)
+  spread_non_integrated REAL      1 − hog_price / carcass  (margin, fraction)
   updated_at   TEXT               ISO timestamp
 
 SCHEMA — table: quarterly
@@ -75,7 +79,7 @@ SCHEMA — table: quarterly
   fc_6m        REAL               corn/SBM basket with 2Q lag (informational)
   feed_grain_6m REAL              feed-grain basket USD/kg (6m lag) — drives integrated
   spread_integrated    REAL       (carcass/45.36) / (feed_grain_6m × 5.8)
-  spread_non_integrated REAL      (carcass / hog_price) / 45.36
+  spread_non_integrated REAL      1 − hog_price / carcass  (margin, fraction)
   updated_at   TEXT
 """
 
@@ -1343,9 +1347,9 @@ def seed_from_xlsx(conn, path: str):
                        if carcass and fg6m else None)
         # fg6m is USD/kg; convert to USD/cwt: * 100 / 2.20462 ≈ * 45.36
         # spread_integrated     = (Carcass/45.36) / (feed_grain_6m * 5.8)
-        # spread_non_integrated  = (Carcass/Hog) / 45.36
+        # spread_non_integrated = 1 − Hog/Carcass (packer margin on revenue)
         spread_int  = ((carcass / 45.36) / (fg6m * 5.8)) if (carcass and fg6m) else None
-        spread_nint = ((carcass / hog)   / 45.36)         if (carcass and hog)  else None
+        spread_nint = (1 - hog / carcass)                 if (carcass and hog)  else None
         rows.append({
             "report_date":           date_val.strftime("%Y-%m-%d"),
             "carcass":               round(carcass, 4) if carcass else None,
@@ -1356,7 +1360,7 @@ def seed_from_xlsx(conn, path: str):
             "fc_6m":                 None,
             "feed_grain_6m":         round(fg6m, 6)    if fg6m    else None,
             "spread_integrated":     round(spread_int,  4) if spread_int  else None,
-            "spread_non_integrated": round(spread_nint, 4) if spread_nint else None,
+            "spread_non_integrated": round(spread_nint, 6) if spread_nint is not None else None,
         })
     wb.close()
     print(f"  xlsx seed: {len(rows)} rows")
@@ -1371,9 +1375,9 @@ def seed_from_hardcoded(conn):
     rows = []
     for dt, fg6m, hog, carcass in WEEKLY_SEED:
         # spread_integrated     = (Carcass/45.36) / (feed_grain_6m * 5.8)
-        # spread_non_integrated  = (Carcass/Hog) / 45.36
+        # spread_non_integrated = 1 − Hog/Carcass (packer margin on revenue)
         spread_int  = ((carcass / 45.36) / (fg6m * 5.8)) if (carcass and fg6m) else None
-        spread_nint = ((carcass / hog)   / 45.36)         if (carcass and hog)  else None
+        spread_nint = (1 - hog / carcass)                 if (carcass and hog)  else None
         rows.append({
             "report_date":           dt,
             "carcass":               round(carcass, 4) if carcass else None,
@@ -1384,7 +1388,7 @@ def seed_from_hardcoded(conn):
             "fc_6m":                 None,
             "feed_grain_6m":         round(fg6m, 6)    if fg6m    else None,
             "spread_integrated":     round(spread_int,  4) if spread_int  else None,
-            "spread_non_integrated": round(spread_nint, 4) if spread_nint else None,
+            "spread_non_integrated": round(spread_nint, 6) if spread_nint is not None else None,
         })
     upsert_weekly(conn, rows, label="hardcoded seed — ")
 
@@ -1458,9 +1462,10 @@ def materialise_quarterly(conn):
         # spread_integrated  = (Carcass/45.36) / (feed_grain_6m × HOG_FCR)
         #   carcass/45.36           → USD/kg carcass
         #   feed_grain_6m × 5.8     → USD/kg carcass-equivalent feed cost
-        # spread_non_integrated = (Carcass/Hog) / 45.36
+        # spread_non_integrated = 1 − Hog/Carcass — both USD/cwt, so the ratio is
+        #   dimensionless: the packer's margin as a share of revenue.
         spread_int  = ((carcass / 45.36) / (feed_grain_6m * HOG_FCR)) if (carcass and feed_grain_6m) else avg(d["spread_int"])
-        spread_nint = ((carcass / hog_price) / 45.36)                  if (carcass and hog_price)     else avg(d["spread_nint"])
+        spread_nint = (1 - hog_price / carcass)                        if (carcass and hog_price)     else avg(d["spread_nint"])
         # Same spread at the other selectable feed-cost lags (spot / 3m).
         lag_cols = {}
         for sfx in ("spot", "3m"):
@@ -1479,7 +1484,7 @@ def materialise_quarterly(conn):
               avg(d["corn"]), avg(d["sbm"]), avg(d["fc_spot"]), fc_6m,
               round(feed_grain_6m, 6) if feed_grain_6m else None,
               round(spread_int,  4) if spread_int  else None,
-              round(spread_nint, 4) if spread_nint else None,
+              round(spread_nint, 6) if spread_nint is not None else None,
               ts,
               lag_cols["feed_grain_spot"], lag_cols["feed_grain_3m"],
               lag_cols["spread_integrated_spot"], lag_cols["spread_integrated_3m"]))
@@ -1764,10 +1769,10 @@ def main():
         # (fill_fc_spot / compute_feed_grain_6m), never here.
         row["fc_6m"]                 = None
         row["feed_grain_6m"]         = None
-        # spread_non_integrated = (Carcass/Hog) / 45.36
+        # spread_non_integrated = 1 − Hog/Carcass (margin on revenue, fraction)
         row["spread_integrated"]     = None  # set by compute_feed_grain_6m()
         row["spread_non_integrated"] = (
-            round((carcass / hog_price) / 45.36, 6) if (carcass and hog_price) else None
+            round(1 - hog_price / carcass, 6) if (carcass and hog_price) else None
         )
 
     if fresh:

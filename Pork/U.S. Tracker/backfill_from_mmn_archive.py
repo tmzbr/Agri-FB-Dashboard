@@ -186,7 +186,8 @@ def main():
             row["hog_price"] = round(sum(vals) / len(vals), 4)
         c, h = row.get("carcass"), row.get("hog_price")
         if c and h:
-            row["spread_non_integrated"] = round((c / h) / 45.36, 6)
+            # margin on revenue — c and h are both USD/cwt (no cwt→kg factor here)
+            row["spread_non_integrated"] = round(1 - h / c, 6)
         rows.append(row)
 
     print("\n" + "=" * 62)
