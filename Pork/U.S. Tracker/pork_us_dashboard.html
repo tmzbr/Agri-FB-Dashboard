@@ -53,7 +53,7 @@
   --orange:#FF5500;--black:#1A1A1A;--gray-dark:#333;--gray-mid:#888;
   --gray-light:#F4F4F4;--border:#E5E5E5;--white:#fff;
   --green:#27AE60;--red:#C0392B;--blue:#2980B9;
-  --int-color:#FF5500;--nint-color:#2980B9;
+  --int-color:#FF5500;--nint-color:#2980B9;--blend-color:#8E44AD;
   --font:'Segoe UI',Helvetica,Arial,sans-serif;
 }
 html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-dark);
@@ -109,13 +109,28 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
 .tab-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
 
 /* Producer Type selector — lives in the left panel like Chicken's Feed Cost Lag */
-.ptype-row{display:flex;gap:5px;margin-bottom:6px;}
-.ptype-btn{flex:1;padding:6px 4px;border:1.5px solid var(--border);border-radius:4px;
-  font-size:11px;font-family:var(--font);cursor:pointer;background:none;
+.ptype-row{display:flex;gap:4px;margin-bottom:6px;}
+.ptype-btn{flex:1;padding:6px 2px;border:1.5px solid var(--border);border-radius:4px;
+  font-size:10.5px;font-family:var(--font);cursor:pointer;background:none;
   color:var(--gray-mid);transition:all .15s;text-align:center;font-weight:600;}
 .ptype-btn:hover:not(.active){border-color:#ccc;color:var(--gray-dark);}
 .ptype-btn.active[data-mode="integrated"]{background:var(--int-color);color:#fff;border-color:var(--int-color);}
 .ptype-btn.active[data-mode="non-integrated"]{background:var(--nint-color);color:#fff;border-color:var(--nint-color);}
+.ptype-btn.active[data-mode="blend"]{background:var(--blend-color);color:#fff;border-color:var(--blend-color);}
+/* Blend weight slider — same drag control as the Crushing Spread tracker */
+#blend-block{margin-bottom:8px;}
+.blend-range{-webkit-appearance:none;appearance:none;width:100%;height:14px;border-radius:2px;
+  /* 14px tall so it is easy to grab; the painted track stays a 4px bar, centred */
+  background:linear-gradient(90deg,var(--int-color) 0%,var(--int-color) 50%,var(--nint-color) 50%,var(--nint-color) 100%);
+  background-size:100% 4px;background-position:center;background-repeat:no-repeat;
+  outline:none;cursor:pointer;margin:2px 0 4px;}
+.blend-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--blend-color);border:2px solid var(--white);box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:pointer;}
+.blend-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--blend-color);
+  border:2px solid var(--white);box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:pointer;}
+.blend-val{font-size:11px;font-weight:700;color:var(--gray-dark);display:flex;justify-content:space-between;}
+.blend-val .bi{color:var(--int-color);}
+.blend-val .bn{color:var(--nint-color);}
 .ptype-desc{font-size:10.5px;color:var(--gray-mid);margin-bottom:8px;line-height:1.4;}
 /* feed cost lag — same "Lag __ months" input as the BZ trackers */
 .param-row{display:flex;align-items:center;gap:0;margin-bottom:7px;}
@@ -146,6 +161,7 @@ html,body{font-family:var(--font);background:var(--gray-light);color:var(--gray-
   font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-left:6px;vertical-align:middle;}
 .mode-badge.integrated{background:rgba(255,85,0,.12);color:var(--int-color);}
 .mode-badge.non-integrated{background:rgba(41,128,185,.12);color:var(--nint-color);}
+.mode-badge.blend{background:rgba(142,68,173,.12);color:var(--blend-color);}
 
 /* ── BOTTOM ROW ── */
 .bottom-row{display:grid;grid-template-columns:236px 1fr;gap:0;
@@ -194,6 +210,7 @@ td:first-child{text-align:left;font-weight:600;color:var(--black);}
 tr:hover td{background:#FFF8F5;}
 .td-spread-int{font-weight:700;color:var(--int-color);}
 .td-spread-nint{font-weight:700;color:var(--nint-color);}
+.td-spread-blend{font-weight:700;color:var(--blend-color);}
 .td-na{color:#ccc;font-size:10.5px;}
 .td-pos{color:var(--green);font-weight:600;}
 .td-neg{color:var(--red);font-weight:600;}
@@ -333,7 +350,15 @@ tr:hover td{background:#FFF8F5;}
       <div class="wp-section">Producer Type</div>
       <div class="ptype-row">
         <button class="ptype-btn active" data-mode="integrated" onclick="setMode('integrated')">Integrated</button>
-        <button class="ptype-btn" data-mode="non-integrated" onclick="setMode('non-integrated')">Non-Integrated</button>
+        <button class="ptype-btn" data-mode="non-integrated" onclick="setMode('non-integrated')">Non-Int.</button>
+        <button class="ptype-btn" data-mode="blend" onclick="setMode('blend')">Blend</button>
+      </div>
+      <div id="blend-block" style="display:none;">
+        <input type="range" class="blend-range" id="blendRange" min="0" max="100" step="5" value="50"
+               oninput="onBlendChange(this.value)">
+        <div class="blend-val" id="blend-val">
+          <span class="bi">Integrated 50%</span><span class="bn">Non-Int. 50%</span>
+        </div>
       </div>
       <div class="ptype-desc" id="ptype-desc"></div>
 
@@ -398,6 +423,7 @@ tr:hover td{background:#FFF8F5;}
   <div class="note-bar" id="note-bar">
     <em>Integrated spread</em>: (Carcass ÷ 45.36 − Feed Grain USD/kg × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) &nbsp;·&nbsp;
     <em>Non-Integrated spread</em>: (Carcass − Hog Price) ÷ Carcass &nbsp;·&nbsp; both as a margin on revenue (%) &nbsp;·&nbsp;
+    <em>Blend</em>: w × Integrated + (1 − w) × Non-Integrated, w set by the slider — both legs are dimensionless margins on revenue, so no USD/cwt vs USD/kg mixing &nbsp;·&nbsp;
     Carcass &amp; Hog: USD/cwt · Feed Grain: USD/kg basket (lag in months, ⅔ corn + ⅓ SBM) · 4 kg feed per kg carcass · feed = 65% of the cost of producing a hog (÷ 0.65 grosses feed up to full cost)
   </div>
 
@@ -408,7 +434,8 @@ tr:hover td{background:#FFF8F5;}
 let DB_ROWS     = [];
 let WEEKLY_ROWS = [];
 let charts      = {};
-let currentMode = 'integrated';   // 'integrated' | 'non-integrated'
+let currentMode = 'integrated';   // 'integrated' | 'non-integrated' | 'blend'
+let blendW      = 50;             // % weight on the integrated leg (blend mode)
 let currentView = '3y';           // 'all' | '3y' | '1y'
 let currentTab  = 'quarterly';    // 'quarterly' | 'monthly' | 'weekly'
 let grainLag    = 6;              // months of feed-cost lag (0–12)
@@ -481,8 +508,45 @@ function setMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.ptype-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('blend-block').style.display = mode === 'blend' ? '' : 'none';
+  if (mode === 'blend') paintBlendSlider();
   updateLatestLabel();
   render();
+}
+
+// ── BLEND ────────────────────────────────────────────────────────────────────
+// Both legs are margins on revenue (dimensionless fractions), so they can be
+// weighted directly — no USD/cwt vs USD/kg mixing. blendW = % integrated.
+function paintBlendSlider() {
+  const int  = getComputedStyle(document.documentElement).getPropertyValue('--int-color').trim();
+  const nint = getComputedStyle(document.documentElement).getPropertyValue('--nint-color').trim();
+  const el = document.getElementById('blendRange');
+  el.value = blendW;
+  el.style.background =
+    `linear-gradient(90deg,${int} 0%,${int} ${blendW}%,${nint} ${blendW}%,${nint} 100%)`;
+  el.style.backgroundSize     = '100% 4px';
+  el.style.backgroundPosition = 'center';
+  el.style.backgroundRepeat   = 'no-repeat';
+  document.getElementById('blend-val').innerHTML =
+    `<span class="bi">Integrated ${blendW}%</span><span class="bn">Non-Int. ${100 - blendW}%</span>`;
+}
+
+function onBlendChange(v) {
+  blendW = Math.max(0, Math.min(100, parseInt(v) || 0));
+  paintBlendSlider();
+  applyBlend();
+  updateLatestLabel();
+  render();
+}
+
+// Recompute the blended margin on every row from the two legs already stored.
+function applyBlend() {
+  const w = blendW / 100;
+  const mix = r => (r.spread_integrated != null && r.spread_non_integrated != null)
+    ? r.spread_integrated * w + r.spread_non_integrated * (1 - w)
+    : null;
+  for (const r of DB_ROWS)     r.spread_blend = mix(r);
+  for (const r of WEEKLY_ROWS) r.spread_blend = mix(r);
 }
 
 // Feed grain for each row = the quarter's unlagged basket (feed_grain_spot)
@@ -515,6 +579,7 @@ function applyLag() {
     r.spread_integrated = spreadInt(r.carcass, r.feed_grain);
     r.spread_non_integrated = spreadNint(r.carcass, r.hog_price);
   }
+  applyBlend();
 }
 
 function onLagChange(v) {
@@ -545,26 +610,38 @@ const PORK_FEED_KG = 4, FEED_COST_SHARE = 0.65;
 const pctS = (v, d = 1) => (v * 100).toFixed(d) + '%';
 const ppS  = (v, d = 2) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + 'pp';
 
+// Column holding the active mode's margin — all three are fractions of revenue.
+function spreadKey() {
+  return currentMode === 'integrated'     ? 'spread_integrated'
+       : currentMode === 'non-integrated' ? 'spread_non_integrated'
+       :                                    'spread_blend';
+}
+
 function getSpread(row) {
-  return currentMode === 'integrated'
-    ? row.spread_integrated
-    : row.spread_non_integrated;
+  return row[spreadKey()];
+}
+
+function modeName() {
+  return currentMode === 'integrated'     ? 'Integrated'
+       : currentMode === 'non-integrated' ? 'Non-Integrated'
+       :                                    `Blend ${blendW}/${100 - blendW}`;
 }
 
 function spreadColor() {
-  return currentMode === 'integrated'
-    ? getComputedStyle(document.documentElement).getPropertyValue('--int-color').trim()
-    : getComputedStyle(document.documentElement).getPropertyValue('--nint-color').trim();
+  const v = currentMode === 'integrated'     ? '--int-color'
+          : currentMode === 'non-integrated' ? '--nint-color'
+          :                                    '--blend-color';
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 }
 
 function spreadBgColor() {
-  return currentMode === 'integrated' ? 'rgba(255,85,0,0.07)' : 'rgba(41,128,185,0.07)';
+  return currentMode === 'integrated'     ? 'rgba(255,85,0,0.07)'
+       : currentMode === 'non-integrated' ? 'rgba(41,128,185,0.07)'
+       :                                    'rgba(142,68,173,0.07)';
 }
 
 function spreadLabel() {
-  return currentMode === 'integrated'
-    ? 'Integrated Spread (%)'
-    : 'Non-Integrated Spread (%)';
+  return `${modeName()} Spread (%)`;
 }
 
 function formatSpread(v) {
@@ -640,26 +717,37 @@ function render() {
 
 // ─── INFO PANEL ──────────────────────────────────────────────────────────────
 function updateInfoPanel() {
-  const color = spreadColor();
-  const isInt = currentMode === 'integrated';
+  const color   = spreadColor();
+  const isInt   = currentMode === 'integrated';
+  const isBlend = currentMode === 'blend';
+  const usesFg  = isInt || isBlend;   // feed grain only feeds the integrated leg
 
   document.getElementById('ptype-desc').textContent = isInt
     ? 'Integrated producers own hog farms — cost is the feed-grain basket. Spread = (Carcass − Feed Grain) ÷ Carcass (%).'
-    : 'Non-integrated packers buy live hogs on the open market. Spread = (Carcass − Hog Price) ÷ Carcass (% packing margin).';
+    : !isBlend
+    ? 'Non-integrated packers buy live hogs on the open market. Spread = (Carcass − Hog Price) ÷ Carcass (% packing margin).'
+    : `Weighted average of the two margins — ${blendW}% integrated + ${100 - blendW}% non-integrated. Both legs are margins on revenue (%), so they blend directly.`;
 
-  document.getElementById('top-sub').innerHTML = isInt
-    ? 'Integrated spread — (Carcass − Feed Grain) ÷ Carcass &nbsp;<span class="mode-badge integrated">Integrated</span>'
-    : 'Non-Integrated spread — (Carcass − Hog Price) ÷ Carcass &nbsp;<span class="mode-badge non-integrated">Non-Integrated</span>';
+  const badge = isInt ? '<span class="mode-badge integrated">Integrated</span>'
+              : isBlend ? `<span class="mode-badge blend">Blend ${blendW}/${100 - blendW}</span>`
+              : '<span class="mode-badge non-integrated">Non-Integrated</span>';
+  document.getElementById('top-sub').innerHTML = (isInt
+    ? 'Integrated spread — (Carcass − Feed Grain) ÷ Carcass'
+    : isBlend
+    ? `Blended spread — ${blendW}% Integrated + ${100 - blendW}% Non-Integrated margin`
+    : 'Non-Integrated spread — (Carcass − Hog Price) ÷ Carcass') + ' &nbsp;' + badge;
 
-  // Feed grain row is only meaningful in integrated mode
-  document.getElementById('row-feedgrain').style.display = isInt ? '' : 'none';
+  // Feed grain row is only meaningful where the integrated leg is in play
+  document.getElementById('row-feedgrain').style.display = usesFg ? '' : 'none';
   const formula = isInt
     ? '<b>Spread</b> = (Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36) · Feed Grain = ⅔ Corn + ⅓ SBM basket (USD/kg), lagged N months'
+    : isBlend
+    ? `<b>Spread</b> = ${blendW / 100} × [(Carcass ÷ 45.36 − Feed Grain × 4 ÷ 0.65) ÷ (Carcass ÷ 45.36)] + ${(100 - blendW) / 100} × [(Carcass − Hog Price) ÷ Carcass] · both legs are % of revenue`
     : '<b>Spread</b> = (Carcass − Hog Price) ÷ Carcass · Carcass &amp; Hog in USD/cwt';
   const fEl = document.getElementById('spread-formula');
   fEl.innerHTML = formula;
   fEl.title = fEl.textContent;
-  document.getElementById('lag-block').style.display     = isInt ? '' : 'none';
+  document.getElementById('lag-block').style.display     = usesFg ? '' : 'none';
   document.getElementById('info-fg-label').textContent   = `Feed Grain (${grainLag}m)`;
 
   // Latest quarter for the active mode
@@ -693,16 +781,16 @@ function renderQuarterlyCharts() {
   const allSeries = computeSeries();
   const series    = filterByView(allSeries);
   const color     = spreadColor();
-  const isInt     = currentMode === 'integrated';
+  const barPos    = currentMode === 'integrated'     ? 'rgba(255,85,0,0.80)'
+                  : currentMode === 'non-integrated' ? 'rgba(41,128,185,0.80)'
+                  :                                    'rgba(142,68,173,0.80)';
 
   const allValid = allSeries.filter(r => r.dSpread != null);
   document.getElementById('chart1-stat').innerHTML =
     `N = <strong>${allValid.length}</strong> quarters`;
 
-  document.getElementById('chart1-title').textContent =
-    `QoQ ΔSpread — ${isInt ? 'Integrated' : 'Non-Integrated'}`;
-  document.getElementById('chart2-title').textContent =
-    `Spread Level — ${isInt ? 'Integrated (%)' : 'Non-Integrated (%)'}`;
+  document.getElementById('chart1-title').textContent = `QoQ ΔSpread — ${modeName()}`;
+  document.getElementById('chart2-title').textContent  = `Spread Level — ${modeName()} (%)`;
 
   const validSpreads = allSeries.filter(r => r.spread != null).map(r => r.spread);
   const avg = validSpreads.length ? validSpreads.reduce((s,v)=>s+v,0)/validSpreads.length : null;
@@ -721,10 +809,7 @@ function renderQuarterlyCharts() {
       datasets: [{
         label: 'ΔSpread',
         data: deltaData,
-        backgroundColor: deltaData.map(v =>
-          v >= 0
-            ? (isInt ? 'rgba(255,85,0,0.80)' : 'rgba(41,128,185,0.80)')
-            : 'rgba(160,160,160,0.55)'),
+        backgroundColor: deltaData.map(v => v >= 0 ? barPos : 'rgba(160,160,160,0.55)'),
         borderRadius: 3, borderSkipped: false,
       }]
     },
@@ -804,11 +889,10 @@ function renderQuarterlyCharts() {
 
 // ─── FINE-GRANULARITY LEVEL CHART (monthly / weekly) ─────────────────────────
 function fineSpread(row) {
-  return currentMode === 'integrated' ? row.spread_integrated : row.spread_non_integrated;
+  return row[spreadKey()];
 }
 
 function renderFineLevelChart(rows, key) {
-  const isInt  = currentMode === 'integrated';
   const color  = spreadColor();
   const valid  = rows.filter(r => fineSpread(r) != null);
   const labels = valid.map(r => r[key]);
@@ -816,9 +900,9 @@ function renderFineLevelChart(rows, key) {
   const period = currentTab === 'monthly' ? 'Monthly' : 'Weekly';
 
   document.getElementById('chart2-title').textContent =
-    `Spread Level — ${period} · ${isInt ? 'Integrated (%)' : 'Non-Integrated (%)'}`;
+    `Spread Level — ${period} · ${modeName()} (%)`;
   document.getElementById('chart2-stat').textContent =
-    `${period} average · ${isInt ? 'Integrated' : 'Non-Integrated'} mode`;
+    `${period} average · ${modeName()} mode`;
 
   const ctx = document.getElementById('levelChart').getContext('2d');
   if (charts.level) charts.level.destroy();
@@ -873,6 +957,7 @@ function aggRow(rows, extra) {
     feed_grain:            avgField(rows,'feed_grain'),
     spread_integrated:     avgField(rows,'spread_integrated'),
     spread_non_integrated: avgField(rows,'spread_non_integrated'),
+    spread_blend:          avgField(rows,'spread_blend'),
     ...extra,
   };
 }
@@ -913,57 +998,70 @@ function computeWeekly() {
 // ─── TABLE HELPERS ────────────────────────────────────────────────────────────
 const fmtN  = (v, dec=2) => v != null ? v.toFixed(dec) : '<span class="td-na">—</span>';
 
-function fineSpreadCell(r) {
-  const isInt = currentMode === 'integrated';
-  const v = isInt ? r.spread_integrated : r.spread_non_integrated;
-  const cls = isInt ? 'td-spread-int' : 'td-spread-nint';
-  if (v == null) return '<span class="td-na">—</span>';
-  return `<span class="${cls}">${pctS(v)}</span>`;
+function spreadTdClass() {
+  return currentMode === 'integrated'     ? 'td-spread-int'
+       : currentMode === 'non-integrated' ? 'td-spread-nint'
+       :                                    'td-spread-blend';
+}
+
+// Spread column header for the active mode. In blend mode the two legs get their
+// own columns so the weighting is auditable.
+function spreadTh(suffix) {
+  const sub = `<br><span style="font-weight:400;font-size:9.5px;">${suffix}</span>`;
+  if (currentMode === 'blend') {
+    return `<th>Integrated${sub}</th><th>Non-Int.${sub}</th>`
+         + `<th>Blend ${blendW}/${100 - blendW}${sub}</th>`;
+  }
+  const name = currentMode === 'integrated' ? 'Integrated Spread' : 'Non-Int. Spread';
+  return `<th>${name}${sub}</th>`;
+}
+
+const spreadPct = v => v != null ? pctS(v) : '<span class="td-na">—</span>';
+
+// Spread cell(s) for the active mode — three columns when blending.
+function spreadTds(r) {
+  if (currentMode === 'blend') {
+    return `<td><span class="td-spread-int">${spreadPct(r.spread_integrated)}</span></td>`
+         + `<td><span class="td-spread-nint">${spreadPct(r.spread_non_integrated)}</span></td>`
+         + `<td><span class="td-spread-blend">${spreadPct(r.spread_blend)}</span></td>`;
+  }
+  const v = getSpread(r);
+  return v != null
+    ? `<td><span class="${spreadTdClass()}">${pctS(v)}</span></td>`
+    : '<td><span class="td-na">—</span></td>';
 }
 
 // ─── QUARTERLY TABLE ──────────────────────────────────────────────────────────
 function renderTable() {
-  const isInt   = currentMode === 'integrated';
-  const thead   = document.getElementById('table-head');
-  const tbody   = document.getElementById('table-body');
-  const tdClass = isInt ? 'td-spread-int' : 'td-spread-nint';
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
 
   thead.innerHTML = `<tr>
     <th style="text-align:left;">Quarter</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt</span></th>
     <th>Feed Grain<br><span style="font-weight:400;font-size:9.5px;">USD/kg (${grainLag}-mo lag)</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(%)</span>'
-                : 'Non-Int. Spread<br><span style="font-weight:400;font-size:9.5px;">(%)</span>'}</th>
+    ${spreadTh('(%)')}
   </tr>`;
 
   const rows = [...computeSeries()].reverse();
-  tbody.innerHTML = rows.map(r => {
-    const sv = getSpread(r);
-    const spreadFmt = sv != null
-      ? `<span class="${tdClass}">${formatSpread(sv)}</span>`
-      : '<span class="td-na">—</span>';
-
-    return `<tr>
+  tbody.innerHTML = rows.map(r => `<tr>
       <td>${r.quarter}</td>
       <td>${fmtN(r.carcass)}</td>
       <td>${fmtN(r.hog_price)}</td>
       <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
-      <td>${spreadFmt}</td>
-    </tr>`;
-  }).join('');
+      ${spreadTds(r)}
+    </tr>`).join('');
 }
 
 // ─── MONTHLY TABLE ────────────────────────────────────────────────────────────
 function renderMonthlyTable() {
-  const isInt = currentMode === 'integrated';
   document.getElementById('table-head').innerHTML = `<tr>
     <th style="text-align:left;">Month</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Feed Grain ${grainLag}m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'
-                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'}</th>
+    ${spreadTh('(% avg)')}
     <th style="text-align:right;font-size:10.5px;color:#aaa;"># Weeks</th>
   </tr>`;
 
@@ -973,21 +1071,19 @@ function renderMonthlyTable() {
     <td>${fmtN(r.carcass)}</td>
     <td>${fmtN(r.hog_price)}</td>
     <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
-    <td>${fineSpreadCell(r)}</td>
+    ${spreadTds(r)}
     <td style="color:#aaa;">${r.n}</td>
   </tr>`).join('');
 }
 
 // ─── WEEKLY TABLE ─────────────────────────────────────────────────────────────
 function renderWeeklyTable() {
-  const isInt = currentMode === 'integrated';
   document.getElementById('table-head').innerHTML = `<tr>
     <th style="text-align:left;">Week of (Mon)</th>
     <th>Carcass<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Hog Price<br><span style="font-weight:400;font-size:9.5px;">USD/cwt avg</span></th>
     <th>Feed Grain ${grainLag}m<br><span style="font-weight:400;font-size:9.5px;">USD/kg avg</span></th>
-    <th>${isInt ? 'Integrated Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'
-                : 'Non-Int Spread<br><span style="font-weight:400;font-size:9.5px;">(% avg)</span>'}</th>
+    ${spreadTh('(% avg)')}
   </tr>`;
 
   const rows = computeWeekly();
@@ -996,7 +1092,7 @@ function renderWeeklyTable() {
     <td>${fmtN(r.carcass)}</td>
     <td>${fmtN(r.hog_price)}</td>
     <td>${r.feed_grain != null ? r.feed_grain.toFixed(4) : '<span class="td-na">—</span>'}</td>
-    <td>${fineSpreadCell(r)}</td>
+    ${spreadTds(r)}
   </tr>`).join('');
 }
 
