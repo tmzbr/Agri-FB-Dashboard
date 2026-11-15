@@ -205,7 +205,7 @@ _fetch_running = {"flag": False, "started_at": None, "last_result": None}
 def _run_fetch_once():
     """Actual fetch body: called in the background thread."""
     from news_fetcher import NewsFetcher
-    from relevance_filter import RelevanceFilter
+    from relevance_filter import RelevanceFilter, clean_title
     config = load_config()
     fetcher = NewsFetcher(config)
     rf = RelevanceFilter(config)
@@ -219,6 +219,7 @@ def _run_fetch_once():
     BATCH = 20
     saved = 0
     blocked = 0
+    off_topic = 0
     try:
         items = fetcher.fetch_all()
         for i, item in enumerate(items, 1):
@@ -226,8 +227,18 @@ def _run_fetch_once():
             if rf.is_blocked_source(item):
                 blocked += 1
                 continue
+            # Google News entrega "Manchete - Veículo"; grava já limpo.
+            item["title"] = clean_title(item.get("title"), item.get("source"))
             score = rf.score(item, exclusions)
-            excluded = 1 if rf.is_branded_content(item) else 0
+            # Fora de cobertura (celebridade, esporte, polícia, sem âncora do
+            # setor) entra já marcado como excluído — não aparece no feed, mas
+            # fica no banco para auditoria via ?show_excluded=true.
+            excluded = 0
+            if rf.is_branded_content(item):
+                excluded = 1
+            elif rf.is_off_topic(item):
+                excluded = 1
+                off_topic += 1
             try:
                 cur.execute(
                     "INSERT INTO news (title,url,source,published_at,summary,group_id,relevance_score,is_excluded) "
@@ -241,7 +252,8 @@ def _run_fetch_once():
             if i % BATCH == 0:
                 conn.commit()
         conn.commit()
-        return {"fetched": len(items), "saved": saved, "blocked": blocked}
+        return {"fetched": len(items), "saved": saved, "blocked": blocked,
+                "off_topic": off_topic}
     finally:
         cur.close()
         conn.close()
@@ -498,7 +510,7 @@ def _run_rescore_once():
     """Batch-committed rescore. Survives gunicorn --timeout kill since each
     batch is persisted as it lands — a re-trigger picks up from where the
     previous run died (scores converge to current filter)."""
-    from relevance_filter import RelevanceFilter
+    from relevance_filter import RelevanceFilter, clean_title
     config = load_config()
     rf = RelevanceFilter(config)
     conn = get_db()
@@ -511,12 +523,33 @@ def _run_rescore_once():
     _rescore_running["progress"] = 0
     BATCH = 200
     branded = 0
+    off_topic = 0
+    retitled = 0
     try:
         for i, row in enumerate(rows, 1):
+            new_title = clean_title(row.get("title"), row.get("source"))
+            if new_title and new_title != (row.get("title") or ""):
+                row["title"] = new_title
+                retitled += 1
+            else:
+                new_title = None
             score = rf.score(row, exclusions)
+            exclude = rf.is_branded_content(row) or rf.is_off_topic(row)
             if rf.is_branded_content(row):
-                cur.execute("UPDATE news SET relevance_score=%s, is_excluded=1 WHERE id=%s", (score, row["id"]))
                 branded += 1
+            elif exclude:
+                off_topic += 1
+            # is_excluded nunca volta para 0 aqui: exclusão manual do usuário
+            # é decisão dele e tem que sobreviver ao rescore.
+            if exclude and new_title:
+                cur.execute("UPDATE news SET relevance_score=%s, title=%s, is_excluded=1 WHERE id=%s",
+                            (score, new_title, row["id"]))
+            elif exclude:
+                cur.execute("UPDATE news SET relevance_score=%s, is_excluded=1 WHERE id=%s",
+                            (score, row["id"]))
+            elif new_title:
+                cur.execute("UPDATE news SET relevance_score=%s, title=%s WHERE id=%s",
+                            (score, new_title, row["id"]))
             else:
                 cur.execute("UPDATE news SET relevance_score=%s WHERE id=%s", (score, row["id"]))
             if i % BATCH == 0:
@@ -524,7 +557,8 @@ def _run_rescore_once():
                 _rescore_running["progress"] = i
         conn.commit()
         _rescore_running["progress"] = len(rows)
-        return {"rescored": len(rows), "branded_excluded": branded}
+        return {"rescored": len(rows), "branded_excluded": branded,
+                "off_topic_excluded": off_topic, "titles_cleaned": retitled}
     finally:
         cur.close()
         conn.close()

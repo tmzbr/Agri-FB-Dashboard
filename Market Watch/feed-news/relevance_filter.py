@@ -730,6 +730,376 @@ BRANDED_URL_PATTERNS = [
 ]
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOTOR DE RELEVÂNCIA v2 — gating por dois fatores (âncora + evento)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Problema do motor v1:
+#   1. base_score = 0.40 == score_threshold → TUDO passava por default.
+#   2. match por substring cru: "trigo" casava dentro de "in|trigo|u",
+#      "abate" dentro de "de|bate", "cana" dentro de "ameri|cana", "boi" dentro
+#      de "em|boi|çada". Daí notícia de celebridade entrar no feed de Agri.
+#   3. nenhuma exigência de que a notícia seja SOBRE a cobertura: bastava uma
+#      palavra de evento qualquer ("investigação", "preço") para pontuar.
+#
+# Motor v2 — como um analista decide se avisa o cliente:
+#   (a) ÂNCORA: a notícia tem que ser sobre uma empresa coberta, uma commodity,
+#       um elo da cadeia ou uma instituição do setor. Sem âncora → não é nossa.
+#   (b) EVENTO/DRIVER: tem que haver um fato que mexe em volume, preço, margem,
+#       custo, oferta, capex, regulação ou tese. Âncora sem driver (perfil de
+#       produtor, história de vida, agenda de evento) → não é research.
+#   (c) DOMÍNIO PROIBIDO: celebridade, esporte, religião, polícia, educação,
+#       telecom, entretenimento etc. derruba o item, a não ser que haja âncora
+#       forte no próprio título (ex.: "Polícia interdita frigorífico da JBS").
+#   (d) match sempre com fronteira de palavra e texto sem acento.
+#
+# Todo match é feito sobre texto normalizado (minúsculo, sem acento), com
+# fronteira de palavra. Termo terminando em "*" = prefixo (ex. "pecuar*" pega
+# pecuária/pecuarista/pecuário).
+
+import re
+import unicodedata
+
+
+def _norm(s: str) -> str:
+    """lowercase + remove acento, para match estável PT/EN."""
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def _compile(terms) -> "re.Pattern":
+    """Compila alternância com fronteira de palavra sobre texto normalizado.
+
+    - espaço no termo casa espaço, hífen ou barra (imprensa varia a grafia)
+    - termo com "*" no fim = prefixo (pecuar* → pecuária, pecuarista, ...)
+    """
+    pats = []
+    for raw in sorted({_norm(t).strip() for t in terms if t and str(t).strip()}):
+        prefix = raw.endswith("*")
+        body = raw[:-1] if prefix else raw
+        pat = re.escape(body)
+        pat = pat.replace("\\ ", r"[\s\-/]+").replace(" ", r"[\s\-/]+")
+        if prefix:
+            pat += r"[a-z0-9]*"
+        pats.append(pat)
+    if not pats:
+        pats = [r"(?!x)x"]  # nunca casa
+    return re.compile(r"(?<![a-z0-9])(?:" + "|".join(pats) + r")(?![a-z0-9])")
+
+
+# ── (a) ÂNCORAS — "isso é da minha cobertura?" ────────────────────────────────
+# FORTES: empresa coberta/peer, commodity, elo da cadeia, instituição do setor,
+# doença animal/vegetal. A presença de uma âncora forte é condição necessária.
+ANCHORS_STRONG = [
+    # Listadas Agri (BR)
+    "slc agricola", "slce3", "brasilagro", "agro3", "3tentos", "tten3",
+    "boa safra", "soja3", "vittia", "vitt3", "terra santa", "tesa3",
+    "kepler weber", "kepl3", "sao martinho", "smto3", "adecoagro",
+    "jalles machado", "jalles", "jall3", "raizen", "rail3", "cosan", "csan3",
+    "biosev", "agrogalaxy", "agxy3", "lavoro",
+    # Listadas F&B / proteína (BR + global peers)
+    "jbs", "jbss3", "marfrig", "mrfg3", "minerva foods", "beef3", "mbrf",
+    "brf", "brfs3", "seara", "friboi", "swift",
+    "ambev", "abev3", "heineken", "petropolis", "grupo petropolis",
+    "m dias branco", "m. dias branco", "mdia3", "camil", "caml3", "oderich",
+    "aurora alimentos", "copacol", "pif paf", "vibra agro",
+    "tyson", "pilgrim", "ppc", "smithfield", "hormel", "cal-maine",
+    "cargill", "bunge", "adm", "louis dreyfus", "ldc", "amaggi", "coamo",
+    "viterra", "wilmar", "cofco", "olam", "danone", "nestle", "unilever",
+    "kraft heinz", "general mills", "pepsico", "coca-cola", "coca cola",
+    "mondelez", "bimbo", "lactalis", "arla", "fonterra", "dairy farmers",
+    "ab inbev", "anheuser", "molson", "carlsberg", "diageo", "constellation",
+    "bayer", "basf", "corteva", "syngenta", "fmc", "mosaic", "nutrien",
+    "yara", "heringer", "eurochem", "deere", "john deere", "agco", "case ih",
+    "new holland", "valmont", "marcopolo agro", "stara", "jacto",
+    # Varejo alimentar (consumo / repasse de preço)
+    "carrefour", "crfb3", "assai", "asai3", "grupo mateus", "grma3",
+    "grupo pao de acucar", "gpa", "pcar3", "atacadao", "supermercad*",
+    # Commodities agrícolas e alimentares
+    "soja", "soybean*", "farelo de soja", "oleo de soja", "soybean meal",
+    "milho", "corn", "safrinha", "sorgo", "trigo", "wheat", "arroz", "rice",
+    "feijao", "algodao", "cotton", "cana", "cana-de-acucar", "sugarcane",
+    "acucar", "sugar", "etanol", "ethanol", "biodiesel", "biocombustivel*",
+    "cbio", "cbios", "renovabio", "saf", "hvo",
+    "cafe", "coffee", "cacau", "cocoa", "laranja", "suco de laranja",
+    "citros", "citrus", "tabaco", "fumo", "borracha natural",
+    "leite", "laticini*", "queijo", "iogurte", "lacteo*", "dairy",
+    "cerveja", "beer", "refrigerante", "lupulo", "cevada", "malte",
+    "oleo de palma", "palm oil", "oleo de girassol", "canola",
+    # Proteína animal / cadeia
+    "boi", "bois", "boi gordo", "boi magro", "arroba do boi", "arroba", "bezerr*",
+    "gado", "bovino*", "cattle", "novilh*", "vaca", "vacas", "garrote",
+    "frango", "frangos", "aves", "avicultura", "poultry", "broiler*",
+    "pinto de corte", "pintos de corte", "ovo", "ovos", "egg*",
+    "suino*", "suinocultura", "porco*", "pork", "hog*", "swine",
+    "carne bovina", "carne suina", "carne de frango", "carne de aves",
+    "beef", "proteina animal", "pescado", "tilapia", "aquicultura",
+    "frigorific*", "abatedouro*", "matadouro", "confinamento",
+    "racao animal", "racao", "feedlot", "packer*",
+    # Elos / insumos / infraestrutura
+    "fertilizante*", "adubo*", "ureia", "potassio", "fosfato", "dap", "map",
+    "kcl", "defensivo*", "agroquimic*", "agrotoxic*", "herbicida*",
+    "fungicida*", "inseticida*", "semente*", "inoculante*", "biologico*",
+    "usina de etanol", "usinas de etanol", "destilaria*", "moagem",
+    "esmagamento", "crush", "armazenage*", "silo", "silos",
+    "fob santos", "fob paranagua", "porto de santos", "porto de paranagua",
+    "terminal portuario", "ferrograo", "hidrovia", "barter",
+    # Cadeia de crédito / economia do produtor (ciclo do agro no BB/Caixa é
+    # tese de SLC/AGRO/TTEN e de toda a cadeia de insumos)
+    "agro", "dividas rurais", "divida rural", "inadimplencia no campo",
+    "credito agricola", "cpr", "cra", "barter agricola", "fiagro",
+    "cafeicultor*", "sojicultor*", "citricultor*", "cotonicultor*",
+    "avicultor*", "suinocultor*", "pecuarista*", "cooperativa*",
+    "esmagadora", "bioinsumo*", "biodefensivo*", "bioinseticida*",
+    "inflacao de alimentos", "ipca de alimentos", "cesta basica",
+    "precos dos alimentos", "preco dos alimentos",
+    # Hortifrúti (entra no IPCA de alimentos e no custo do varejo)
+    "hortalica*", "hortifruti", "tomate", "batata", "cebola", "banana",
+    "fruticultura", "frutas", "uva", "maca", "melancia",
+    # Lavoura / safra / produtor
+    "safra", "safras", "entressafra", "lavoura*", "plantio", "colheita",
+    "replantio", "area plantada", "produtividade da lavoura",
+    "produtor rural", "produtores rurais", "fazenda*", "agropecuari*",
+    "agronegocio*", "agribusiness", "pecuar*", "agricultura", "agricola",
+    "farmland", "crop", "crops", "harvest", "planting", "acreage",
+    "grao", "graos", "grain", "grains", "oleaginosa*",
+    # Instituições / dados do setor
+    "conab", "usda", "wasde", "cepea", "imea", "embrapa", "apex-brasil",
+    "ministerio da agricultura", "secex", "abiove", "abpa", "abiec",
+    "abrafrigo", "abia", "abras", "unica", "orplana", "consecana",
+    "aprosoja", "famasul", "faesp", "cna", "ocb", "sindicarne",
+    "stone x", "stonex", "safras & mercado", "agroconsult", "datagro",
+    "rabobank", "fao", "igc", "anp", "cnpe", "anvisa", "cade", "lspa",
+    "plano safra", "credito rural", "funrural", "eudr", "moratoria da soja",
+    "cbot", "chicago board", "ice futures", "b3 agro",
+    # Doenças / sanidade (evento auto-evidente da cadeia)
+    "gripe aviaria", "influenza aviaria", "h5n1", "h5n", "newcastle",
+    "peste suina", "febre aftosa", "vaca louca", "encefalopatia espongiforme",
+    "brucelose", "tuberculose bovina", "ferrugem asiatica", "cigarrinha",
+    "lagarta", "mofo branco", "nematoide", "greening", "cancro citrico",
+    "mosca-das-frutas", "hlb",
+]
+
+# FRACAS: mexem na tese mas nunca definem sozinhas que a notícia é nossa —
+# só contam se houver âncora forte também (evitam "Lula/dólar/juros" virar agro).
+ANCHORS_WEAK = [
+    "dolar", "cambio", "juros", "selic", "ipca", "ibge", "banco do brasil",
+    "frete", "diesel", "combustivel", "china", "mercosul",
+    "tarifa", "importacao", "exportacao", "balanca comercial",
+    "varejo alimentar", "food service", "consumo de alimentos",
+    "clima", "el nino", "la nina", "enso", "seca", "estiagem", "geada",
+]
+
+# ── (b) EVENTOS / DRIVERS ──────────────────────────────────────────────────────
+# Reaproveita o corpus v1 (HIGH_RELEVANCE_TITLE) e acrescenta drivers genéricos
+# que só fazem sentido junto de uma âncora.
+EXTRA_EVENT_TERMS = [
+    # fluxo de comércio / volume
+    "importacao", "importacoes", "exportacao", "exportacoes", "embarque*",
+    "embarcou", "volume exportado", "volume de abate", "receita de exportacao",
+    "recorde", "recordes", "queda de", "alta de", "aumento de", "reducao de",
+    "oferta", "demanda", "estoque*", "crise de abastecimento", "desabastecimento",
+    # produção / capacidade
+    "producao", "capacidade", "ocupacao", "paralisa", "retoma",
+    "fecha unidade", "fecha planta", "fecha fabrica", "abre vagas", "desativa",
+    # preço / margem
+    "preco", "precos", "cotacao", "cotacoes", "margem", "margens",
+    "custo", "custos", "repasse", "spread", "premio", "desconto",
+    "valorizacao", "desvalorizacao",
+    # corporativo
+    "balanco", "trimestre", "guidance", "dividendo", "jcp", "follow on",
+    "captacao", "endividamento", "alavancagem", "divida liquida",
+    "rating", "fato relevante", "assembleia", "conselho de administracao",
+    # regulação / sanidade / comércio
+    "habilitacao", "descredencia*", "embargo*", "suspende", "suspensao",
+    "autoriza", "proibe", "proibicao", "sanitari*", "interdita", "interdicao",
+    "antidumping", "salvaguarda", "quota", "cota", "acordo comercial",
+    "licenca", "licenciamento", "multa", "liminar",
+    # clima / safra (fato)
+    "surto", "foco", "focos", "quebra", "perda", "atraso", "chuva*",
+    "umidade do solo", "janela de plantio", "estimativa", "projecao",
+    "revisao", "levantamento", "boletim", "relatorio",
+    "crescimento", "cresce", "crescem", "encolhe", "contracao",
+    "crescimento de receita", "receita cresce", "receita liquida",
+    # M&A / societário em formas que a imprensa usa de fato
+    "compra", "compra de", "comprou", "vende", "vendeu", "venda",
+    "participacao", "fatia", "controle", "acionista", "socio",
+    "incorpora", "assume", "arremata", "aporte", "aportar",
+    # variações verbais de fato consumado (o v1 só tinha presente/3ª pessoa)
+    "atinge", "atingem", "atingiu", "atingiram", "alcanca", "alcancou",
+    "chega a", "soma", "somam", "somou", "acumula", "acumulou",
+    "supera", "superou", "ultrapassa", "ultrapassou", "bate recorde",
+    "caiu", "cairam", "subiu", "subiram", "cresceu", "cresceram",
+    "recuou", "avancou", "aumentou", "reduziu", "dobrou", "triplicou",
+    "despencou", "disparou", "desabou", "derreteu", "valoriza", "valorizam",
+    "encarece", "barateia", "mais caro", "mais cara", "mais barato",
+    "mais barata", "fica mais caro", "fica mais barato",
+    "projec*", "estimativ*", "revisa", "revisoes", "levantament*",
+    # litígio / enforcement (glifosato, antidumping, ação sanitária)
+    # política setorial / tramitação (MP das dívidas, blend, tributação)
+    "renegocia", "renegociacao", "renegociou", "securitizacao",
+    "medida provisoria", "projeto de lei", "camara aprova", "senado aprova",
+    "aprovada", "aprovado", "aprovou", "sancionada", "sancionou", "veto",
+    "vetou", "flexibiliza", "flexibilizar", "regulamenta", "regulamentacao",
+    "nova regra", "novas regras", "prorroga", "prorrogacao",
+    # capex / expansão em formas verbais usuais
+    "investe", "investem", "investir", "investira", "aposta em", "amplia",
+    "expande", "inaugura", "constroi", "constroem", "comprar", "vender",
+    "adquirir", "fechar acordo", "assina acordo", "assinou",
+    # projeções com "deve"
+    "deve atingir", "deve chegar", "deve ficar", "deve crescer",
+    "deve cair", "deve subir", "deve recuar", "previsao de",
+    "juri", "acao judicial", "processo judicial", "indenizacao", "litigio",
+    "decisao judicial", "sentenca", "acordo judicial", "recurso",
+    # EN — drivers (o corpus v1 era quase todo PT)
+    "exports", "imports", "export", "import", "shipments", "output",
+    "supply", "demand", "inventories", "stocks", "margins", "margin",
+    "prices", "price", "cost", "costs", "capacity", "expands", "expand",
+    "invests", "investment", "loan", "funding", "partnership", "venture",
+    "plans", "plan", "builds", "build", "opens", "closes", "shuts",
+    "deal", "stake", "buys", "sells", "acquires", "merger", "guidance",
+    "forecast", "estimate", "outlook", "ban", "bans", "quota", "quotas",
+    "lawsuit", "verdict", "settlement", "recall", "outbreak", "cases",
+    "gain", "gains", "loses", "lose", "slows", "jumps", "record",
+]
+
+# ── (c) DOMÍNIOS FORA DA COBERTURA ────────────────────────────────────────────
+# Se qualquer um aparece no TÍTULO e não há âncora forte no título, o item é
+# descartado (não só penalizado). Mantém o caso legítimo "Polícia Federal
+# interdita frigorífico da JBS" (âncora forte no título).
+OFF_TOPIC_TITLE = [
+    # celebridade / entretenimento / cultura pop
+    "celebridade*", "famos*", "cantor", "cantora", "cantores", "banda",
+    "turne", "show", "shows", "album", "single", "clipe", "festival de musica",
+    "rock in rio", "lollapalooza", "grammy", "oscar", "emmy", "globo de ouro",
+    "novela", "novelas", "serie", "series", "netflix", "disney+", "hbo",
+    "filme", "filmes", "cinema", "estreia", "bilheteria", "ator", "atriz",
+    "bbb", "big brother", "a fazenda", "reality", "paredao", "influencer",
+    "youtuber", "tiktok", "instagram", "fofoca", "affair", "namoro",
+    "noivado", "casamento", "divorcio", "gravidez", "gravida", "bebe",
+    "fas", "fa-clube", "biografia", "documentario", "podcast",
+    "carnaval", "samba", "escola de samba", "sertanejo", "funk", "forro",
+    "teatro", "museu", "exposicao de arte", "literatura", "romance",
+    "freud", "psicanalise", "horoscopo", "signo", "signos", "tarot",
+    "mega-sena", "loteria", "sorteio", "quina", "lotofacil",
+    # esporte
+    "futebol", "copa do mundo", "libertadores", "brasileirao", "campeonato",
+    "selecao brasileira", "premier league", "champions league", "nba", "nfl",
+    "formula 1", "f1", "gp do brasil", "olimpiada*", "olimpico*", "paralimpic*",
+    "atletismo", "basquete", "volei", "tenis", "surfe", "mma", "ufc",
+    "jogador", "jogadora", "tecnico do", "estadio", "torcida", "gol de",
+    "corrida de rua", "maratona",
+    # polícia / crime sem elo com a cadeia
+    "feminicidio", "homicidio", "assassinat*", "estupro", "sequestro",
+    "latrocinio", "tiroteio", "chacina", "trafico de drogas", "cocaina",
+    "maconha", "facao criminosa", "pcc", "comando vermelho", "milicia",
+    "desaparecid*", "corpo encontrado", "acidente de carro", "atropelad*",
+    "capotou", "colisao", "motorista embriagado",
+    # religião
+    "papa", "vaticano", "igreja catolica", "missa", "evangelic*", "pastor",
+    "culto", "fiel", "fieis", "santuario", "romaria", "canonizacao",
+    "umbanda", "candomble", "oracao", "biblia",
+    # educação / concursos
+    "enem", "inep", "sisu", "prouni", "fies", "vestibular", "concurso publico",
+    "edital de concurso", "professor*", "escola municipal", "escola estadual",
+    "creche", "universidade federal", "mec", "bolsa de estudo",
+    # saúde pessoal / medicina de consumo
+    "cancer", "diabetes", "obesidade", "emagrecimento", "dieta", "nutricionista",
+    "vacina da gripe", "covid", "dengue", "sintomas", "tratamento medico",
+    "hospital", "sus", "cirurgia", "saude mental", "depressao", "ansiedade",
+    "autismo", "alzheimer", "remedio", "farmacia", "ozempic", "mounjaro",
+    # tecnologia / telecom / big tech
+    "big tech*", "inteligencia artificial generativa", "chatgpt", "openai",
+    "iphone", "android", "smartphone", "whatsapp", "telegram", "anatel",
+    "telefonia", "linha movel", "5g", "fibra optica", "hacker", "ataque hacker",
+    "vazamento de dados", "golpe do", "golpes", "pix fraudulento",
+    "criptomoeda*", "bitcoin", "ethereum", "nft", "metaverso", "streaming",
+    "videogame", "playstation", "xbox", "nintendo",
+    # política institucional / geopolítica sem elo setorial
+    "stf", "supremo tribunal", "tse", "cpi", "impeachment", "eleicao",
+    "eleicoes", "urna eletronica", "candidatura", "pesquisa eleitoral",
+    "ministro da educacao", "ministro da justica", "ministro da saude",
+    "ministro da defesa", "forcas armadas", "golpe de estado",
+    "guerra na ucrania", "faixa de gaza", "hamas", "israel", "ira",
+    "otan", "coreia do norte", "venezuela", "nicolas maduro",
+    # lifestyle / serviço / utilidade
+    "receita de", "receitas de", "como fazer", "passo a passo", "dicas de",
+    "horta em casa", "jardinagem", "pet", "cachorro", "gato", "animais de estimacao",
+    "turismo", "viagem", "passagem aerea", "hotel", "pousada", "praia",
+    "previsao do tempo para o fim de semana", "feriado", "transito",
+    "moda", "beleza", "maquiagem", "decoracao", "imovel", "aluguel",
+    "carro novo", "lancamento de carro", "suv", "picape lancamento",
+    # energia / indústria fora de escopo
+    "petroleo bruto", "pre-sal", "refinaria de petroleo", "gasolina nas bombas",
+    "energia eolica", "parque eolico", "energia solar", "painel solar",
+    "mineracao de ferro", "minerio de ferro", "siderurgica", "aco",
+    "industria de defesa", "armamento", "missil", "misseis", "blindado*",
+]
+
+# Seções de URL que indicam domínio fora de cobertura. Match na URL inteira.
+# Exclusão dura: nenhuma notícia dessas seções interessa para research setorial.
+OFF_TOPIC_URL_PATTERNS = [
+    "/pop/", "/celebridades/", "/famosos/", "/entretenimento/", "/cultura/",
+    "/esporte/", "/esportes/", "/futebol/", "/olimpiadas/", "/ge.globo",
+    "/musica/", "/cinema/", "/series/", "/tv/", "/televisao/", "/novelas/",
+    "/horoscopo/", "/signos/", "/loterias/", "/sorteio/",
+    "/policia/", "/policial/", "/seguranca-publica/", "/crime/",
+    "/religiao/", "/vaticano/", "/educacao/", "/concursos/", "/vestibular/",
+    "/saude/", "/bem-estar/", "/viagem/", "/turismo/", "/gastronomia/",
+    "/receitas/", "/moda/", "/beleza/", "/casa-e-decoracao/", "/pets/",
+    "/tecnologia/", "/tech/", "/games/", "/carros/", "/auto/", "/motores/",
+    "/eleicoes/", "/concurso-publico/",
+]
+
+# ── (c2) MATÉRIA DE PERFIL / HUMAN INTEREST ───────────────────────────────────
+# Tem âncora (fazenda, pecuarista, usina) mas não é fato de mercado: perfil,
+# história de vida, homenagem, agenda de evento, conteúdo institucional.
+SOFT_FEATURE_TITLE = [
+    "conheca a historia", "conheca o caso", "conheca a trajetoria",
+    "a historia de", "historia de vida", "trajetoria de", "legado",
+    "homenage*", "memoria", "in memoriam", "aos 90 anos", "faz aniversario",
+    "comemora aniversario", "anos de historia",
+    "dao continuidade", "da continuidade", "mantem o legado", "mantem legado",
+    "esposa e filhas", "esposa e filhos", "mulher e filhas", "herdeir*",
+    "geracao da familia", "sucessao familiar", "negocio de familia",
+    "inspira", "exemplo de", "sonho de", "paixao por",
+    "de pai para filho", "comecou do zero", "superacao", "orgulho",
+    "perfil", "entrevista com", "bate-papo", "papo com", "opiniao",
+    "artigo", "coluna", "editorial", "analise de mercado da semana",
+    "agenda da semana", "confira a programacao", "inscricoes abertas",
+    # fluff institucional de entidade / feira (ABPA/ABIEC produzem muito disso)
+    "sial", "food show", "feira internacional", "missao comercial",
+    "rodada de negocios", "reforca presenca", "reforca dialogo",
+    "reforcara", "reune autoridades", "reune liderancas", "celebra",
+    "comemora", "conquista posicoes", "ganham espaco", "espaco na cadeia",
+    "participe do", "webinar", "live", "feira agropecuaria", "exposicao",
+    "premiacao", "premiad*", "ranking das melhores",
+    "dia do produtor", "dia do agricultor", "curiosidades",
+    "veja fotos", "em fotos", "video", "assista",
+    "turismo rural", "receita com frango", "receita com carne",
+    "receita com leite", "receita facil", "churrasco perfeito", "harmonizacao",
+]
+
+# ── Compilação ────────────────────────────────────────────────────────────────
+_RX_ANCHOR_STRONG = _compile(ANCHORS_STRONG)
+_RX_ANCHOR_WEAK = _compile(ANCHORS_WEAK)
+# Evento = corpus v1 + drivers extras, menos o que já é âncora (senão a mesma
+# palavra satisfaria os dois fatores e o gating viraria letra morta).
+_ANCHOR_NORM = {_norm(t).rstrip("*") for t in ANCHORS_STRONG}
+_EVENT_TERMS = [t for t in (HIGH_RELEVANCE_TITLE + EXTRA_EVENT_TERMS)
+                if _norm(t).rstrip("*") not in _ANCHOR_NORM]
+_EVENT_SUMMARY_TERMS = [t for t in (HIGH_RELEVANCE_SUMMARY + EXTRA_EVENT_TERMS)
+                        if _norm(t).rstrip("*") not in _ANCHOR_NORM]
+_RX_EVENT = _compile(_EVENT_TERMS)
+_RX_EVENT_SUMMARY = _compile(_EVENT_SUMMARY_TERMS)
+_RX_CONTEXT = _compile(CONTEXT_BOOST)
+_RX_LOW = _compile(LOW_RELEVANCE_TITLE)
+_RX_OFFTOPIC = _compile(OFF_TOPIC_TITLE)
+_RX_SOFT = _compile([t.replace("*", "") for t in SOFT_FEATURE_TITLE])
+
+
 def _source_adjustment(source: str) -> float:
     src = source.lower()
     for keyword, weight in SOURCE_WEIGHTS.items():
@@ -738,51 +1108,196 @@ def _source_adjustment(source: str) -> float:
     return 0.0
 
 
+# ── Limpeza de título ─────────────────────────────────────────────────────────
+# Google News RSS entrega "Título da notícia - Nome do Veículo"; alguns feeds
+# usam "|" ou "—". Removemos o sufixo quando o trecho final é o nome da fonte
+# (comparação normalizada) ou um veículo conhecido — nunca quando o trecho
+# parece parte da manchete.
+KNOWN_OUTLETS = [
+    "valor economico", "valor", "globo rural", "g1", "o globo", "globo",
+    "estadao", "o estado de s. paulo", "folha de s.paulo", "folha",
+    "canal rural", "noticias agricolas", "agrolink", "agfeed", "the agribiz",
+    "brazil journal", "neofeed", "money times", "infomoney", "exame",
+    "cnn brasil", "cnn", "bbc", "bbc news brasil", "uol", "terra", "r7",
+    "metropoles", "gazeta do povo", "correio braziliense",
+    "diario do comercio", "monitor do mercado", "poder360", "pipeline",
+    "bloomberg linea", "bloomberg", "reuters", "afp", "dow jones",
+    "forbes", "forbes brasil", "beefpoint", "farmnews", "abpa", "abiec",
+    "suinoculturaindustrial", "aviculturaindustrial", "portal do agronegocio",
+    "revista globo rural", "summit agro", "e-investidor", "einvestidor",
+    "seu dinheiro", "the wall street journal", "wall street journal", "wsj",
+    "financial times", "feedstuffs", "beef magazine", "agweb",
+    "successful farming", "world grain", "foodnavigator", "just food",
+    "meatingplace", "poultry world", "pig progress", "dairy reporter",
+    "s&p global", "platts", "argus", "fastmarkets", "nasdaq", "yahoo finance",
+    "investing.com", "seeking alpha", "barron's", "marketwatch",
+    "noticias agrícolas", "revista cultivar", "agro estadao", "agrofy news",
+    "mundo agro", "compre rural", "giro do boi", "scot consultoria",
+    "safras & mercado", "datagro", "udop", "novacana", "nova cana",
+]
+_SEPARATORS = (" - ", " – ", " — ", " | ", " · ", " :: ")
+_KNOWN_OUTLETS_NORM = {_norm(o) for o in KNOWN_OUTLETS}
+
+
+def clean_title(title: str, source: str = "") -> str:
+    """Remove o sufixo de veículo do título ('... - Globo Rural').
+
+    Regras (conservadoras, para nunca cortar manchete):
+      • só o ÚLTIMO segmento é candidato, e só se tiver ≤ 6 palavras;
+      • corta se o segmento casar com o nome da fonte do item (normalizado,
+        tolerando "Globo Rural" vs "globorural" e sufixos tipo "G1 - Globo");
+      • ou se casar com um veículo conhecido da lista;
+      • nunca corta se sobrar menos de 25 caracteres de manchete.
+    """
+    t = (title or "").strip()
+    if not t:
+        return t
+    src_norm = _norm(source).replace(".com.br", "").replace(".com", "").strip()
+    src_compact = src_norm.replace(" ", "")
+    for _ in range(2):  # até 2 sufixos ("Título - Valor - Globo")
+        cut = None
+        for sep in _SEPARATORS:
+            idx = t.rfind(sep)
+            if idx <= 0:
+                continue
+            head, tail = t[:idx].strip(), t[idx + len(sep):].strip()
+            if not tail or len(tail.split()) > 6:
+                continue
+            if len(head) < 12 or len(head.split()) < 3:
+                continue
+            tail_norm = _norm(tail)
+            tail_compact = tail_norm.replace(" ", "")
+            is_source = bool(src_compact) and (
+                tail_compact == src_compact
+                or tail_compact in src_compact
+                or src_compact in tail_compact
+            )
+            if is_source or tail_norm in _KNOWN_OUTLETS_NORM:
+                cut = head
+                break
+        if cut is None:
+            break
+        t = cut
+    return t
+
+
 class RelevanceFilter:
     def __init__(self, config):
         self.config = config
         self.threshold = config.get("relevance", {}).get("score_threshold", 0.4)
+        # Âncoras extra vindas do config (empresas/tickers que o usuário edita
+        # pela UI entram automaticamente como âncora forte).
+        extra = []
+        for g in config.get("groups", []):
+            extra += g.get("companies", []) or []
+            extra += g.get("tickers", []) or []
+            extra += g.get("keywords", []) or []
+        extra = [e for e in extra if len(_norm(e).strip()) >= 3]
+        self._rx_anchor = _compile(ANCHORS_STRONG + extra) if extra else _RX_ANCHOR_STRONG
+
+    # ── primitivas ────────────────────────────────────────────────────────────
+    def _parts(self, news_item: Dict):
+        title = _norm(news_item.get("title") or "")
+        summary = _norm(news_item.get("summary") or "")
+        # o resumo do Google News repete o título; corta o eco para o summary
+        # não inflar os sinais do título.
+        if summary.startswith(title[:60]) and len(title) > 20:
+            summary = summary[len(title):]
+        url = _norm(news_item.get("url") or "")
+        return title, summary, url
+
+    def _signals(self, news_item: Dict) -> Dict:
+        title, summary, url = self._parts(news_item)
+        return {
+            "anchor_title": bool(self._rx_anchor.search(title)),
+            "anchor_body": bool(self._rx_anchor.search(summary)),
+            "anchor_weak_title": bool(_RX_ANCHOR_WEAK.search(title)),
+            "event_title": bool(_RX_EVENT.search(title)),
+            "event_body": bool(_RX_EVENT_SUMMARY.search(summary)),
+            "context": bool(_RX_CONTEXT.search(title) or _RX_CONTEXT.search(summary)),
+            "low": bool(_RX_LOW.search(title)),
+            "offtopic_title": bool(_RX_OFFTOPIC.search(title)),
+            "offtopic_body": bool(_RX_OFFTOPIC.search(summary)),
+            "soft": bool(_RX_SOFT.search(title)),
+            "offtopic_url": any(p in url for p in OFF_TOPIC_URL_PATTERNS),
+        }
+
+    # ── API pública ───────────────────────────────────────────────────────────
+    def is_off_topic(self, news_item: Dict) -> bool:
+        """Ruído inequívoco — excluído no insert (is_excluded=1), não só punido.
+
+        Conservador de propósito: só derruba o que não tem como ser research.
+        """
+        s = self._signals(news_item)
+        if s["offtopic_url"]:
+            return True
+        if s["offtopic_title"] and not s["anchor_title"]:
+            return True
+        if not s["anchor_title"] and not s["anchor_body"]:
+            return True
+        if s["offtopic_body"] and not s["anchor_title"]:
+            return True
+        return False
 
     def score(self, news_item: Dict, exclusions: List[Dict] = None) -> float:
-        title = (news_item.get("title") or "").lower()
-        summary = (news_item.get("summary") or "").lower()
-        source = news_item.get("source") or ""
+        title, summary, _url = self._parts(news_item)
+        s = self._signals(news_item)
 
-        score = 0.40
+        # Descarte duro
+        if s["offtopic_url"]:
+            return 0.0
+        if s["offtopic_title"] and not s["anchor_title"]:
+            return 0.0
+        if not s["anchor_title"] and not s["anchor_body"]:
+            return 0.05
 
-        # Learned exclusions from user feedback (strong negative signal)
+        score = 0.05
+
+        # (a) âncora
+        if s["anchor_title"]:
+            score += 0.32
+        elif s["anchor_body"]:
+            score += 0.12
+        if s["anchor_weak_title"] and not s["anchor_title"]:
+            score += 0.06
+
+        # (b) evento / driver
+        if s["event_title"]:
+            score += 0.26
+        elif s["event_body"]:
+            score += 0.10
+        if s["context"]:
+            score += 0.04
+
+        # fonte só pondera quando a notícia é mesmo da cobertura
+        if s["anchor_title"]:
+            score += _source_adjustment(news_item.get("source") or "")
+
+        # penalidades
+        if s["soft"]:
+            # perfil/homenagem/agenda: derruba, salvo quando há driver duro no
+            # título (ex.: "Família X vende usina para a Raízen").
+            score -= 0.12 if s["event_title"] else 0.30
+        if s["low"]:
+            score -= 0.22
+        if s["offtopic_title"]:
+            score -= 0.10          # tem âncora, mas a manchete tangencia outro tema
+        elif s["offtopic_body"]:
+            score -= 0.20
+
+        # exclusões aprendidas (feedback do usuário)
         if exclusions:
             for excl in exclusions:
-                pattern = (excl.get("pattern") or "").lower().strip()
+                pattern = _norm(excl.get("pattern") or "").strip()
                 if len(pattern) >= 4 and pattern in title:
                     score -= 0.35
+                    break
 
-        # High relevance in title (strong positive)
-        for kw in HIGH_RELEVANCE_TITLE:
-            if kw in title:
-                score += 0.20
-                break
-
-        # High relevance in summary (mild positive)
-        for kw in HIGH_RELEVANCE_SUMMARY:
-            if kw in summary:
-                score += 0.07
-                break
-
-        # Low relevance in title (negative)
-        for kw in LOW_RELEVANCE_TITLE:
-            if kw in title:
-                score -= 0.25
-                break
-
-        # Context boost: article is actively about the entity
-        for kw in CONTEXT_BOOST:
-            if kw in title or kw in summary:
-                score += 0.06
-                break
-
-        # Source credibility adjustment
-        score += _source_adjustment(source)
+        # tetos estruturais
+        if not (s["event_title"] or s["event_body"] or s["context"]):
+            score = min(score, 0.35)      # âncora sem driver → não é research
+        if not s["anchor_title"]:
+            score = min(score, 0.55)      # cobertura só de passagem no corpo
 
         return max(0.0, min(1.0, round(score, 3)))
 
@@ -804,3 +1319,11 @@ class RelevanceFilter:
             if p in src or p in url:
                 return True
         return False
+
+    def explain(self, news_item: Dict) -> Dict:
+        """Diagnóstico — por que o item passou ou não (usado em testes)."""
+        out = dict(self._signals(news_item))
+        out["score"] = self.score(news_item)
+        out["off_topic"] = self.is_off_topic(news_item)
+        out["relevant"] = self.is_relevant(out["score"])
+        return out
