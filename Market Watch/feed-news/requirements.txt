@@ -4,6 +4,13 @@ requests==2.32.3
 python-dateutil==2.9.0
 apscheduler==3.10.4
 pg8000==1.31.2
+# scramp PINADO DE PROPÓSITO: pg8000 1.31.2 declara apenas "scramp>=1.4.5" e
+# chama scramp.make_channel_binding(), que foi REMOVIDO no scramp 1.5.0. Sem o
+# pin, qualquer build novo resolve 1.5.0 e toda conexão com o Postgres morre com
+# "AttributeError: module 'scramp' has no attribute 'make_channel_binding'" —
+# o app sobe, mas toda rota que toca o banco responde 500 (aconteceu em
+# 2026-11-16). Ao subir o pg8000, subir scramp junto (1.31.6 exige ==1.5.0).
+scramp==1.4.18
 gunicorn==22.0.0
 beautifulsoup4==4.12.3
 lxml==5.2.2
