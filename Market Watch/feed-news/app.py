@@ -830,6 +830,50 @@ def api_scrape_status():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Diagnóstico de banco ──────────────────────────────────────────────────────
+# Sem segredo no corpo: host/usuário/senha são mascarados na mensagem de erro.
+# Serve para distinguir "connection refused / DNS", "too many connections",
+# "senha errada" e "banco read-only" sem precisar abrir o log do Render.
+def _mask(text):
+    out = str(text)
+    for secret in (DB_PASSWORD, DB_HOST, DB_USER, DB_NAME):
+        if secret and len(secret) > 2:
+            out = out.replace(secret, "***")
+    return out
+
+
+@app.route("/api/db-test")
+def api_db_test():
+    info = {
+        "db_host_set": bool(DB_HOST),
+        "db_host_suffix": DB_HOST[-24:] if DB_HOST else "",
+        "db_user": DB_USER[:4] + "***" if DB_USER else "",
+        "db_port": DB_PORT,
+        "db_password_set": bool(DB_PASSWORD),
+    }
+    t0 = time.time()
+    try:
+        conn = get_db()
+        info["connect_ms"] = int((time.time() - t0) * 1000)
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM news")
+        info["news_rows"] = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM news WHERE is_excluded=0")
+        info["news_visible"] = cur.fetchone()[0]
+        cur.execute("SELECT max(published_at) FROM news")
+        info["last_published_at"] = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        info["ok"] = True
+        return jsonify(info)
+    except Exception as e:
+        info["ok"] = False
+        info["error_type"] = type(e).__name__
+        info["error"] = _mask(e)[:600]
+        info["elapsed_ms"] = int((time.time() - t0) * 1000)
+        return jsonify(info), 500
+
+
 # ── Diagnostic endpoint (remover após confirmar funcionamento) ─────────────────
 @app.route("/api/scrape-test")
 def api_scrape_test():
