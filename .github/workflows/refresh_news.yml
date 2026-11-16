@@ -20,10 +20,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger fetch
+        env:
+          BACKEND_SECRET: ${{ secrets.BACKEND_SECRET }}
         run: |
           BASE="https://ibba-agri-fb-feed-news.onrender.com"
           # --max-time 120 absorbs Render's cold start (~60s when asleep).
           echo "Triggering fetch (cold start can take ~60s)..."
-          curl -s --max-time 120 -X POST "$BASE/api/news/fetch"
+          # /api/news/fetch exige identidade: usuário logado do portal OU este
+          # segredo de máquina. Sem o header o cron toma 401 silencioso e a
+          # coleta automática nunca roda (era o caso até 2026-11-16).
+          curl -s --max-time 120 -X POST "$BASE/api/news/fetch" \
+            -H "X-Backend-Secret: $BACKEND_SECRET" \
+            -w "\nhttp=%{http_code}\n"
           echo
           echo "Fetch triggered — it runs in the background on the server."

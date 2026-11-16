@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import ssl
+import hmac
 import time
 import threading
 import pg8000
@@ -100,6 +101,18 @@ def _authenticated_user():
         return None
     user = _portal_user(email)
     return user if user and user.get("active") else None
+
+
+def _machine_authorized():
+    """Autenticação de máquina (GitHub Actions), via segredo compartilhado no
+    header X-Backend-Secret. Existe porque /api/news/fetch passou a exigir
+    login de portal e o cron de 6h (refresh_news.yml) não tem token de usuário
+    — ficava tomando 401 e a coleta automática só acontecia quando alguém
+    clicava em Refresh no dashboard."""
+    sent = request.headers.get("X-Backend-Secret", "")
+    if not sent or BACKEND_SECRET in ("", "changeme"):
+        return False
+    return hmac.compare_digest(sent, BACKEND_SECRET)
 
 
 def require_user(fn):
@@ -324,12 +337,15 @@ def api_get_news():
 
 
 @app.route("/api/news/fetch", methods=["POST"])
-@require_user
 def api_fetch_news():
     """Kick off fetch in a background thread and return immediately.
     A full fetch can take 2-5 min (100+ queries + 12 direct feeds), which
     exceeds Render's proxy timeout (~100s). Running async + committing in
-    batches keeps the HTTP layer responsive and persists partial progress."""
+    batches keeps the HTTP layer responsive and persists partial progress.
+
+    Aceita usuário logado do portal OU o segredo de máquina (cron)."""
+    if not _machine_authorized() and not _authenticated_user():
+        return jsonify({"error": "unauthorized"}), 401
     if _fetch_running["flag"]:
         return jsonify({"success": True, "status": "already_running",
                         "started_at": _fetch_running["started_at"]}), 202
