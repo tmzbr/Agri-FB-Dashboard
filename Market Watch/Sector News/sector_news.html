@@ -2846,7 +2846,12 @@ async function scrapeAllViaGHA(items) {
   const triggerRes = await fetch(API_BASE + "/api/scrape-trigger", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ items: items.map(i => ({ id: i.id, url: i.url, source: i.source || "" })) }),
+    body: JSON.stringify({ items: items.map(i => ({
+      id: i.id, url: i.url, source: i.source || "",
+      // resumo cortado: o dispatch do GitHub Actions tem limite de tamanho
+      // no input e um clipping pode levar dezenas de itens de uma vez.
+      title: (i.title || "").slice(0, 200), summary: (i.summary || "").slice(0, 300),
+    })) }),
     signal: AbortSignal.timeout(30000),
   });
 
@@ -3153,6 +3158,9 @@ function buildClippingFullExport(sections, buckets) {
       const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
       const rawBody = cleanBodyText((item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || ""));
       const paras   = rawBody.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 40);
+      // Sem corpo extraído, antes saía um bloco vazio no rascunho e passava
+      // batido. Marca explicitamente para o analista colar o texto na mão.
+      if (!paras.length) paras.push("[corpo não extraído — abrir o link e colar o texto]");
 
       html += br;
       html += `<p style="margin:0;padding:0;font-weight:bold;font-size:11pt;mso-margin-top-alt:0;mso-margin-bottom-alt:0;font-family:Calibri,Arial,sans-serif;"><b>${escHtml(item.title)}</b></p>`;
