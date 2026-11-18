@@ -112,7 +112,9 @@ NOISE = re.compile(
     r"pular para o conteúdo|barra de ferramentas|sobre o wordpress|"
     r"indique a um amigo|preencha o formulário|acesse o conteúdo|"
     r"cadastre.se|faça login|para continuar lendo|assine o plano|"
-    r"conteúdo exclusivo para assinantes",
+    r"conteúdo exclusivo para assinantes|clique aqu|grupo do whatsapp|"
+    r"siga o canal|siga nosso|receba as notícias|disponibiliza, diariamente|"
+    r"entre no nosso grupo|inscreva-se",
     re.IGNORECASE,
 )
 
@@ -134,6 +136,134 @@ NAV = re.compile(
     r"selecione o país|login|idioma|español|português)\s*$",
     re.IGNORECASE,
 )
+
+# Classes de ruído a podar DENTRO do corpo do artigo. Casam por TOKEN de classe
+# (não por substring solta): o padrão antigo era r"ad-|banner|related|share|..."
+# e batia em "is-highlight-shares" (a própria .entry-content do FarmNews) e em
+# "has-sidebar" no <body> de qualquer WordPress — o decompose apagava a página
+# inteira, extract() devolvia 0 e o worker caía no resumo do Google News
+# ("Título&nbsp;&nbsp;Fonte"). Era essa a causa do corpo vir só com o subtítulo.
+NOISE_CLASS = re.compile(
+    r"(?:^|[\s_-])(?:ads?|advert\w*|adsense|banner|related|relacionad\w*|"
+    r"share|shares|sharing|compartilh\w*|social|siga-nos|comment|comments|"
+    r"comentarios?|newsletter|publicidade|paywall|assinatura|sidebar|"
+    r"barra-lateral|menu|nav|navbar|breadcrumb|author-box|autor-box|tags?|"
+    r"widget|promo|recommend\w*|recomendad\w*|outbrain|taboola|mgid|"
+    r"leia-mais|leia-tambem|most-read|mais-lidas)(?:[\s_-]|$)",
+    re.IGNORECASE,
+)
+
+# Nunca podar estes: são o documento ou o próprio corpo do artigo.
+NEVER_PRUNE = {"html", "body", "main", "article"}
+
+# Página de bloqueio (Cloudflare, captcha, paywall duro, erro). Com a extração
+# nova esses textos passariam a ser devolvidos como "corpo" da notícia — tem
+# que contar como falha para o cascade seguir para o próximo tier.
+BLOCK_PAGE = re.compile(
+    r"security service to protect itself|cloudflare ray id|checking your browser|"
+    r"enable (?:java\s?script|cookies) (?:and|to)|attention required|access denied|"
+    r"request blocked|are you a robot|verifique que voc[eê] [eé] humano|"
+    r"ative o javascript|403 forbidden|404 not found|p[aá]gina n[aã]o encontrada|"
+    r"conte[uú]do exclusivo para assinantes|fa[cç]a seu login para continuar",
+    re.IGNORECASE,
+)
+
+
+def is_block_page(text: str) -> bool:
+    if not text:
+        return True
+    # só conta como bloqueio se o aviso domina o texto (uma matéria longa pode
+    # citar "403 forbidden" de passagem)
+    return bool(BLOCK_PAGE.search(text)) and len(text) < 2500
+
+
+def clean_text(t: str) -> str:
+    """Normaliza texto de artigo: decodifica entidades (&nbsp;, &#8230;, &#038;),
+    tira espaço duro, zero-width e espaços repetidos. Roda duas vezes porque
+    alguns feeds entregam entidade dentro de entidade (&amp;#8230;)."""
+    import html as html_mod
+    if not t:
+        return ""
+    t = html_mod.unescape(html_mod.unescape(t))
+    t = t.replace("\xa0", " ").replace("\u200b", "").replace("\ufeff", "")
+    t = re.sub(r"[ \t]+", " ", t)
+    return t.strip()
+
+
+def _prune_noise(scope, keep_ratio=0.35):
+    """Remove blocos de ruído DENTRO do escopo, sem nunca remover o escopo,
+    seus ancestrais, nem um bloco que concentra a maior parte do texto."""
+    try:
+        total = len(scope.get_text(" ", strip=True)) or 1
+    except Exception:
+        return
+    for el in list(scope.find_all(class_=True)):
+        # um decompose anterior pode ter levado este nó junto (vira detached,
+        # com attrs=None) — descartar em silêncio.
+        if el is scope or getattr(el, "attrs", None) is None:
+            continue
+        if el.name in NEVER_PRUNE or getattr(el, "decomposed", False):
+            continue
+        classes = el.get("class") or []
+        if not any(NOISE_CLASS.search(c) for c in classes):
+            continue
+        try:
+            if len(el.get_text(" ", strip=True)) > keep_ratio * total:
+                continue          # é o corpo, não ruído
+            el.decompose()
+        except Exception:
+            pass
+
+
+def _long_paras(el, min_len=60):
+    out = []
+    for p in el.find_all("p"):
+        t = clean_text(p.get_text(" ", strip=True))
+        if len(t) >= min_len:
+            out.append(t)
+    return out
+
+
+def _best_container(soup, min_len=60):
+    """Readability-lite: escolhe o bloco com mais texto em <p> e depois desce
+    para o descendente mais profundo que ainda guarda ~todo esse texto — assim
+    pega o corpo do artigo em vez do <body> inteiro."""
+    best, best_score = None, 0
+    for el in soup.find_all(["article", "main", "section", "div"]):
+        paras = _long_paras(el, min_len)
+        if len(paras) < 2:
+            continue
+        score = sum(len(t) for t in paras)
+        if score > best_score:
+            best, best_score = el, score
+    if best is None:
+        return None
+    # desce enquanto um filho único concentrar quase todo o texto
+    changed = True
+    while changed:
+        changed = False
+        for child in best.find_all(["article", "div", "section"], recursive=False):
+            paras = _long_paras(child, min_len)
+            if paras and sum(len(t) for t in paras) >= 0.9 * best_score:
+                best = child
+                best_score = sum(len(t) for t in paras)
+                changed = True
+                break
+    return best
+
+
+def meta_description(soup):
+    """og:description / meta description — fallback melhor que o stub do
+    Google News quando a extração do corpo falha."""
+    for attrs in ({"property": "og:description"}, {"name": "description"},
+                  {"name": "twitter:description"}):
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            t = clean_text(tag["content"])
+            if len(t) > 80:
+                return t
+    return ""
+
 
 def resolve_url(url: str) -> str:
     """Resolve Google News redirect URLs to the real source URL."""
@@ -250,41 +380,83 @@ def get_sel(url):
             return v
     return SOURCE_SELECTORS["_default"]
 
+def _keep_para(t):
+    """Decide se o parágrafo é corpo de matéria."""
+    if len(t) < 60:
+        return False
+    if t.startswith("//") or t.startswith("/*"):
+        return False
+    if NAV.match(t) or CAPTION.match(t) or WORDPRESS_TRAILER.search(t):
+        return False
+    # NOISE só derruba parágrafo curto ou que COMEÇA com a expressão: antes
+    # qualquer "leia também" no meio de um parágrafo longo matava o parágrafo.
+    if NOISE.search(t) and (len(t) < 200 or NOISE.match(t)):
+        return False
+    return True
+
+
 def extract(html_str, url):
-    import html as html_mod
     if not html_str or len(html_str) < 300:
         return ""
     soup = BeautifulSoup(html_str, PARSER)
-    for t in soup.find_all(["script","style","nav","header","footer","aside","noscript","figure","figcaption"]):
-        t.decompose()
-    for t in soup.find_all(class_=re.compile(r"ad-|banner|related|share|social|comment|newsletter|publicidade|paywall|sidebar|menu|breadcrumb|author")):
+    for t in soup.find_all(["script", "style", "nav", "header", "footer",
+                            "aside", "noscript", "figure", "figcaption", "form"]):
         t.decompose()
 
-    sels = [s.strip() for s in get_sel(url).split(",") if s.strip()]
+    # 1) container do site (SOURCE_SELECTORS), aceito só se tiver corpo mesmo
     container = None
-    for s in sels:
+    for sel in [x.strip() for x in get_sel(url).split(",") if x.strip()]:
         try:
-            el = soup.select_one(s)
-            if el:
-                container = el
-                break
-        except:
-            pass
+            el = soup.select_one(sel)
+        except Exception:
+            continue
+        if el and len(_long_paras(el)) >= 2:
+            container = el
+            break
 
+    # 2) senão, acha o bloco mais denso em texto (readability-lite)
+    if container is None:
+        container = _best_container(soup)
+
+    # 3) último recurso: body
     scope = container or soup.body or soup
-    paras = []
+
+    # Poda ruído DENTRO do corpo. Nunca o corpo nem seus ancestrais — era o
+    # bug que zerava a extração em todo site WordPress (ver NOISE_CLASS).
+    _prune_noise(scope)
+
+    paras, seen = [], set()
     for p in scope.find_all("p"):
-        t = p.get_text(" ", strip=True)
-        # Double-decode HTML entities (e.g. &amp;#8230; → … )
-        t = html_mod.unescape(html_mod.unescape(t))
-        t = re.sub(r"\s+", " ", t).strip()
-        if len(t) < 60 or NOISE.search(t) or NAV.match(t) or CAPTION.match(t) or t.startswith("//") or t.startswith("/*"):
+        t = clean_text(p.get_text(" ", strip=True))
+        if not _keep_para(t):
             continue
-        # Skip RSS trailer lines like "O post X apareceu primeiro em Y"
-        if WORDPRESS_TRAILER.search(t):
+        key = t[:80].lower()
+        if key in seen:
             continue
+        seen.add(key)
         paras.append(t)
-    return "\n\n".join(paras)
+
+    if paras:
+        out = "\n\n".join(paras)
+        return "" if is_block_page(out) else out
+
+    # 4) sem <p> aproveitável: tenta blocos de texto soltos (sites que montam
+    # o corpo em <div>), e por fim a meta description.
+    blocks = []
+    for div in scope.find_all(["div", "li"]):
+        if div.find(["div", "p"]):
+            continue
+        t = clean_text(div.get_text(" ", strip=True))
+        if _keep_para(t) and t[:80].lower() not in {b[:80].lower() for b in blocks}:
+            blocks.append(t)
+    if len(blocks) >= 2:
+        out = "\n\n".join(blocks)
+        if not is_block_page(out):
+            return out
+
+    meta = meta_description(soup)
+    return "" if is_block_page(meta) else meta
+
 
 # ── Tiers ─────────────────────────────────────────────────────────────────────
 
@@ -431,6 +603,22 @@ def rss_fetch(url, feed_url):
 
 # ── Main scrape ───────────────────────────────────────────────────────────────
 
+def _usable_summary(item, min_len=80):
+    """Resumo do banco limpo e validado como corpo. Recusa o stub do Google
+    News (título + nome do veículo) e o trailer do WordPress."""
+    raw = item.get("summary") or ""
+    t = clean_text(raw)
+    t = re.sub(r"\s*(?:o post|the post)\s+.{0,160}?\s+(?:apareceu primeiro em|appeared first on)\s+.{0,80}$",
+               "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    if len(t) < min_len:
+        return ""
+    title = clean_text(item.get("title") or "")
+    if title and t.lower().startswith(title[:max(30, int(len(title) * 0.8))].lower()) \
+            and len(t) - len(title) < 60:
+        return ""     # é só o título repetido com o nome do veículo
+    return t
+
+
 def scrape_one(item):
     url = item.get("url", "")
     item_id = item.get("id")
@@ -442,12 +630,10 @@ def scrape_one(item):
 
     # Video pages have no text body — return summary from DB instead
     if re.search(r'/videos?/', url, re.I) and host in ("agfeed.com.br", "canalrural.com.br", "g1.globo.com"):
-        summary = item.get("summary", "")
-        if summary and len(summary) > 80:
-            clean = re.sub(r"O post .+ apareceu primeiro em .+\.?$", "", summary, flags=re.I).strip()
-            if len(clean) > 60:
-                print(f"  ↩ video page — using db summary ({len(clean)} chars)")
-                return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "video page"}
+        clean = _usable_summary(item)
+        if clean:
+            print(f"  ↩ video page — using db summary ({len(clean)} chars)")
+            return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "video page"}
         print(f"  ↩ video page — no summary available")
         return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "video page, no text body"}
 
@@ -529,14 +715,13 @@ def scrape_one(item):
             return {"id": item_id, "url": url, "body": body, "tier": "wayback", "ok": True}
 
     print(f"  ✗ failed  {url[:70]}")
-    # Use the summary from the database as last-resort fallback
-    summary = item.get("summary", "")
-    if summary and len(summary) > 80:
-        # Clean any RSS trailer from summary too
-        clean = re.sub(r"O post .+ apareceu primeiro em .+\.?$", "", summary, flags=re.I).strip()
-        if len(clean) > 80:
-            print(f"  ↩ using db summary as fallback ({len(clean)} chars)")
-            return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "scraping failed — summary used"}
+    # Último recurso: o resumo do banco — mas só se for texto de verdade.
+    # O resumo do Google News costuma ser "Título<nbsp><nbsp>Veículo", que
+    # virava "corpo" e deixava o clipping com um subtítulo solto.
+    clean = _usable_summary(item)
+    if clean:
+        print(f"  ↩ using db summary as fallback ({len(clean)} chars)")
+        return {"id": item_id, "url": url, "body": clean, "tier": "summary", "ok": False, "error": "scraping failed — summary used"}
     return {"id": item_id, "url": url, "body": "", "tier": None, "ok": False, "error": "all tiers failed"}
 
 def scrape_batch(items):

@@ -1340,10 +1340,40 @@ const KNOWN_OUTLETS = [
   "compre rural","giro do boi","scot consultoria","safras & mercado",
   "datagro","udop","novacana","nova cana","feed & food","summit agro estadao"
 ];
-const _SEPARATORS = [" - ", " – ", " — ", " | ", " · "];
+const _SEPARATORS = [" - ", " – ", " — ", " | ", " · ", "  "];
+
+// Decodifica entidades HTML cruas (&nbsp;, &#8230;, &#038;) que vieram no RSS
+// e ficaram gravadas no banco. Roda duas vezes: alguns feeds entregam
+// entidade dentro de entidade (&amp;#8230;).
+const _entityBox = document.createElement("textarea");
+function decodeEntities(str) {
+  let t = String(str || "");
+  if (t.indexOf("&") === -1) return t;
+  for (let i = 0; i < 2 && t.indexOf("&") !== -1; i++) {
+    _entityBox.innerHTML = t;
+    const out = _entityBox.value;
+    if (out === t) break;
+    t = out;
+  }
+  return t.replace(/\u00a0/g, " ").replace(/\u200b/g, "");
+}
+
+// Corpo da notícia pronto para o e-mail: entidades decodificadas, espaços
+// normalizados e linhas de serviço (promo de whatsapp, "clique aqui") fora.
+const BODY_JUNK = /^(clique aqu|siga o canal|siga nosso|entre no nosso grupo|receba as not[ií]cias|inscreva-se|leia (mais|tamb[ée]m)|compartilhe|publicidade)/i;
+function cleanBodyText(text) {
+  return decodeEntities(text)
+    .split(/\n\n+/)
+    .map(p => p.replace(/[ \t]+/g, " ").trim())
+    .filter(p => p && !BODY_JUNK.test(p) && !/apareceu primeiro em|appeared first on/i.test(p))
+    .join("\n\n")
+    .trim();
+}
 
 function cleanTitle(title, source) {
-  let t = (title || "").trim();
+  // decodifica antes: o Google News separa o veículo com &nbsp;&nbsp;, que
+  // vira espaço duplo — sem decodificar, o sufixo nem é visto.
+  let t = decodeEntities(title).replace(/[ \t]{3,}/g, "  ").trim();
   if (!t) return t;
   const srcCompact = normalizeText(source || "")
     .replace(/\.com\.br|\.com/g, "").replace(/\s+/g, "");
@@ -1385,7 +1415,10 @@ async function loadNews(opts = {}) {
     // Remove o sufixo de veículo herdado do Google News ("... - Globo Rural").
     // Feito aqui, antes de qualquer render: feed, clipping e e-mail usam o
     // mesmo objeto, então o título sai limpo em todos.
-    news.forEach(n => { n.title = cleanTitle(n.title, n.source); });
+    news.forEach(n => {
+      n.title = cleanTitle(n.title, n.source);
+      n.summary = cleanBodyText(n.summary || "");
+    });
     // Recategoriza cada notícia com base no conteúdo (título + resumo)
     news.forEach(n => n._category_id = categorizeNews(n));
     // Guard de cobertura: derruba o que não é Agri/F&B (ver isOffCoverage)
@@ -3118,7 +3151,7 @@ function buildClippingFullExport(sections, buckets) {
 
     buckets[sec].forEach(item => {
       const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
-      const rawBody = (item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || "");
+      const rawBody = cleanBodyText((item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || ""));
       const paras   = rawBody.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 40);
 
       html += br;
@@ -3173,7 +3206,7 @@ function buildClippingFullExport(sections, buckets) {
     plain += `Main Headlines \u2013 ${sec}\n${"─".repeat(40)}\n\n`;
     buckets[sec].forEach(item => {
       const srcName = item.source && item.source.trim() ? item.source : sourceFromUrl(item.url);
-      const rawBody = (item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || "");
+      const rawBody = cleanBodyText((item._scrapeResult && item._scrapeResult.body) ? item._scrapeResult.body : (item.summary || ""));
       plain += `${item.title}\nSource: ${srcName} (${item.url})\n\n${rawBody}\n\nTop of the Agri, F&B Daily News\n${"─".repeat(40)}\n\n`;
     });
   });

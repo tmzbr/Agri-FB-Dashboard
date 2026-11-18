@@ -1,4 +1,6 @@
 import feedparser
+import html as _html
+import re as _re
 import time
 import ssl
 from datetime import datetime, timedelta
@@ -15,6 +17,43 @@ if platform.system() == "Windows":
         pass
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsReader/1.0"}
+
+# Trailer que o WordPress cola no fim do resumo do RSS.
+_WP_TRAILER = _re.compile(
+    r"\s*(?:o post|the post)\s+.{0,160}?\s+(?:apareceu primeiro em|appeared first on)\s+.{0,80}$",
+    _re.IGNORECASE | _re.DOTALL,
+)
+
+
+def clean_feed_text(raw: str) -> str:
+    """Tira tags, DECODIFICA entidades e normaliza espaço.
+
+    O fetcher antigo só fazia re.sub(r"<[^>]+>", ""), então &nbsp;, &#8230; e
+    &#038; iam crus para o banco — e apareciam no e-mail como '&#8230;' quando
+    o resumo era usado como corpo da notícia.
+    """
+    if not raw:
+        return ""
+    t = _re.sub(r"<[^>]+>", " ", raw)
+    t = _html.unescape(_html.unescape(t))
+    t = t.replace("\xa0", " ").replace("\u200b", "").replace("\ufeff", "")
+    t = _re.sub(r"\s+", " ", t).strip()
+    return _WP_TRAILER.sub("", t).strip()
+
+
+def is_stub_summary(summary: str, title: str) -> bool:
+    """True para o resumo-fantasma do Google News: o próprio título seguido do
+    nome do veículo ('Título  Notícias Agrícolas'). Não é corpo de notícia —
+    guardá-lo faz o clipping sair só com um subtítulo."""
+    s = (summary or "").strip().lower()
+    t = (title or "").strip().lower()
+    if not s:
+        return True
+    if len(s) < 40:
+        return True
+    if t and s.startswith(t[:max(30, int(len(t) * 0.8))]) and len(s) - len(t) < 60:
+        return True
+    return False
 
 
 class NewsFetcher:
@@ -67,10 +106,12 @@ class NewsFetcher:
                 url_item = getattr(entry, "link", "").strip()
                 if not title or not url_item:
                     continue
+                title = clean_feed_text(title) or title
                 summary = ""
                 if hasattr(entry, "summary") and entry.summary:
-                    import re as _re
-                    summary = _re.sub(r"<[^>]+>", "", entry.summary)[:600]
+                    summary = clean_feed_text(entry.summary)[:600]
+                    if is_stub_summary(summary, title):
+                        summary = ""
                 items.append({
                     "title": title,
                     "url": url_item,
@@ -135,9 +176,12 @@ class NewsFetcher:
                 url_item = getattr(entry, "link", "").strip()
                 if not title or not url_item:
                     continue
+                title = clean_feed_text(title) or title
                 summary = ""
                 if hasattr(entry, "summary") and entry.summary:
-                    summary = _re.sub(r"<[^>]+>", "", entry.summary)[:600]
+                    summary = clean_feed_text(entry.summary)[:600]
+                    if is_stub_summary(summary, title):
+                        summary = ""
                 if filter_kws:
                     text = (title + " " + summary).lower()
                     if not any(kw in text for kw in filter_kws):

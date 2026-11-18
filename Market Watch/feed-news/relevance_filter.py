@@ -1135,7 +1135,10 @@ KNOWN_OUTLETS = [
     "mundo agro", "compre rural", "giro do boi", "scot consultoria",
     "safras & mercado", "datagro", "udop", "novacana", "nova cana",
 ]
-_SEPARATORS = (" - ", " – ", " — ", " | ", " · ", " :: ")
+# "  " (dois espaços) entra na lista porque o Google News separa o veículo com
+# &nbsp;&nbsp; — depois do unescape vira espaço duplo, sem hífen nenhum
+# ("Safra recorde: ...  Tribuna do Sertão").
+_SEPARATORS = (" - ", " – ", " — ", " | ", " · ", " :: ", "  ")
 _KNOWN_OUTLETS_NORM = {_norm(o) for o in KNOWN_OUTLETS}
 
 
@@ -1149,7 +1152,12 @@ def clean_title(title: str, source: str = "") -> str:
       • ou se casar com um veículo conhecido da lista;
       • nunca corta se sobrar menos de 25 caracteres de manchete.
     """
-    t = (title or "").strip()
+    import html as _html
+    t = (title or "")
+    # entidades cruas vindas do RSS (&nbsp;, &#8230;, &#038;) — decodificar
+    # antes de procurar o separador, senão o sufixo do veículo não é visto.
+    t = _html.unescape(_html.unescape(t)).replace("\xa0", " ")
+    t = re.sub(r"[ \t]{3,}", "  ", t).strip()
     if not t:
         return t
     src_norm = _norm(source).replace(".com.br", "").replace(".com", "").strip()
